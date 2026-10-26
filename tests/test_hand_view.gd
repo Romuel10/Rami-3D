@@ -49,11 +49,25 @@ func _union(cards: Array) -> Rect2:
 
 func _fixture() -> void:
 	app.engine.start_game(["Vous", "Camille", "Alex", "Charlie"], 42)
+	# Keep the rendered snapshot physically valid: no card can be both in a
+	# hand and in a public group. Duplicate IDs would create ambiguous picks.
+	var remaining: Array = app.engine.state.deck + app.engine.state.discard
+	for player in app.engine.state.players: remaining.append_array(player.hand)
+	var melds: Array = []
+	for rank in range(2, 10):
+		var cards := ["0:S:%d" % rank,"0:D:%d" % rank,"0:C:%d" % rank]
+		for id in cards: remaining.erase(id)
+		melds.append({"cards":cards,"owner":1,"type":"set"})
+	for player in app.engine.state.players:
+		player.hand.clear()
+		for _card in range(13): player.hand.append(remaining.pop_back())
+	app.engine.state.discard = [remaining.pop_back()]
+	app.engine.state.deck = remaining
+	app.engine.state.melds = melds
+	app.engine.state.players[1].opened = true
+	app.hand_order.clear()
 	app.snapshot = app.engine.view_for(0)
 	app.snapshot.your_index = 0
-	app.snapshot.melds = []
-	for rank in range(2, 10):
-		app.snapshot.melds.append({"cards":["0:S:%d" % rank, "0:D:%d" % rank, "0:C:%d" % rank], "owner":1})
 	app._render_snapshot()
 	app.toast_time = 0.0
 	app.toast_label.hide()
@@ -72,7 +86,7 @@ func _measure(label: String) -> void:
 	_check(hand.end.y < app.action_row.get_global_rect().position.y, label + ": hand clears action buttons")
 	var stage: Array = []
 	for card in app.card_nodes:
-		if not card.get_meta("hand_card", false):
+		if not card.get_meta("hand_card", false) and card.get_meta("zone", "") != "opponent":
 			stage.append(card)
 	_check(stage.size() == 16, label + ": deck/discard plus only latest four three-card melds rendered")
 	for card in stage:
@@ -93,7 +107,7 @@ func _rank_corners(label: String) -> void:
 		query.collide_with_areas = true
 		query.collide_with_bodies = false
 		var hit: Dictionary = app.get_world_3d().direct_space_state.intersect_ray(query)
-		_check(not hit.is_empty() and hit.collider.get_parent() == card, label + ": every top-left rank corner can be picked without another card covering it")
+		_check(not hit.is_empty() and hit.collider.get_parent() == card, label + ": rank corner " + card.card_id + " picked " + (str(hit.collider.get_parent().card_id) if not hit.is_empty() else "nothing"))
 
 func _physics_tap() -> void:
 	tap_signals = 0

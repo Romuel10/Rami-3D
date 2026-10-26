@@ -168,6 +168,7 @@ jobs:
           timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_music.gd
           timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_card_input.gd
           timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_animations.gd
+          XDG_DATA_HOME="$RUNNER_TEMP/rami-mobile-tests" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_mobile_gameplay.gd
           timeout 120 python3 tests/test_internet.py
 
       - name: Verify rendered hand and touch picking
@@ -178,6 +179,15 @@ jobs:
           sudo apt-get install -y xvfb libgl1-mesa-dri
           LIBGL_ALWAYS_SOFTWARE=1 timeout 120 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_hand_view.gd 2>&1 | tee "$RUNNER_TEMP/rami-render.log"
           if rg -n 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/rami-render.log"; then
+            exit 1
+          fi
+
+      - name: Verify rendered mobile gestures and recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/rami-mobile-ui" timeout 120 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_mobile_ui.gd 2>&1 | tee "$RUNNER_TEMP/rami-mobile-ui.log"
+          if rg -n 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/rami-mobile-ui.log"; then
             exit 1
           fi
 

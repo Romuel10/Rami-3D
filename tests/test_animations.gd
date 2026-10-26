@@ -19,7 +19,7 @@ func _run() -> void:
 		"deck_count": 80, "discard_top": "1:D:1", "melds": [], "turn_count": 1
 	}
 	app._network_game_updated(view.duplicate(true))
-	_check(app.hand_cards.size() == 13 and app.card_nodes.size() == 17, "deal mounts all logical cards immediately")
+	_check(app.hand_cards.size() == 13 and app.card_nodes.size() == 30, "deal mounts all logical cards immediately")
 	var last: Node3D = app.hand_cards.back()
 	var last_start: Transform3D = last.transform
 	_check(last.is_moving() and not last.transform.is_equal_approx(last.motion_target), "deal begins at deck rather than final fan")
@@ -107,7 +107,7 @@ func _run() -> void:
 	view.melds.push_front({"cards":["1:S:3", "1:S:4", "1:S:5"], "owner":1})
 	app._network_game_updated(view.duplicate(true))
 	_check(seven.get_meta("meld_index") == 1 and seven.tapped.get_connections().size() == 1, "reused meld updates its index with exactly one input connection")
-	_check(app._view_cards["card:1:S:3"].position.is_equal_approx(Vector3(0, 0.55, -4.6)), "new public opponent card enters from the far table edge")
+	_check(app._view_cards["card:1:S:3"].position.is_equal_approx(Vector3(0, 0.45, -4.5)), "new public opponent card enters from the far table edge")
 	await _settled()
 
 	# Rapid network updates interrupt an in-flight draw with a discard.

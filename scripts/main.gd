@@ -6,6 +6,9 @@ const NetworkRoom = preload("res://scripts/network_manager.gd")
 const MusicPlayer = preload("res://scripts/music_manager.gd")
 const Coach = preload("res://scripts/beginner_coach.gd")
 const SortingChallenge = preload("res://scripts/sorting_challenge.gd")
+const SoloStore = preload("res://scripts/solo_store.gd")
+const SoundEffects = preload("res://scripts/sound_effects.gd")
+const Invitation = preload("res://scripts/invitation.gd")
 const HAND_SCALE := 2.15
 const DECK_POSITION := Vector3(-0.8, 0.28, -0.8)
 const INK = Color("ecede3")
@@ -66,6 +69,22 @@ var turn_token := 0
 var _view_cards: Dictionary = {}
 var _previous_cards: Dictionary = {}
 var _rendered_turn := -1
+var difficulty := 1
+var match_length := 1
+var hand_order: Array = []
+var effects: Node
+var effects_volume := 0.55
+var effects_enabled := true
+var _sound_revision := ""
+var _winner_key := ""
+var _drag_card: Node3D
+var _drag_start := Vector2.ZERO
+var _drag_pointer := -2
+var _drag_active := false
+var _drag_selection: Array = []
+var _drag_offset := Vector3.ZERO
+var _last_touch_ms := -1000
+var invitation_input: LineEdit
 
 func _ready() -> void:
 	get_viewport().physics_object_picking = true
@@ -73,6 +92,10 @@ func _ready() -> void:
 	_load_preferences()
 	_make_world()
 	_make_interface()
+	effects = SoundEffects.new()
+	effects.volume = effects_volume
+	effects.enabled = effects_enabled
+	add_child(effects)
 	music = MusicPlayer.new()
 	music.apply_settings(music_settings)
 	add_child(music)
@@ -101,6 +124,9 @@ func _process(delta: float) -> void:
 			toast_label.hide()
 
 func _notification(what: int) -> void:
+	if what in [NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_WM_CLOSE_REQUEST, NOTIFICATION_APPLICATION_FOCUS_OUT]:
+		_autosave()
+		_cancel_drag()
 	if what == NOTIFICATION_APPLICATION_RESUMED and OS.has_feature("android") and fullscreen_enabled:
 		_set_fullscreen(true, false)
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
@@ -330,6 +356,7 @@ func _clear_content() -> void:
 	_clear_cards()
 
 func _clear_cards() -> void:
+	_cancel_drag(false)
 	for card in card_nodes:
 		if is_instance_valid(card):
 			card.get_parent().remove_child(card)
@@ -364,7 +391,11 @@ func _show_menu() -> void:
 	_place(panel, content, Vector2(-470, 120), Vector2(-48, -40), Vector2(1,0), Vector2(1,1))
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 12)
-	panel.add_child(box)
+	var menu_scroll := ScrollContainer.new()
+	menu_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	panel.add_child(menu_scroll)
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	menu_scroll.add_child(box)
 	_label("Installez-vous", 29, INK, box)
 	_label("Comment voulez-vous jouer ?", 17, MUTED, box)
 	name_input = _field("Votre prénom", saved_name, box)
@@ -378,6 +409,8 @@ func _show_menu() -> void:
 	solo_select.add_item("Face à 2 ordinateurs", 2)
 	solo_select.add_item("Face à 3 ordinateurs", 3)
 	box.add_child(solo_select)
+	if not SoloStore.load_game().is_empty():
+		_button("Reprendre ma partie solo", _resume_solo, box, true)
 	_button("Jouer contre l’ordinateur   →", _start_solo, box, true)
 	_label("02  ·  EN BONNE COMPAGNIE", 13, GOLD, box)
 	_button("Jouer avec des amis   ↗", _open_friends, box)
@@ -386,6 +419,7 @@ func _show_menu() -> void:
 	_button("Défi de tri   →", _start_sorting, box)
 	_label("3 manches · grandes cartes · à votre rythme", 12, MUTED, box)
 	_button("Je débute : apprendre le rami", _show_rules, hero)
+	_button("Difficulté, manches et statistiques", _show_solo_settings, hero)
 	var footer := HBoxContainer.new()
 	_place(footer, content, Vector2(68,-72), Vector2(-68,-30), Vector2(0,1), Vector2(1,1))
 	footer.add_theme_constant_override("separation", 32)
@@ -422,7 +456,10 @@ func _start_solo() -> void:
 	var bots := ["Camille", "Alex", "Charlie"]
 	for i in range(bot_count):
 		names.append(bots[i])
-	engine.start_game(names)
+	hand_order.clear()
+	_winner_key = ""
+	_sound_revision = ""
+	engine.start_game(names, 0, match_length)
 	game_mode = "solo"
 	_show_game()
 	_refresh_snapshot()
@@ -430,7 +467,7 @@ func _start_solo() -> void:
 
 func _show_game() -> void:
 	_clear_content()
-	header_status.text = "PARTIE SOLO" if game_mode == "solo" else "TABLE PRIVÉE · " + network.room_code
+	header_status.text = "SOLO · " + ["FACILE","NORMAL","DIFFICILE"][difficulty] if game_mode == "solo" else "TABLE PRIVÉE · " + network.room_code
 	players_row = HBoxContainer.new()
 	players_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	players_row.add_theme_constant_override("separation", 18)
@@ -466,13 +503,16 @@ func _refresh_snapshot() -> void:
 		snapshot = engine.view_for(0)
 		snapshot["your_index"] = 0
 	_render_snapshot()
+	_autosave()
 	if game_mode == "solo" and int(snapshot.get("winner", -1)) < 0 and int(snapshot.get("turn", 0)) != 0 and not busy:
 		_run_bots()
 
 func _render_snapshot() -> void:
 	if not is_instance_valid(players_row):
 		return
+	_cancel_drag(false)
 	var initial_deal := _view_cards.is_empty()
+	_play_snapshot_sound(initial_deal)
 	_previous_cards = _view_cards.duplicate()
 	_view_cards.clear()
 	card_nodes.clear()
@@ -485,6 +525,8 @@ func _render_snapshot() -> void:
 	var own := int(snapshot.get("your_index", 0))
 	var turn := int(snapshot.get("turn", 0))
 	var players: Array = snapshot.get("players", [])
+	if game_mode == "solo":
+		header_status.text = "SOLO · %s · %d/%d" % [["FACILE","NORMAL","DIFFICILE"][difficulty],int(snapshot.get("match",{}).get("round",1)),int(snapshot.get("match",{}).get("length",1))]
 	for i in range(players.size()):
 		var panel := PanelContainer.new()
 		panel.custom_minimum_size = Vector2(210, 65)
@@ -515,7 +557,16 @@ func _render_snapshot() -> void:
 	else:
 		game_status.text = str(players[turn].get("name", "L’adversaire")) + " joue…" if turn < players.size() else "En attente…"
 	var hand: Array = snapshot.get("hand", []).duplicate()
-	hand.sort_custom(func(a, b): return _sort_key(str(a)) < _sort_key(str(b)))
+	if hand_order.is_empty():
+		hand.sort_custom(func(a, b): return _sort_key(str(a)) < _sort_key(str(b)))
+	else:
+		var ordered: Array = []
+		for id in hand_order:
+			if id in hand and not id in ordered: ordered.append(id)
+		for id in hand:
+			if not id in ordered: ordered.append(id)
+		hand = ordered
+	hand_order = hand.duplicate()
 	var revealed_discard := false
 	for id in hand:
 		var key := "card:" + str(id)
@@ -549,6 +600,8 @@ func _render_snapshot() -> void:
 			var card = _view_card(str(cards[j]), true, self, "card:" + str(cards[j]), "meld")
 			card.set_meta("meld_index", i)
 			_place_table_card(card, Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * 0.70), position_card), initial_deal, j * 0.035)
+	_render_opponents(initial_deal)
+	_update_hand_status()
 	# Cards no longer present in the visible snapshot cannot retain callbacks
 	# or keep an animation alive after leaving this table.
 	for card in _previous_cards.values():
@@ -594,7 +647,7 @@ func _place_table_card(card: Node3D, target: Transform3D, initial: bool, delay: 
 			return
 		# A newly public opponent card starts at the far side of the table.
 		# This uses no hidden opponent hand data.
-		card.transform = Transform3D(Basis.IDENTITY, Vector3(0, 0.55, -4.6))
+		card.transform = Transform3D(Basis.IDENTITY, _opponent_position(int(snapshot.get("last_action",{}).get("player",1))))
 	card.move_to(target, 0.38, delay if card.get_meta("arriving", false) else 0.0, 0.35)
 
 func _view_card_tapped(card: Node3D) -> void:
@@ -625,6 +678,7 @@ func _card(id: String, face: bool, pos: Vector3, parent: Node = null) -> Node3D:
 func _select_card(card) -> void:
 	if not _my_turn(false):
 		return
+	effects.play("select")
 	var id: String = card.card_id
 	if selected.has(id):
 		selected.erase(id)
@@ -641,10 +695,16 @@ func _update_hand_status() -> void:
 		var own := int(snapshot.get("your_index", 0))
 		var players: Array = snapshot.get("players", [])
 		if own < players.size() and not players[own].get("opened", false):
-			opening = "\nOUVERTURE : 30 POINTS"
+			var preview: Dictionary = EngineRules.new().selection_preview(snapshot, selected, suggested)
+			opening = "\nOUVERTURE : %d / 30 POINTS" % int(preview.points)
 		hand_status.text = "VOTRE MAIN · " + str(snapshot.get("hand", []).size()) + " CARTES" + opening
 		if not selected.is_empty():
 			hand_status.text = "VOTRE MAIN · " + str(snapshot.get("hand", []).size()) + " CARTES · " + str(selected.size()) + " CHOISIE(S)" + opening
+
+	var preview: Dictionary = EngineRules.new().selection_preview(snapshot, selected, suggested)
+	for card in card_nodes:
+		if card.get_meta("zone","") == "meld":
+			card.set_selected(int(card.get_meta("meld_index",-1)) in preview.targets, false)
 
 func _my_turn(show_error: bool = true) -> bool:
 	if snapshot.is_empty() or int(snapshot.get("winner", -1)) >= 0:
@@ -671,7 +731,9 @@ func _act(action: Dictionary) -> void:
 
 func _sort_hand() -> void:
 	sort_suit = not sort_suit
+	hand_order.clear()
 	_render_snapshot()
+	_autosave()
 	_toast("Cartes triées par " + ("couleur." if sort_suit else "valeur."))
 
 func _suggest() -> void:
@@ -724,7 +786,9 @@ func _extend_selected() -> void:
 			var suits := {"S":"♠", "H":"♥", "D":"♦", "C":"♣", "J":""}
 			names.append(str(info.get("label", id)) + str(suits.get(info.get("suit", ""), "")))
 		var idx := i
-		_button(str(i+1) + " · " + "  ".join(names), func(): _close_overlay(); _extend_at(idx), box)
+		var preview: Dictionary = EngineRules.new().selection_preview(snapshot, selected, suggested)
+		var button := _button(str(i+1) + " · " + "  ".join(names), func(): _close_overlay(); _extend_at(idx), box, i in preview.targets)
+		button.disabled = not i in preview.targets
 	_button("Annuler", _close_overlay, box)
 
 func _extend_at(index: int) -> void:
@@ -737,24 +801,47 @@ func _run_bots() -> void:
 	busy = true
 	var token := turn_token
 	while game_mode == "solo" and int(snapshot.get("winner", -1)) < 0 and int(snapshot.get("turn", 0)) != 0:
-		await get_tree().create_timer(1.0).timeout
+		await get_tree().create_timer(0.42).timeout
 		if token != turn_token or game_mode != "solo":
 			return
-		engine.bot_turn(int(snapshot.get("turn", 0)))
+		engine.bot_step(int(snapshot.get("turn", 0)), difficulty)
 		snapshot = engine.view_for(0)
 		snapshot["your_index"] = 0
 		_render_snapshot()
+		_autosave()
 	busy = false
 
 func _show_winner() -> void:
 	var winner := int(snapshot.get("winner", -1))
 	var players: Array = snapshot.get("players", [])
 	if winner < 0 or winner >= players.size(): return
+	var key := str(snapshot.get("session_id","")) + ":" + str(snapshot.get("match",{}).get("round",1))
+	if _winner_key == key and overlay_kind == "winner": return
+	_winner_key = key
 	var own := int(snapshot.get("your_index", 0))
 	var box := _modal("Belle partie !" if winner == own else "La manche est terminée", "Vous avez gagné !" if winner == own else str(players[winner].get("name", "L’adversaire")) + " remporte cette manche.")
+	overlay_kind = "winner"
+	var celebration := _label("✦  ✦  ✦",40,GOLD,box)
+	celebration.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var sparkle := celebration.create_tween().set_loops(3)
+	sparkle.tween_property(celebration,"modulate:a",0.35,0.32)
+	sparkle.tween_property(celebration,"modulate:a",1.0,0.32)
+	var scores: Dictionary = snapshot.get("match",{})
+	if not scores.is_empty():
+		_label("Manche %d / %d · le plus petit total gagne" % [int(scores.round),int(scores.length)], 17, INK, box)
+		var ranking := range(players.size())
+		ranking.sort_custom(func(a,b): return int(scores.totals[a]) < int(scores.totals[b]))
+		var rank := 1
+		for place in range(ranking.size()):
+			var index: int = ranking[place]
+			if place > 0 and int(scores.totals[index]) != int(scores.totals[ranking[place-1]]): rank = place+1
+			_label("%d. %s · %d points" % [rank, players[index].name, int(scores.totals[index])], 19, GOLD if rank == 1 else INK, box)
 	for i in range(players.size()):
 		_label(str(players[i].get("name", "")) + "  ·  " + str(players[i].get("count",0)) + " cartes restantes", 17, GOLD if i == winner else MUTED, box)
 	if game_mode == "solo":
+		SoloStore.record_round(engine.state)
+		if int(scores.get("round",1)) < int(scores.get("length",1)):
+			_button("Manche suivante", _next_round, box, true)
 		_button("Nouvelle partie", _start_solo, box, true)
 	_button("Retour à l’accueil", _leave_to_menu, box)
 
@@ -784,6 +871,10 @@ func _show_friends(internet: bool) -> void:
 	if not internet:
 		_label("ADRESSE DU TÉLÉPHONE HÔTE", 13, GOLD, box)
 		address_input = _field("192.168.1.20:7357", "", box)
+	_label("INVITATION D’UN AMI", 13, GOLD, box)
+	invitation_input = _field("Collez ici l’invitation rami3d://…", "", box)
+	invitation_input.max_length = 2048
+	_button("Rejoindre avec l’invitation", _join_invitation, box, true)
 	_label("CODE DU SALON", 13, GOLD, box)
 	code_input = _field("Code à 6 chiffres", "", box)
 	code_input.max_length = 6
@@ -839,6 +930,7 @@ func _lobby_updated(data: Dictionary) -> void:
 		if not addr.is_empty():
 			var txt := _label("Adresse de l’hôte : " + addr + ":" + str(data.get("port",7357)), 16, MUTED, lobby_box)
 			txt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_button("Copier l’invitation", _copy_invitation, lobby_box)
 	var players: Array = data.get("players", [])
 	for i in range(players.size()):
 		var p: Dictionary = players[i]
@@ -874,6 +966,7 @@ func _connection_changed(connected: bool) -> void:
 		_button("Retour à l’accueil", _leave_to_menu, box)
 
 func _modal(title: String, subtitle: String) -> VBoxContainer:
+	_cancel_drag()
 	_close_overlay()
 	toast_label.hide()
 	toast_time = 0.0
@@ -1005,6 +1098,20 @@ func _show_music_settings() -> void:
 	slider.custom_minimum_size.y = 56
 	slider.value_changed.connect(func(value: float): music.set_volume(value/100.0); level.text = "Volume · " + str(roundi(value)) + " %")
 	box.add_child(slider)
+	_label("EFFETS SONORES · INDÉPENDANTS DE LA MUSIQUE", 13, GOLD, box)
+	var effects_toggle := CheckButton.new()
+	effects_toggle.text = "Sons des cartes et de la victoire"
+	effects_toggle.button_pressed = effects_enabled
+	effects_toggle.toggled.connect(func(value: bool): effects_enabled = value; effects.enabled = value; _save_preferences())
+	box.add_child(effects_toggle)
+	_label("Volume des effets",17,INK,box)
+	var sound_slider := HSlider.new()
+	sound_slider.min_value = 0
+	sound_slider.max_value = 100
+	sound_slider.value = effects_volume * 100
+	sound_slider.custom_minimum_size.y = 50
+	sound_slider.value_changed.connect(func(value: float): effects_volume = value / 100; effects.volume = effects_volume; _save_preferences())
+	box.add_child(sound_slider)
 	_long_text("Votre choix et le volume sont mémorisés. La musique se met en pause quand vous quittez l’application.", box)
 	_button("Revenir au jeu", _close_overlay, box, true)
 
@@ -1070,11 +1177,12 @@ func _confirm_leave() -> void:
 	if game_mode == "menu":
 		_close_overlay()
 		return
-	var box := _modal("Quitter cette table ?", "La partie solo sera perdue. Si vous hébergez un salon Wi-Fi, il sera fermé.")
+	var box := _modal("Quitter cette table ?", "Votre partie solo est sauvegardée automatiquement. Si vous hébergez un salon Wi-Fi, il sera fermé.")
 	_button("Rester à la table", _close_overlay, box, true)
 	_button("Quitter la partie", _leave_to_menu, box)
 
 func _leave_to_menu() -> void:
+	_autosave()
 	game_mode = "menu"
 	network.leave_room()
 	_close_overlay()
@@ -1092,6 +1200,11 @@ func _load_preferences() -> void:
 	if cfg.load("user://preferences.cfg") == OK:
 		saved_name = str(cfg.get_value("player", "name", "Vous"))
 		saved_address = str(cfg.get_value("network", "server", ""))
+		difficulty = clampi(int(cfg.get_value("solo","difficulty",1)),0,2)
+		match_length = int(cfg.get_value("solo","rounds",1))
+		if not match_length in [1,3,5]: match_length = 1
+		effects_volume = clampf(float(cfg.get_value("effects","volume",0.55)),0,1)
+		effects_enabled = bool(cfg.get_value("effects","enabled",true))
 		beginner_enabled = bool(cfg.get_value("help", "beginner", true))
 		var saved_music: Variant = cfg.get_value("music", "settings", music_settings)
 		if saved_music is Dictionary:
@@ -1104,4 +1217,264 @@ func _save_preferences() -> void:
 	cfg.set_value("network", "server", saved_address)
 	cfg.set_value("help", "beginner", beginner_enabled)
 	cfg.set_value("music", "settings", music_settings)
+	cfg.set_value("solo","difficulty",difficulty)
+	cfg.set_value("solo","rounds",match_length)
+	cfg.set_value("effects","volume",effects_volume)
+	cfg.set_value("effects","enabled",effects_enabled)
 	cfg.save("user://preferences.cfg")
+
+func _autosave() -> void:
+	if game_mode == "solo" and engine != null and not engine.state.is_empty():
+		if not SoloStore.save_game(engine, difficulty, hand_order):
+			_toast("La sauvegarde a échoué. Vérifiez l’espace disponible.")
+
+func _resume_solo() -> void:
+	var saved: Dictionary = SoloStore.load_game()
+	var restored := EngineRules.new()
+	if saved.is_empty() or not restored.restore_game(saved.game):
+		_toast("Aucune sauvegarde valide à reprendre.")
+		return
+	turn_token += 1
+	busy = false
+	network.leave_room()
+	_close_overlay()
+	engine = restored
+	difficulty = clampi(int(saved.get("difficulty",1)),0,2)
+	match_length = int(engine.state.match.length)
+	bot_count = engine.state.players.size() - 1
+	player_name = str(engine.state.players[0].name)
+	hand_order = saved.get("order",[]).duplicate() if saved.get("order") is Array else []
+	_winner_key = ""
+	_sound_revision = ""
+	game_mode = "solo"
+	_show_game()
+	_refresh_snapshot()
+	_toast("Votre partie a repris là où vous l’aviez laissée.")
+
+func _show_solo_settings() -> void:
+	var box := _modal("Votre partie solo", "Ces réglages s’appliquent à la prochaine partie. Une reprise conserve sa difficulté.")
+	_label("DIFFICULTÉ", 13, GOLD, box)
+	var choice := OptionButton.new()
+	for title in ["Facile · pour apprendre", "Normal · équilibré", "Difficile · anticipe les combinaisons"]:
+		choice.add_item(title)
+	choice.selected = difficulty
+	choice.custom_minimum_size.y = 52
+	choice.item_selected.connect(func(index: int): difficulty = index; _save_preferences())
+	box.add_child(choice)
+	_label("NOMBRE DE MANCHES", 13, GOLD, box)
+	var rounds := OptionButton.new()
+	for count in [1,3,5]: rounds.add_item(str(count) + " manche(s)",count)
+	rounds.selected = [1,3,5].find(match_length)
+	rounds.custom_minimum_size.y = 52
+	rounds.item_selected.connect(func(index: int): match_length = [1,3,5][index]; _save_preferences())
+	box.add_child(rounds)
+	var stats: Dictionary = SoloStore.statistics()
+	_label("VOS STATISTIQUES SOLO",13,GOLD,box)
+	_long_text("%d manches terminées · %d victoires\n%d points de pénalité cumulés" % [stats.rounds,stats.wins,stats.points],box)
+	_long_text("À la fin de chaque manche, les cartes restantes comptent : nombres à leur valeur, figures 10, as 11, joker 20. Le total le plus faible gagne le match ; les égalités restent ex æquo.",box)
+	_button("Terminé",_close_overlay,box,true)
+
+func _next_round() -> void:
+	if game_mode != "solo": return
+	var result: Dictionary = engine.next_round()
+	if not result.ok:
+		_toast(result.error)
+		return
+	turn_token += 1
+	busy = false
+	_winner_key = ""
+	_sound_revision = ""
+	hand_order.clear()
+	_close_overlay()
+	_show_game()
+	_refresh_snapshot()
+
+func _play_snapshot_sound(initial: bool) -> void:
+	if effects == null: return
+	var key := "%s:%s:%s" % [snapshot.get("session_id",""),snapshot.get("match",{}).get("round",1),snapshot.get("revision",0)]
+	if key == _sound_revision: return
+	_sound_revision = key
+	if int(snapshot.get("winner",-1)) >= 0:
+		effects.play("win")
+	elif initial:
+		effects.play("deal")
+	else:
+		effects.play(str(snapshot.get("last_action",{}).get("type","")))
+
+func _opponent_position(player: int) -> Vector3:
+	var own := int(snapshot.get("your_index",0))
+	var opponents: Array = []
+	for i in range(snapshot.get("players",[]).size()):
+		if i != own: opponents.append(i)
+	var index := opponents.find(player)
+	return Vector3((index - (opponents.size()-1)/2.0) * 5.0, 0.45, -4.5)
+
+func _render_opponents(initial: bool) -> void:
+	var players: Array = snapshot.get("players",[])
+	var own := int(snapshot.get("your_index",0))
+	for i in range(players.size()):
+		if i == own: continue
+		var count := clampi(int(players[i].get("count",13)),0,108)
+		for j in range(count):
+			var card := _view_card("0:S:1",false,self,"opponent:%d:%d" % [i,j],"opponent")
+			card._area.input_ray_pickable = false
+			card._area.collision_layer = 0
+			var pos := _opponent_position(i) + Vector3((j-(count-1)/2.0)*minf(0.12,1.8/maxf(1,count-1)),j*0.003,0)
+			var basis := Basis(Vector3.UP,(j-(count-1)/2.0)*minf(0.035,0.45/maxf(1,count-1))).scaled(Vector3.ONE*0.60)
+			if card.get_meta("new_in_view",false):
+				var last: Dictionary = snapshot.get("last_action",{})
+				card.position = Vector3(0.85,0.19,-0.8) if not initial and int(last.get("player",-1)) == i and last.get("source","") == "discard" else DECK_POSITION
+			card.move_to(Transform3D(basis,pos),0.35, j*0.025 if initial else 0.0,0.35)
+
+func _copy_invitation() -> void:
+	var address: String = network.local_address
+	if network._hosting_locally:
+		address = "ws://" + address + ":" + str(network.server_port)
+	else:
+		address = network._client_url
+	DisplayServer.clipboard_set(Invitation.make(address,network.room_code))
+	_toast("Invitation copiée. Envoyez-la à votre ami ; il la collera dans Rejoindre avec l’invitation.")
+
+func _join_invitation() -> void:
+	var invite: Dictionary = Invitation.parse(invitation_input.text)
+	if invite.is_empty():
+		_toast("Invitation invalide. Collez le texte complet commençant par rami3d://join?.")
+		return
+	network.join_room(invite.server,player_name,invite.code)
+
+# Hand gestures are captured before 3D picking, but after GUI buttons.
+# Only the originating finger can move or release a pending drag.
+func _unhandled_input(event: InputEvent) -> void:
+	if not game_mode in ["solo","online"] or overlay.get_child_count() > 0: return
+	var position_screen := Vector2.ZERO
+	var pointer := -2
+	if event is InputEventScreenTouch and event.pressed:
+		_last_touch_ms = Time.get_ticks_msec()
+		position_screen = event.position
+		pointer = event.index
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		if event.device == InputEvent.DEVICE_ID_EMULATION or Time.get_ticks_msec()-_last_touch_ms < 180:
+			var paired := _pick_card(event.position)
+			if paired != null and paired.get_meta("zone", "") == "hand":
+				get_viewport().set_input_as_handled()
+			return
+		position_screen = event.position
+		pointer = -1
+	else: return
+	if is_instance_valid(_drag_card): return
+	var card := _pick_card(position_screen)
+	if card == null or card.get_meta("zone","") != "hand": return
+	_drag_card = card
+	_drag_start = position_screen
+	_drag_pointer = pointer
+	_drag_active = false
+	_drag_selection = selected.duplicate()
+	_drag_offset = card.global_position - camera.project_position(position_screen, 8.8)
+	get_viewport().set_input_as_handled()
+
+func _input(event: InputEvent) -> void:
+	if not is_instance_valid(_drag_card): return
+	if (event is InputEventScreenTouch or event is InputEventScreenDrag) and event.index != _drag_pointer:
+		get_viewport().set_input_as_handled()
+		return
+	if _drag_pointer >= 0 and (event is InputEventMouseButton or event is InputEventMouseMotion) and event.device == InputEvent.DEVICE_ID_EMULATION:
+		get_viewport().set_input_as_handled()
+		return
+	var position_screen := Vector2.ZERO
+	var release := false
+	if event is InputEventScreenDrag and event.index == _drag_pointer:
+		position_screen = event.position
+	elif event is InputEventScreenTouch and event.index == _drag_pointer and not event.pressed:
+		if event.canceled:
+			_cancel_drag()
+			return
+		position_screen = event.position
+		release = true
+	elif event is InputEventMouseMotion and _drag_pointer == -1:
+		position_screen = event.position
+	elif event is InputEventMouseButton and _drag_pointer == -1 and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+		position_screen = event.position
+		release = true
+	else: return
+	get_viewport().set_input_as_handled()
+	if overlay.get_child_count() > 0:
+		_cancel_drag()
+		return
+	if not _drag_active and position_screen.distance_to(_drag_start) > 16:
+		_drag_active = true
+		_drag_card.cancel_motion()
+		if not _drag_card.card_id in selected:
+			selected = [_drag_card.card_id]
+			suggested.clear()
+		_drag_card.set_selected(true, false)
+		_update_hand_status()
+	if release:
+		var card := _drag_card
+		var dragged := _drag_active
+		_drag_card = null
+		_drag_pointer = -2
+		_drag_active = false
+		if dragged: _drop_card(card,position_screen)
+		else: card.tapped.emit(card)
+	elif _drag_active:
+		_drag_card.global_position = camera.project_position(position_screen,8.8) + _drag_offset
+
+func _pick_card(point: Vector2, exclude: Array[RID] = []) -> Node3D:
+	var origin := camera.project_ray_origin(point)
+	var query := PhysicsRayQueryParameters3D.create(origin,origin+camera.project_ray_normal(point)*100,1,exclude)
+	query.collide_with_areas = true
+	query.collide_with_bodies = false
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty(): return null
+	return hit.collider.get_parent()
+
+func _drop_card(card: Node3D, point: Vector2) -> void:
+	var id: String = card.card_id
+	if not get_viewport().get_visible_rect().has_point(point):
+		selected = _drag_selection.duplicate()
+		_layout_hand()
+		for item in hand_cards: item.set_selected(item.card_id in selected,false)
+		return
+	var target := _pick_card(point,[card._area.get_rid()])
+	var hand_y := get_viewport().get_visible_rect().size.y * 0.57
+	if (target != null and target.get_meta("zone","") == "hand") or point.y >= hand_y:
+		hand_order.erase(id)
+		var index := hand_order.size()
+		for i in range(hand_order.size()):
+			var candidate: Node3D = _view_cards.get("card:" + str(hand_order[i]))
+			if candidate == null: continue
+			var center := camera.unproject_position(hand_root.to_global(candidate.motion_target.origin))
+			if point.x < center.x:
+				index = i
+				break
+		hand_order.insert(index,id)
+		_render_snapshot()
+		_autosave()
+		return
+	if not _my_turn() or snapshot.get("phase","") != "play":
+		_toast("Piochez avant de poser ou de défausser.")
+		_layout_hand()
+		return
+	var discard_center := camera.unproject_position(Vector3(0.85,0.19,-0.8))
+	if (target != null and target.get_meta("zone","") == "discard") or point.distance_to(discard_center) < 48:
+		selected = [id]
+		_discard_selected()
+	elif target != null and target.get_meta("zone","") == "meld":
+		_extend_at(int(target.get_meta("meld_index",-1)))
+	elif point.y > get_viewport().get_visible_rect().size.y*0.24:
+		_meld_selected()
+	else:
+		selected = _drag_selection.duplicate()
+	_layout_hand()
+	for item in hand_cards: item.set_selected(item.card_id in selected,false)
+	_update_hand_status()
+
+func _cancel_drag(restore: bool = true) -> void:
+	var active := is_instance_valid(_drag_card)
+	_drag_card = null
+	_drag_pointer = -2
+	_drag_active = false
+	if active and restore:
+		selected = _drag_selection.duplicate()
+		_layout_hand()
+		for item in hand_cards: item.set_selected(item.card_id in selected,false)

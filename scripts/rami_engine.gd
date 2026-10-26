@@ -19,7 +19,7 @@ func card_info(id: String) -> Dictionary:
 		return {}
 	return {"id": id, "rank": rank, "suit": parts[1], "joker": false, "points": 11 if rank == 1 else mini(rank, 10), "label": RANK_LABELS[rank]}
 
-func start_game(names: Array, seed_value: int = 0) -> Dictionary:
+func start_game(names: Array, seed_value: int = 0, rounds: int = 1) -> Dictionary:
 	if names.size() < 2 or names.size() > 4:
 		return _fail("Une partie accueille de 2 à 4 joueurs.")
 	if seed_value == 0:
@@ -43,9 +43,24 @@ func start_game(names: Array, seed_value: int = 0) -> Dictionary:
 			player.hand.append(deck.pop_back())
 	var first_discard = deck.pop_back()
 	state = {"players": players, "deck": deck, "discard": [first_discard], "melds": [], "turn": 0, "phase": "draw", "winner": -1, "log": "%s commence : piochez une carte." % players[0].name, "turn_count": 1}
+	state["session_id"] = "%x%x" % [_rng.randi(), _rng.randi()]
+	state["revision"] = 0
+	state["last_action"] = {}
+	state["match"] = {"round":1, "length":rounds if rounds in [1,3,5] else 1, "totals":[], "results":[]}
+	for _name in names:
+		state.match.totals.append(0)
 	return {"ok": true, "error": ""}
 
 func apply_action(player_index: int, action: Dictionary) -> Dictionary:
+	var result := _apply_checked(player_index, action)
+	if result.get("ok", false):
+		state["revision"] = int(state.get("revision", 0)) + 1
+		state["last_action"] = {"type":str(action.get("type", "")), "player":player_index, "source":str(action.get("source", "deck"))}
+		if int(state.winner) >= 0:
+			_record_round()
+	return result
+
+func _apply_checked(player_index: int, action: Dictionary) -> Dictionary:
 	if state.is_empty():
 		return _fail("Aucune partie en cours.")
 	if player_index < 0 or player_index >= state.players.size():
@@ -78,7 +93,7 @@ func view_for(player_index: int) -> Dictionary:
 	var players: Array = []
 	for player in state.players:
 		players.append({"name": player.name, "count": player.hand.size(), "opened": player.opened})
-	return {"players": players, "hand": state.players[player_index].hand.duplicate() if player_index >= 0 and player_index < state.players.size() else [], "deck_count": state.deck.size(), "discard_top": state.discard.back() if not state.discard.is_empty() else "", "melds": state.melds.duplicate(true), "turn": state.turn, "phase": state.phase, "winner": state.winner, "log": state.log, "turn_count": state.turn_count}
+	return {"players": players, "hand": state.players[player_index].hand.duplicate() if player_index >= 0 and player_index < state.players.size() else [], "deck_count": state.deck.size(), "discard_top": state.discard.back() if not state.discard.is_empty() else "", "melds": state.melds.duplicate(true), "turn": state.turn, "phase": state.phase, "winner": state.winner, "log": state.log, "turn_count": state.turn_count, "revision":state.get("revision",0), "last_action":state.get("last_action",{}).duplicate(true), "session_id":state.get("session_id",""), "match":state.get("match",{}).duplicate(true)}
 
 func _draw(index: int, action: Dictionary) -> Dictionary:
 	if state.phase != "draw":
@@ -345,51 +360,81 @@ func _add_candidate(cards: Array, hand: Array, keys: Dictionary, candidates: Arr
 	keys[key] = true
 	candidates.append({"cards": checked.cards, "points": checked.points, "mask": mask})
 
-func bot_turn(index: int) -> void:
+func bot_turn(index: int, difficulty: int = 1) -> void:
+	# Compatibility entry point for server simulations: play a whole turn.
+	for _step in range(32):
+		if not bot_step(index, difficulty):
+			break
+		if state.winner >= 0 or state.turn != index:
+			break
+
+func bot_step(index: int, difficulty: int = 1) -> bool:
 	if state.is_empty() or state.winner >= 0 or state.turn != index:
-		return
+		return false
 	if state.phase == "draw":
-		var source := "deck"
-		if not state.discard.is_empty():
-			var top: String = state.discard.back()
-			if card_info(top).joker:
-				source = "discard"
-			else:
-				var possible := _suggest_for_hand(state.players[index].hand + [top], state.players[index].opened)
-				for group in possible:
-					if top in group:
-						source = "discard"
-				if state.players[index].opened:
-					for meld in state.melds:
-						if _validate_meld(meld.cards + [top]).ok:
-							source = "discard"
-		if state.deck.is_empty() and state.discard.size() < 2:
-			source = "discard"
-		if not apply_action(index, {"type": "draw", "source": source}).ok:
-			return
+		return apply_action(index, {"type":"draw", "source":_bot_draw_source(index, difficulty)}).ok
 	var groups := suggest_melds(index)
 	if not groups.is_empty():
-		apply_action(index, {"type": "meld", "groups": groups})
+		if difficulty == 0 and state.players[index].opened:
+			groups = [groups[0]]
+		return apply_action(index, {"type":"meld", "groups":groups}).ok
+	if difficulty > 0 and state.players[index].opened:
+		for meld_index in range(state.melds.size()):
+			for id in state.players[index].hand:
+				if state.players[index].hand.size() > 1 and _validate_meld(state.melds[meld_index].cards + [id]).ok:
+					return apply_action(index, {"type":"extend", "meld":meld_index, "cards":[id]}).ok
+	return apply_action(index, {"type":"discard", "card":_bot_discard(index, difficulty)}).ok
+
+func _bot_draw_source(index: int, difficulty: int) -> String:
+	if state.deck.is_empty() and state.discard.size() < 2:
+		return "discard"
+	if difficulty == 0 or state.discard.is_empty():
+		return "deck"
+	var top: String = state.discard.back()
+	if card_info(top).joker:
+		return "discard"
+	for group in _suggest_for_hand(state.players[index].hand + [top], state.players[index].opened):
+		if top in group:
+			return "discard"
 	if state.players[index].opened:
-		var changed := true
-		while changed and state.players[index].hand.size() > 1:
-			changed = false
-			for meld_index in range(state.melds.size()):
-				for id in state.players[index].hand.duplicate():
-					if _validate_meld(state.melds[meld_index].cards + [id]).ok:
-						if apply_action(index, {"type": "extend", "meld": meld_index, "cards": [id]}).ok:
-							changed = true
-							break
-				if changed:
-					break
-	var worst: String = state.players[index].hand[0]
-	var worst_score := INF
-	for id in state.players[index].hand:
-		var score := _card_utility(id, state.players[index].hand)
-		if score < worst_score:
-			worst_score = score
+		for meld in state.melds:
+			if _validate_meld(meld.cards + [top]).ok:
+				return "discard"
+	if difficulty == 2 and _card_utility(top, state.players[index].hand) >= 5.0:
+		return "discard"
+	return "deck"
+
+func _bot_discard(index: int, difficulty: int) -> String:
+	var hand: Array = state.players[index].hand
+	var worst: String = hand[0]
+	var lowest := INF
+	for id in hand:
+		var info := card_info(id)
+		var score := _card_utility(id, hand)
+		if difficulty == 0:
+			score = 100.0 if info.joker else -float(info.points)
+		elif difficulty == 2:
+			# Count potential partners using only this hand and public cards.
+			# The actual deck and opponents' hands never enter this estimate.
+			var known: Array = hand + state.discard
+			for meld in state.melds:
+				known.append_array(meld.cards)
+			var outs := 0.0
+			for copy in range(2):
+				for suit in SUITS:
+					for rank in range(1,14):
+						var candidate := "%d:%s:%d" % [copy,suit,rank]
+						if candidate in known:
+							continue
+						if rank == info.rank and suit != info.suit:
+							outs += 0.18
+						if suit == info.suit and (absi(rank-int(info.rank)) <= 2 or rank in [1,13] and int(info.rank) in [1,13]):
+							outs += 0.28
+			score += outs
+		if score < lowest:
+			lowest = score
 			worst = id
-	apply_action(index, {"type": "discard", "card": worst})
+	return worst
 
 func _card_utility(id: String, hand: Array) -> float:
 	var info := card_info(id)
@@ -434,3 +479,147 @@ func _ok() -> Dictionary:
 
 func _fail(message: String) -> Dictionary:
 	return {"ok": false, "error": message}
+
+func _record_round() -> void:
+	if not state.has("match"):
+		state["match"] = {"round":1,"length":1,"totals":[],"results":[]}
+		for _p in state.players:
+			state.match.totals.append(0)
+	var match_data: Dictionary = state.match
+	if match_data.results.size() >= int(match_data.round):
+		return
+	var penalties: Array = []
+	for i in range(state.players.size()):
+		var points := 0
+		for id in state.players[i].hand:
+			points += int(card_info(id).points)
+		penalties.append(points)
+		match_data.totals[i] = int(match_data.totals[i]) + points
+	match_data.results.append({"winner":int(state.winner),"points":penalties})
+
+func next_round() -> Dictionary:
+	if state.is_empty() or int(state.winner) < 0:
+		return _fail("Terminez cette manche avant la suivante.")
+	var previous: Dictionary = state.get("match",{}).duplicate(true)
+	if previous.is_empty() or int(previous.round) >= int(previous.length):
+		return _fail("Ce match est terminé.")
+	var names: Array = []
+	for player in state.players:
+		names.append(player.name)
+	var session: String = str(state.get("session_id",""))
+	start_game(names,0,int(previous.length))
+	previous.round = int(previous.round) + 1
+	state.match = previous
+	state.session_id = session
+	state.turn = (int(previous.round)-1) % names.size()
+	state.log = "Manche %d : %s commence." % [int(previous.round),state.players[state.turn].name]
+	return _ok()
+
+func selection_preview(view: Dictionary, cards: Array, groups: Array = []) -> Dictionary:
+	var result := {"points":0,"can_meld":false,"targets":[]}
+	var own := int(view.get("your_index",0))
+	var players: Array = view.get("players",[])
+	var hand: Array = view.get("hand",[])
+	if cards.is_empty() or own < 0 or own >= players.size() or cards.size() >= hand.size() or not _unique(cards):
+		return result
+	for id in cards:
+		if not id in hand:
+			return result
+	var selected_groups: Array = groups if not groups.is_empty() else [cards]
+	var used: Array = []
+	var valid := true
+	for group in selected_groups:
+		var checked := _validate_meld(group)
+		if not checked.ok:
+			valid = false
+			break
+		used.append_array(group)
+		result.points += int(checked.points)
+	if not valid or not _unique(used) or used.size() != cards.size():
+		result.points = 0
+		valid = false
+	for id in used:
+		valid = valid and id in cards
+	var active: bool = int(view.get("turn",-1)) == own and view.get("phase","") == "play" and not view.get("paused",false) and int(view.get("winner",-1)) < 0
+	result.can_meld = active and valid and (players[own].get("opened",false) or result.points >= 30)
+	if active and players[own].get("opened",false):
+		var melds: Array = view.get("melds",[])
+		for i in range(melds.size()):
+			if _validate_meld(melds[i].cards + cards).ok:
+				result.targets.append(i)
+	return result
+
+func export_game() -> Dictionary:
+	return {"state":state.duplicate(true),"rng":str(_rng.state)}
+
+func restore_game(saved: Variant) -> bool:
+	if not saved is Dictionary or not saved.get("state") is Dictionary:
+		return false
+	var candidate: Dictionary = saved.state.duplicate(true)
+	if not candidate.get("players") is Array or candidate.players.size() < 2 or candidate.players.size() > 4:
+		return false
+	for field in ["deck","discard","melds"]:
+		if not candidate.get(field) is Array:
+			return false
+	var all_cards: Array = candidate.deck + candidate.discard
+	for player in candidate.players:
+		if not player is Dictionary or not player.get("hand") is Array or not player.get("opened") is bool or not player.get("name") is String:
+			return false
+		all_cards.append_array(player.hand)
+	for meld in candidate.melds:
+		if not meld is Dictionary or not meld.get("cards") is Array:
+			return false
+		if not _saved_integer(meld.get("owner"), 0, candidate.players.size()-1): return false
+		var owner := int(meld.get("owner",-1))
+		if owner < 0 or owner >= candidate.players.size():
+			return false
+		meld.owner = owner
+		all_cards.append_array(meld.cards)
+	if all_cards.size() != 108 or not _unique(all_cards):
+		return false
+	for id in all_cards:
+		if not id is String or card_info(id).is_empty():
+			return false
+	for meld in candidate.melds:
+		var checked := _validate_meld(meld.cards)
+		if not checked.ok: return false
+		meld.type = checked.type
+	if not candidate.get("log") is String or not candidate.get("session_id") is String or candidate.session_id.is_empty(): return false
+	if not candidate.get("last_action",{}) is Dictionary: return false
+	for field in ["turn","winner","turn_count","revision"]:
+		var raw: Variant = candidate.get(field,0 if field != "winner" else -1)
+		if not _saved_integer(raw, -1 if field == "winner" else (1 if field == "turn_count" else 0), 1000000000):
+			return false
+		candidate[field] = int(raw)
+	if candidate.turn < 0 or candidate.turn >= candidate.players.size() or candidate.winner < -1 or candidate.winner >= candidate.players.size() or not candidate.get("phase","") in ["draw","play"]:
+		return false
+	for i in range(candidate.players.size()):
+		if candidate.players[i].hand.is_empty() != (i == candidate.winner): return false
+	if not candidate.last_action.is_empty():
+		if not _saved_integer(candidate.last_action.get("player"),0,candidate.players.size()-1) or not candidate.last_action.get("type","") in ["draw","meld","extend","discard"]: return false
+	var match_data: Variant = candidate.get("match",{})
+	if not match_data is Dictionary or not match_data.get("totals") is Array or match_data.totals.size() != candidate.players.size() or not match_data.get("results") is Array:
+		return false
+	if not _saved_integer(match_data.get("length"),1,5) or not int(match_data.length) in [1,3,5]: return false
+	if not _saved_integer(match_data.get("round"),1,int(match_data.length)): return false
+	var expected := int(match_data.round) - (1 if candidate.winner < 0 else 0)
+	if match_data.results.size() != expected: return false
+	var sums: Array = []
+	for _player in candidate.players: sums.append(0)
+	for result in match_data.results:
+		if not result is Dictionary or not _saved_integer(result.get("winner"),0,candidate.players.size()-1) or not result.get("points") is Array or result.points.size() != sums.size(): return false
+		for i in range(sums.size()):
+			if not _saved_integer(result.points[i],0,2000): return false
+			sums[i] += int(result.points[i])
+		if int(result.points[int(result.winner)]) != 0: return false
+	for i in range(sums.size()):
+		if not _saved_integer(match_data.totals[i],0,10000) or int(match_data.totals[i]) != sums[i]: return false
+	if candidate.winner >= 0 and int(match_data.results.back().winner) != candidate.winner: return false
+	state = candidate
+	var rng_text := str(saved.get("rng",""))
+	if rng_text.is_valid_int():
+		_rng.state = int(rng_text)
+	return true
+
+func _saved_integer(value: Variant, minimum: int, maximum: int) -> bool:
+	return (value is int or value is float) and is_finite(float(value)) and float(value) == floor(float(value)) and float(value) >= minimum and float(value) <= maximum
