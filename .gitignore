@@ -1,0 +1,10 @@
+.godot/
+builds/*
+!builds/.gitkeep
+*.tmp
+*.log
+export_credentials.cfg
+__pycache__/
+*.keystore
+*.jks
+local.properties

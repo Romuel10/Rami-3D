@@ -1,0 +1,19 @@
+Rami Salon 3D — version d'essai 0.1.0
+
+Validations effectuées sous Linux avec Godot 4.6.3 :
+- Moteur : 594 assertions ; 5 parties IA complètes terminées.
+- Interface réelle : 59 contrôles, dont pioche, poses, suggestions,
+  compléments, victoire, nouvelle partie et contrôle des tours IA.
+- Réseau Wi-Fi : clients distincts, codes, mains privées, autorité,
+  pause et reprise après déconnexion.
+- Serveur Internet : salons indépendants, permissions du créateur,
+  mains privées, tours, reconnexion ; client Godot compatible.
+- Entrées tactiles : déduplication toucher/souris émulée,
+  souris physique et touchers successifs.
+- Visuel : accueil, table solo, règles, Wi-Fi, Internet et salon.
+- APK : compilation, signature, permissions, paysage,
+  architectures ARM32/ARM64, alignement et intégrité ZIP.
+
+Limites : aucun téléphone physique ou émulateur Android n'a été utilisé.
+Le serveur Internet est fourni avec les sources, sans hébergement public.
+Le serveur Wi-Fi fonctionne directement sur le téléphone hôte.

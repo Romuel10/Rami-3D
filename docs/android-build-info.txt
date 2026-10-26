@@ -1,0 +1,25 @@
+Rami Salon 3D — Android test build
+Godot 4.6.3 / Android SDK build-tools 36.0.0 / Java 21
+Package: fr.ramisalon.jeu
+Version: 0.1.0 (1)
+Android minimum: 7.0 (API 24)
+Target SDK: 36
+Architectures: ARM64-v8a, armeabi-v7a
+Orientation: landscape
+Permissions: INTERNET, ACCESS_NETWORK_STATE, ACCESS_WIFI_STATE
+Debug signed: APK Signature Scheme v2 + v3 verified
+ZIP integrity: all entries CRC verified
+APK alignment: 4-byte archive + 16KB native-library alignment verified
+Godot export: exit 0; no script errors or warnings
+APK size: 56997884 bytes
+APK SHA256: 92a7aa0d965c6b9a14dce3c08679e101de5da958b346e821a10bbf8f065f9333
+Execution on physical Android devices: not tested in this environment.
+
+Source hashes at export:
+a438c3f96139c66ab6587fc3f62234f83f24238a0b11d290e5e1ef8eda42f147  project.godot
+feea0ebe6419ac3f84e889ab0f44e2e4d3dfe3df87a55a8323655f5b10837903  main.tscn
+3dcea8d1be326077d9022ba8e4d9df773dce1f0cfb6826ecdeff65c59cbcdf3b  export_presets.cfg
+82028a3a71f890eaeef8269d930a32e2410efbd07f7451efe6407a0bfdd2d8a4  scripts/main.gd
+f2273a7da7efe5ab26c8e8224d11840f709966720c0b44912b8769de36ff607a  scripts/card_3d.gd
+262e16e70b380c743292553b6f0cfbcfa143cf926005c2463abee47197d62895  scripts/rami_engine.gd
+b07a3ef717b8277ead404a86b7591e34da362454b98211b2ada907ce9a89b08d  scripts/network_manager.gd
