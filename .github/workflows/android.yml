@@ -1,0 +1,205 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      GODOT_VERSION: 4.6.3
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Read application version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          text = Path('export_presets.cfg').read_text()
+          values = re.findall(r'^version/name="([^"]+)"$', text, re.M)
+          if len(values) != 1 or not re.fullmatch(r'\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?', values[0]):
+              raise SystemExit('Expected one semantic version/name in export_presets.cfg')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'version={values[0]}\ntag=v{values[0]}\n')
+          PY
+
+      - name: Install Android build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          RAMI_ANDROID_SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          sdkmanager --sdk_root="$RAMI_ANDROID_SDK" "platform-tools" "build-tools;36.0.0"
+          echo "RAMI_ANDROID_SDK=$RAMI_ANDROID_SDK" >> "$GITHUB_ENV"
+          "$RAMI_ANDROID_SDK/platform-tools/adb" start-server
+
+      - name: Install verified Godot and Android export template
+        shell: bash
+        run: |
+          set -euo pipefail
+          RAMI_GODOT_DIR="$RUNNER_TEMP/rami-godot"
+          mkdir -p "$RAMI_GODOT_DIR"
+          cd "$RAMI_GODOT_DIR"
+          RAMI_RELEASE_URL="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable"
+          for RAMI_ASSET in "Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" "Godot_v${GODOT_VERSION}-stable_export_templates.tpz" "SHA512-SUMS.txt"; do
+            curl --fail --location --retry 3 --retry-delay 2 "$RAMI_RELEASE_URL/$RAMI_ASSET" --output "$RAMI_ASSET"
+          done
+          python3 - <<'PY'
+          import hashlib, os
+          from pathlib import Path
+          version = os.environ['GODOT_VERSION']
+          wanted = {f'Godot_v{version}-stable_linux.x86_64.zip', f'Godot_v{version}-stable_export_templates.tpz'}
+          verified = set()
+          for line in Path('SHA512-SUMS.txt').read_text().splitlines():
+              digest, name = line.split(maxsplit=1)
+              name = name.lstrip('*')
+              if name in wanted:
+                  with open(name, 'rb') as stream:
+                      actual = hashlib.file_digest(stream, 'sha512').hexdigest()
+                  if actual != digest:
+                      raise SystemExit(f'Checksum mismatch: {name}')
+                  verified.add(name)
+          if verified != wanted:
+              raise SystemExit('Missing official Godot checksums')
+          print('Official Godot SHA512 checksums verified')
+          PY
+          unzip -q "Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" godot
+          chmod +x godot
+          python3 - <<'PY'
+          import os, zipfile
+          from pathlib import Path
+          version = os.environ['GODOT_VERSION']
+          data = Path(os.environ.get('XDG_DATA_HOME', str(Path.home() / '.local/share')))
+          templates = data / 'godot/export_templates' / f'{version}.stable'
+          templates.mkdir(parents=True, exist_ok=True)
+          with zipfile.ZipFile(f'Godot_v{version}-stable_export_templates.tpz') as archive:
+              for name in ['android_debug.apk', 'version.txt']:
+                  (templates / name).write_bytes(archive.read(f'templates/{name}'))
+          PY
+          echo "GODOT_BIN=$RAMI_GODOT_DIR/godot" >> "$GITHUB_ENV"
+
+      - name: Configure Android test signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          RAMI_DEBUG_KEYSTORE="$RUNNER_TEMP/rami-debug.keystore"
+          keytool -genkeypair -noprompt -keystore "$RAMI_DEBUG_KEYSTORE" -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Rami Android Test, O=Rami Salon, C=FR"
+          export RAMI_DEBUG_KEYSTORE
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          config = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'godot'
+          config.mkdir(parents=True, exist_ok=True)
+          settings = {
+              'export/android/java_sdk_path': os.environ['JAVA_HOME'],
+              'export/android/android_sdk_path': os.environ['RAMI_ANDROID_SDK'],
+              'export/android/debug_keystore': os.environ['RAMI_DEBUG_KEYSTORE'],
+              'export/android/debug_keystore_user': 'androiddebugkey',
+              'export/android/debug_keystore_pass': 'android',
+          }
+          text = '[gd_resource type="EditorSettings" format=3]\n\n[resource]\n'
+          text += ''.join(f'{name} = {json.dumps(value)}\n' for name, value in settings.items())
+          (config / 'editor_settings-4.6.tres').write_text(text)
+          PY
+
+      - name: Import project and test gameplay
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$GODOT_BIN" --headless --path . --editor --import 2>&1 | tee "$RUNNER_TEMP/rami-import.log"
+          if rg -n 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/rami-import.log"; then
+            exit 1
+          fi
+          timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_engine.gd
+          timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_network.gd
+          timeout 120 python3 tests/test_internet.py
+
+      - name: Export and verify Android APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p builds
+          "$GODOT_BIN" --headless --path . --export-debug Android builds/rami-3d.apk 2>&1 | tee "$RUNNER_TEMP/rami-export.log"
+          if rg -n 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/rami-export.log"; then
+            exit 1
+          fi
+          "$RAMI_ANDROID_SDK/build-tools/36.0.0/apksigner" verify --verbose builds/rami-3d.apk | tee builds/android-signature.txt
+          "$RAMI_ANDROID_SDK/build-tools/36.0.0/zipalign" -c -P 16 4 builds/rami-3d.apk
+          unzip -t builds/rami-3d.apk > "$RUNNER_TEMP/rami-integrity.log"
+          "$RAMI_ANDROID_SDK/build-tools/36.0.0/aapt" dump badging builds/rami-3d.apk > builds/android-package.txt
+          git archive --format=zip --prefix=rami-3d/ HEAD --output=builds/rami-salon-3d-sources.zip
+          python3 - <<'PY'
+          import hashlib, os
+          from pathlib import Path
+          apk = Path('builds/rami-3d.apk')
+          text = '\n'.join([
+              'Rami Salon 3D — GitHub Actions Android test build',
+              f'Commit: {os.environ["GITHUB_SHA"]}',
+              f'Workflow run: https://github.com/{os.environ["GITHUB_REPOSITORY"]}/actions/runs/{os.environ["GITHUB_RUN_ID"]}',
+              'Godot: 4.6.3 / Java: 21 / Android build-tools: 36.0.0',
+              'Debug signed; APK signature, ZIP integrity and 16 KB alignment verified.',
+              f'APK SHA256: {hashlib.sha256(apk.read_bytes()).hexdigest()}',
+              'The temporary CI signing key differs from the local development key.',
+              'No physical Android device test was performed by this workflow.',
+              'Internet multiplayer requires hosting the included game server.',
+          ])
+          Path('builds/CI-BUILD-INFO.txt').write_text(text + '\n')
+          PY
+          cd builds
+          sha256sum rami-3d.apk rami-salon-3d-sources.zip CI-BUILD-INFO.txt > SHA256SUMS
+
+      - name: Upload downloadable build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rami-android-${{ steps.version.outputs.version }}-${{ github.run_number }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            builds/rami-3d.apk
+            builds/rami-salon-3d-sources.zip
+            builds/SHA256SUMS
+            builds/CI-BUILD-INFO.txt
+            builds/android-signature.txt
+            builds/android-package.txt
+
+      - name: Publish version if it does not already exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RAMI_TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RAMI_STATUS=$(curl --silent --show-error --output "$RUNNER_TEMP/rami-existing-release.json" --write-out '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28' "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$RAMI_TAG")
+          case "$RAMI_STATUS" in
+            200)
+              echo "Release $RAMI_TAG already exists; its files and tag are preserved. This build remains available in Actions artifacts."
+              ;;
+            404)
+              gh release create "$RAMI_TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Rami Salon 3D $RAMI_TAG" --prerelease --notes-file docs/release-notes.md builds/rami-3d.apk builds/rami-salon-3d-sources.zip builds/SHA256SUMS builds/CI-BUILD-INFO.txt builds/android-signature.txt builds/android-package.txt
+              ;;
+            *)
+              echo "Cannot check existing release (HTTP $RAMI_STATUS). No release was changed."
+              exit 1
+              ;;
+          esac
