@@ -49,7 +49,33 @@ jobs:
         run: |
           set -euo pipefail
           RAMI_ANDROID_SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
-          sdkmanager --sdk_root="$RAMI_ANDROID_SDK" "platform-tools" "build-tools;36.0.0"
+          if [[ ! -d "$RAMI_ANDROID_SDK" || ! -w "$RAMI_ANDROID_SDK" ]]; then
+            RAMI_ANDROID_SDK="$RUNNER_TEMP/rami-android-sdk"
+            mkdir -p "$RAMI_ANDROID_SDK"
+          fi
+          RAMI_SDKMANAGER="$RAMI_ANDROID_SDK/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "$RAMI_SDKMANAGER" ]]; then
+            RAMI_SDKMANAGER=""
+            for RAMI_CANDIDATE in "$RAMI_ANDROID_SDK"/cmdline-tools/*/bin/sdkmanager; do
+              if [[ -x "$RAMI_CANDIDATE" ]]; then
+                RAMI_SDKMANAGER="$RAMI_CANDIDATE"
+                break
+              fi
+            done
+          fi
+          if [[ -z "$RAMI_SDKMANAGER" ]]; then
+            RAMI_SDKMANAGER="$(command -v sdkmanager || true)"
+          fi
+          if [[ -z "$RAMI_SDKMANAGER" ]]; then
+            RAMI_COMMANDLINE_DIR="$RUNNER_TEMP/rami-android-commandline"
+            mkdir -p "$RAMI_COMMANDLINE_DIR"
+            curl --fail --location --retry 3 --retry-delay 2 "https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip" --output "$RUNNER_TEMP/rami-android-commandline.zip"
+            unzip -q "$RUNNER_TEMP/rami-android-commandline.zip" -d "$RAMI_COMMANDLINE_DIR"
+            RAMI_SDKMANAGER="$RAMI_COMMANDLINE_DIR/cmdline-tools/bin/sdkmanager"
+          fi
+          printf 'y\n%.0s' {1..100} > "$RUNNER_TEMP/rami-android-license-input.txt"
+          "$RAMI_SDKMANAGER" --sdk_root="$RAMI_ANDROID_SDK" --licenses < "$RUNNER_TEMP/rami-android-license-input.txt"
+          "$RAMI_SDKMANAGER" --sdk_root="$RAMI_ANDROID_SDK" "platform-tools" "build-tools;36.0.0"
           echo "RAMI_ANDROID_SDK=$RAMI_ANDROID_SDK" >> "$GITHUB_ENV"
           "$RAMI_ANDROID_SDK/platform-tools/adb" start-server
 
