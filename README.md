@@ -40,9 +40,9 @@ Les animations réutilisent les cartes visibles et leurs matériaux. Elles s’a
 
 ## Télécharger
 
-- [Installer l’APK Android v0.2.0 — environ 59 Mo](https://github.com/Romuel10/Rami-3D/releases/download/v0.2.0/rami-3d.apk)
-- [Version et fichiers téléchargeables](https://github.com/Romuel10/Rami-3D/releases/tag/v0.2.0)
-- [Rapport de vérification](docs/VERIFICATION.txt)
+- [Installer l’APK Android v0.3.0 — version de test](https://github.com/Romuel10/Rami-3D/releases/download/v0.3.0/rami-3d.apk)
+- [Version et fichiers téléchargeables](https://github.com/Romuel10/Rami-3D/releases/tag/v0.3.0)
+- [Rapport de vérification](docs/MOBILE-GAMEPLAY.md)
 
 ![Une table de rami en 3D](docs/screenshots/game.png)
 
@@ -53,7 +53,7 @@ Les animations réutilisent les cartes visibles et leurs matériaux. Elles s’a
 3. Lancer **Rami Salon 3D**. Le jeu s’affiche en paysage.
 4. Choisir **Jouer contre l’ordinateur** pour une partie immédiate sans connexion, ou **Défi de tri** pour le nouveau jeu de rangement.
 
-Les APK de test GitHub sont signés avec une clé temporaire. Si vous avez installé la version 0.1.0 et qu’Android refuse la mise à jour, désinstallez cette ancienne version, puis installez le nouvel APK.
+Les APK de test GitHub utilisent une clé temporaire qui peut changer entre compilations. Si Android refuse une mise à jour, désinstaller l’ancien APK efface aussi les parties et statistiques locales.
 
 L’APK fourni est signé pour les essais. Ce n’est pas une publication sur Google Play. L’installation et les performances restent à vérifier sur des téléphones physiques ; les essais de cette livraison ont été effectués sous Linux avec Godot et sur des connexions réseau locales distinctes.
 
