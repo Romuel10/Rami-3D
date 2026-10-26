@@ -1,17 +1,17 @@
-# Rami Salon 3D — version de test Android
+# Rami Salon 3D 0.2.0 — cartes en main, aide et défi de tri
 
-Jeu de rami en français avec table et cartes en 3D, adversaires contrôlés par l’ordinateur et parties privées de deux à quatre joueurs, chacun sur son téléphone.
+Cette version répond aux retours sur la taille des cartes et le plein écran.
 
-- **Solo** : jouer contre un, deux ou trois adversaires.
-- **Même Wi-Fi** : créer un salon sur un téléphone, puis le rejoindre avec son adresse et son code.
-- **Internet** : créer ou rejoindre un salon sur un serveur commun. Le serveur est fourni dans `server/`, avec son guide de déploiement ; aucun serveur public n’est hébergé automatiquement.
+- **Plein écran adapté** aux formats larges des téléphones ; mode immersif Android et bouton Plein écran / Fenêtre.
+- **Grandes cartes en éventail au premier plan**, face au joueur ; sélection surélevée et valeurs lisibles.
+- **Douze leçons pour débutants** et conseils détaillés adaptés au tour, à la main et à la sélection, avec des exemples chiffrés.
+- **Trois musiques instrumentales originales**, choix du morceau, volume, coupure, réglages mémorisés et pause en arrière-plan.
+- **Défi de tri séparé** : trois manches de 8, 10 et 12 cartes, échanges par toucher, indices, score et bilan, sans limite de temps.
 
-Télécharger **`rami-3d.apk`** dans les fichiers de cette version et l’installer sur un téléphone Android 7.0 ou supérieur, ARM32 ou ARM64. Android peut demander d’autoriser l’installation depuis l’application utilisée pour télécharger le fichier. Le jeu fonctionne en paysage.
+Les modes contre l’ordinateur et multijoueur sont conservés. Le Wi-Fi fonctionne via un téléphone hôte ; le jeu par Internet nécessite toujours d’héberger le serveur inclus.
 
-Cette préversion est signée avec une **clé de test temporaire**, créée pendant la compilation GitHub Actions. Elle diffère de celle de l’APK compilé localement et peut changer entre les compilations. Pour passer entre deux signatures différentes, désinstaller l’ancienne application avant d’installer la nouvelle.
+Téléchargez **rami-3d.apk** ci-dessous pour Android 7 ou supérieur, ARM32/ARM64. **Si Android refuse de mettre à jour la version 0.1.0, désinstallez l’ancienne version d’essai avant d’installer celle-ci** : chaque compilation GitHub utilise une clé de test temporaire différente.
 
-Les règles, les échanges réseau et le serveur sont vérifiés automatiquement ; la signature de l’APK, l’intégrité ZIP et l’alignement Android sont contrôlés pendant la compilation. **Aucun essai sur téléphone physique n’a été effectué par ce workflow.** Les parties du serveur restent en mémoire et sont perdues lors de son redémarrage.
+Le jeu, les nouveautés, le réseau et la construction de l’APK sont vérifiés automatiquement. La disposition des cartes et les événements de sélection ont aussi été contrôlés sur des fenêtres de 1440×900 et 2400×1080. Aucun essai sur téléphone physique n’a encore été effectué dans cet environnement.
 
-`SHA256SUMS` contient les empreintes des fichiers de cette compilation. `CI-BUILD-INFO.txt` indique le commit utilisé et le lien vers son exécution GitHub Actions. L’archive `rami-salon-3d-sources.zip` contient les sources de ce même commit.
-
-Le workflow publie une version à partir de `version/name` dans `export_presets.cfg`. Une version existante et ses fichiers sont conservés ; les compilations suivantes restent téléchargeables dans les artefacts GitHub Actions.
+Les empreintes de cette compilation sont dans **SHA256SUMS** ; **CI-BUILD-INFO.txt** indique son commit et son exécution GitHub. L’archive source inclut le serveur et les tests.

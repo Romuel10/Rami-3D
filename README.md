@@ -2,10 +2,18 @@
 
 Jeu Android de rami en français : une table et des cartes en 3D, un mode solo contre 1 à 3 ordinateurs, et des parties privées à 2–4 joueurs où chacun utilise son téléphone. Projet réalisé avec Godot 4.6.3, sans publicité, compte ni achat intégré.
 
+## Nouveautés de la version 0.2.0
+
+- **Plein écran** : affichage adapté aux téléphones larges, avec un bouton de bascule sur ordinateur et le mode immersif sur Android.
+- **Main en grand éventail** : cartes dressées face au joueur, valeurs lisibles et carte sélectionnée relevée, comme une main tenue devant soi.
+- **Aide débutant** : douze leçons expliquées, exemples chiffrés et bouton **Conseils pas à pas** adapté à la phase du tour, à la sélection et aux cartes visibles.
+- **Musique** : trois compositions instrumentales originales, choix du morceau, volume, coupure et pause en arrière-plan ; préférences mémorisées.
+- **Défi de tri** : un jeu séparé en trois manches, avec indices et score, sans limite de temps.
+
 ## Télécharger
 
-- [Installer l’APK Android v0.1.0 — 57 Mo](https://github.com/Romuel10/Rami-3D/releases/download/v0.1.0/rami-3d.apk)
-- [Version et fichiers téléchargeables](https://github.com/Romuel10/Rami-3D/releases/tag/v0.1.0)
+- [Installer l’APK Android v0.2.0 — environ 59 Mo](https://github.com/Romuel10/Rami-3D/releases/download/v0.2.0/rami-3d.apk)
+- [Version et fichiers téléchargeables](https://github.com/Romuel10/Rami-3D/releases/tag/v0.2.0)
 - [Rapport de vérification](docs/VERIFICATION.txt)
 
 ![Une table de rami en 3D](docs/screenshots/game.png)
@@ -15,9 +23,29 @@ Jeu Android de rami en français : une table et des cartes en 3D, un mode solo c
 1. Télécharger `rami-3d.apk` depuis la version ci-dessus sur un téléphone Android 7 ou ultérieur (ARM 32/64 bits).
 2. Ouvrir l’APK et autoriser l’installation depuis l’application utilisée pour ouvrir ce fichier, si Android le demande.
 3. Lancer **Rami Salon 3D**. Le jeu s’affiche en paysage.
-4. Choisir **Jouer contre l’ordinateur** pour une partie immédiate sans connexion.
+4. Choisir **Jouer contre l’ordinateur** pour une partie immédiate sans connexion, ou **Défi de tri** pour le nouveau jeu de rangement.
+
+Les APK de test GitHub sont signés avec une clé temporaire. Si vous avez installé la version 0.1.0 et qu’Android refuse la mise à jour, désinstallez cette ancienne version, puis installez le nouvel APK.
 
 L’APK fourni est signé pour les essais. Ce n’est pas une publication sur Google Play. L’installation et les performances restent à vérifier sur des téléphones physiques ; les essais de cette livraison ont été effectués sous Linux avec Godot et sur des connexions réseau locales distinctes.
+
+## Plein écran, conseils et musique
+
+L’affichage remplit le format de l’écran en paysage. **Plein écran / Fenêtre** permet de basculer sur ordinateur ; Android démarre en mode immersif. Le fond occupe toute la surface et les commandes prennent en compte les zones réservées du téléphone.
+
+**Apprendre** ouvre douze chapitres : objectif, déroulement d’un tour, couleurs, brelans, suites, ouverture à 30 points, as, jokers, compléments, commandes et fin de manche. Pendant le rami, **Conseils pas à pas** explique quoi faire avec votre main actuelle et donne des exemples précis. Les conseils utilisent uniquement vos cartes et les informations publiques. Le mode débutant ajoute des repères d’étapes ; le guide reste accessible à tous.
+
+**Musique** ouvre le choix entre *Salon acoustique*, *Piano tranquille* et *Escale chill*. Le volume et l’activation sont réglables et mémorisés. La lecture se met en pause lorsque l’application passe en arrière-plan. Les compositions et sons sont originaux ; leur licence CC0 et leur générateur sont dans [assets/music/README.md](assets/music/README.md).
+
+## Défi de tri séparé
+
+Depuis l’accueil, choisir **Défi de tri**. Touchez une carte, puis une autre pour échanger leurs places. Lisez les emplacements de gauche à droite, puis de haut en bas.
+
+1. **8 cartes** à ranger par valeur croissante, as en premier.
+2. **10 cartes** à ranger par couleur, dans l’ordre ♣ ♦ ♥ ♠, puis par valeur.
+3. **12 cartes** à ranger par valeur croissante.
+
+**Vérifier** contrôle l’ordre, **Indice** explique une correction possible et **Recommencer** relance une nouvelle série. Les cartes de même valeur peuvent être échangées librement lorsque la couleur n’est pas un critère. Le score retire des points pour les erreurs et les indices, avec un minimum par manche. Le temps est affiché à titre indicatif ; aucune limite ni pénalité de vitesse n’est imposée.
 
 ## Avec des amis sur le même Wi-Fi
 
@@ -55,7 +83,7 @@ Chaque connexion reçoit uniquement sa propre main. Le serveur valide les action
 - Il faut garder une carte pour la défausse finale. Le premier à vider sa main gagne la manche.
 - La pioche épuisée recycle la défausse en conservant sa carte visible.
 
-Touchez les cartes pour les sélectionner. **Suggestion** sélectionne des combinaisons compatibles avec l’ouverture à 30 points ; **Poser** les joue. **Compléter** propose toutes les combinaisons existantes, même celles qui ne sont plus affichées sur la table lorsque celle-ci contient plus de huit groupes. **Trier** alterne couleur et valeur.
+Touchez les cartes pour les sélectionner. **Suggestion** sélectionne des combinaisons compatibles avec l’ouverture à 30 points ; **Poser** les joue. **Compléter** propose toutes les combinaisons existantes, même celles qui ne sont plus affichées sur la table lorsque celle-ci contient plus de quatre groupes. **Trier** alterne couleur et valeur.
 
 ## Ouvrir et compiler le projet
 
@@ -77,10 +105,14 @@ godot --headless --path . --script tests/test_engine.gd
 godot --headless --path . --script tests/test_network.gd
 godot --headless --path . --script tests/test_game_ui.gd
 godot --headless --path . --script tests/test_card_input.gd
+godot --headless --path . --script tests/test_update_ui.gd
+godot --headless --path . --script tests/test_beginner_coach.gd
+godot --headless --path . --script tests/test_sorting.gd
+godot --headless --path . --script tests/test_music.gd
 GODOT_BIN=/chemin/vers/godot python3 tests/test_internet.py
 ```
 
-Le moteur est testé pour la validité des poses, les jokers, l’ordre des tours, la conservation des cartes et les parties IA complètes. Les tests réseau vérifient les mains privées, les salons distincts, les codes, les droits du créateur, la pause et la reconnexion. Le test d’intégration `tests/test_game_ui.gd` couvre une vraie partie via l’interface.
+Le moteur est testé pour la validité des poses, les jokers, l’ordre des tours, la conservation des cartes et les parties IA complètes. Les tests réseau vérifient les mains privées, les salons distincts, les codes, les droits du créateur, la pause et la reconnexion. Les tests d’intégration `tests/test_game_ui.gd` et `tests/test_update_ui.gd` couvrent une vraie partie et les nouveautés. Le test rendu `tests/test_hand_view.gd`, à lancer avec un affichage graphique, contrôle les grandes cartes et de véritables événements de sélection en 1440×900 et 2400×1080.
 
 ## Fichiers principaux
 
@@ -88,6 +120,9 @@ Le moteur est testé pour la validité des poses, les jokers, l’ordre des tour
 - `scripts/card_3d.gd` : cartes, graphismes vectoriels et sélection tactile.
 - `scripts/rami_engine.gd` : règles et IA.
 - `scripts/network_manager.gd` : client réseau et hôte Wi-Fi.
+- `scripts/beginner_coach.gd` : leçons et conseils à partir de la main visible.
+- `scripts/music_manager.gd` : pistes, fondu, réglages et pause.
+- `scripts/sorting_challenge.gd` : défi de tri indépendant.
 - `server/server.gd` : serveur Internet indépendant avec salons privés.
 
-Les graphismes des cartes et l’icône sont générés pour ce projet. Les polices Open Sans et Noto Serif sont accompagnées de leurs notices de licence dans `assets/`. Godot est distribué sous [licence MIT](https://godotengine.org/license/).
+Les graphismes des cartes et l’icône sont générés pour ce projet. Les polices Open Sans, Noto Serif et DejaVu Sans sont accompagnées de leurs notices de licence dans `assets/`. Godot est distribué sous [licence MIT](https://godotengine.org/license/).

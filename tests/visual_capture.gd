@@ -37,4 +37,6 @@ func _capture() -> void:
 	await _frames()
 	_save("lobby")
 	scene._leave_to_menu()
+	scene.queue_free()
+	await create_timer(0.3).timeout
 	quit(0)

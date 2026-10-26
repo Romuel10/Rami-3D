@@ -32,7 +32,7 @@ func _run() -> void:
 	_press("Trier ♠")
 	_check(app.sort_suit != old_sort, "sort button switches ordering")
 	var previous_key := -1
-	for node in app.card_nodes.slice(0, app.snapshot.hand.size()):
+	for node in app.hand_cards:
 		var key: int = app._sort_key(node.card_id)
 		_check(key >= previous_key, "hand meshes follow active sort order")
 		previous_key = key
@@ -111,6 +111,7 @@ func _run() -> void:
 	app._leave_to_menu()
 	app.queue_free()
 	await process_frame
+	await create_timer(0.25).timeout
 	print("PASS: %d real-scene UI checks" % checks)
 	quit(0)
 
@@ -133,15 +134,15 @@ func _fixture(hand: Array, melds: Array = []) -> void:
 	app._refresh_snapshot()
 
 func _tap_hand(id: String) -> void:
-	for card in app.card_nodes.slice(0, app.snapshot.hand.size()):
-		if card.card_id == id:
+	for card in app.hand_cards:
+		if card.card_id == id and card.get_meta("hand_card", false):
 			card.tapped.emit(card)
 			return
 	_check(false, "hand card not found: " + id)
 
 func _tap_table_meld(id: String) -> void:
 	for card in app.card_nodes:
-		if card.card_id == id and card.face_up and card.position.z < -1.0:
+		if card.card_id == id and card.face_up and not card.get_meta("hand_card", false) and card.position.z < -1.0:
 			card.tapped.emit(card)
 			return
 	_check(false, "table meld card not found: " + id)

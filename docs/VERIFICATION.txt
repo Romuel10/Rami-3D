@@ -1,19 +1,25 @@
-Rami Salon 3D — version d'essai 0.1.0
+Rami Salon 3D — version d’essai 0.2.0
 
-Validations effectuées sous Linux avec Godot 4.6.3 :
-- Moteur : 594 assertions ; 5 parties IA complètes terminées.
-- Interface réelle : 59 contrôles, dont pioche, poses, suggestions,
-  compléments, victoire, nouvelle partie et contrôle des tours IA.
-- Réseau Wi-Fi : clients distincts, codes, mains privées, autorité,
-  pause et reprise après déconnexion.
-- Serveur Internet : salons indépendants, permissions du créateur,
-  mains privées, tours, reconnexion ; client Godot compatible.
-- Entrées tactiles : déduplication toucher/souris émulée,
-  souris physique et touchers successifs.
-- Visuel : accueil, table solo, règles, Wi-Fi, Internet et salon.
-- APK : compilation, signature, permissions, paysage,
-  architectures ARM32/ARM64, alignement et intégrité ZIP.
+Vérifications sous Linux/Godot 4.6.3 :
+- Moteur : 594 assertions et cinq parties IA terminées.
+- Partie via l’interface : 59 contrôles.
+- Nouveautés intégrées : 79 contrôles (aide, musique mémorisée,
+  plein écran, multijoueur et navigation vers le défi de tri).
+- Coach débutant : 46 contrôles, données de la main privée uniquement.
+- Défi de tri : 45 contrôles (trois manches, indices, score et résultat).
+- Musique : 30 contrôles (trois pistes, réglages, fondus, pause, fermeture).
+- Rendu de la main : 164 contrôles en 1440×900 et 2400×1080.
+  Cartes dressées >=249 pixels logiques ; valeurs accessibles ;
+  vrais événements de sélection sans doublon ; levée de 24 pixels.
+- Aspect d’écran : fenêtres 16:10,16:9,20:9 et21:9 sans bandes de ratio.
+- Réseau Wi-Fi et serveur : mains privées, droits de jeu, salons,
+  pause après déconnexion et reprise de session.
+- Entrées tactiles : toucher/souris émulée dédupliqués.
+- APK : compilation, signature, intégrité ZIP, alignement16Ko,
+  Android7+, ARM32/ARM64, paysage et configuration immersive.
 
-Limites : aucun téléphone physique ou émulateur Android n'a été utilisé.
-Le serveur Internet est fourni avec les sources, sans hébergement public.
-Le serveur Wi-Fi fonctionne directement sur le téléphone hôte.
+Limites : aucun téléphone physique ni émulateur Android utilisé ici.
+Le serveur Internet est fourni sans hébergement public.
+Les signatures de test GitHub varient d’une compilation à l’autre.
+Le rapport android-build-info.txt décrit la compilation locale ;
+chaque version GitHub contient son propre CI-BUILD-INFO.txt et SHA256SUMS.

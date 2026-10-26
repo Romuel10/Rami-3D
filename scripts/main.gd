@@ -3,6 +3,10 @@ extends Node3D
 const EngineRules = preload("res://scripts/rami_engine.gd")
 const CardView = preload("res://scripts/card_3d.gd")
 const NetworkRoom = preload("res://scripts/network_manager.gd")
+const MusicPlayer = preload("res://scripts/music_manager.gd")
+const Coach = preload("res://scripts/beginner_coach.gd")
+const SortingChallenge = preload("res://scripts/sorting_challenge.gd")
+const HAND_SCALE := 2.15
 const INK = Color("ecede3")
 const MUTED = Color("91aba7")
 const GOLD = Color("dfbd78")
@@ -41,8 +45,18 @@ var code_input: LineEdit
 var solo_select: OptionButton
 var online_tab := false
 var last_click := 0
-var mute := false
-var audio: AudioStreamPlayer
+var music: Node
+var music_settings: Dictionary = {"enabled":true, "volume":0.28, "track_index":0}
+var music_button: Button
+var fullscreen_button: Button
+var fullscreen_enabled := false
+var beginner_enabled := true
+var coach := Coach.new()
+var hand_root: Node3D
+var hand_cards: Array = []
+var coach_button: Button
+var lesson_index := -1
+var overlay_kind := ""
 var saved_address := ""
 var saved_name := "Vous"
 var turn_token := 0
@@ -53,6 +67,15 @@ func _ready() -> void:
 	_load_preferences()
 	_make_world()
 	_make_interface()
+	music = MusicPlayer.new()
+	music.apply_settings(music_settings)
+	add_child(music)
+	music.settings_changed.connect(_music_settings_changed)
+	music_button.text = "Musique" if music.enabled else "Musique coupée"
+	get_viewport().size_changed.connect(_screen_changed)
+	_screen_changed()
+	if OS.has_feature("android"):
+		_set_fullscreen(true, false)
 	network = NetworkRoom.new()
 	add_child(network)
 	network.lobby_updated.connect(_lobby_updated)
@@ -72,6 +95,8 @@ func _process(delta: float) -> void:
 			toast_label.hide()
 
 func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_RESUMED and OS.has_feature("android") and fullscreen_enabled:
+		_set_fullscreen(true, false)
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		if overlay and overlay.get_child_count() > 0:
 			_close_overlay()
@@ -93,12 +118,15 @@ func _make_world() -> void:
 	add_child(world)
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 18.2
-	camera.keep_aspect = Camera3D.KEEP_WIDTH
+	camera.size = 11.8
+	camera.keep_aspect = Camera3D.KEEP_HEIGHT
 	camera.position = Vector3(0, 14, 10.5)
 	add_child(camera)
 	camera.look_at(Vector3(0, 0, 0.35))
 	camera.current = true
+	hand_root = Node3D.new()
+	hand_root.name = "VotreMain"
+	camera.add_child(hand_root)
 	var key := DirectionalLight3D.new()
 	key.rotation_degrees = Vector3(-58, -30, 0)
 	key.light_color = Color("fff1d4")
@@ -173,7 +201,10 @@ func _make_interface() -> void:
 	ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(ui)
 	var theme := Theme.new()
-	theme.default_font = load("res://assets/sans.ttf")
+	var text_font := load("res://assets/sans.ttf") as FontFile
+	var symbol_fallbacks: Array[Font] = [load("res://assets/symbols.ttf")]
+	text_font.fallbacks = symbol_fallbacks
+	theme.default_font = text_font
 	theme.default_font_size = 19
 	theme.set_color("font_color", "Label", INK)
 	theme.set_color("font_color", "Button", INK)
@@ -208,7 +239,9 @@ func _make_interface() -> void:
 	header.add_child(spacer)
 	header_status = _label("HORS LIGNE · SANS COMPTE", 13, MUTED, header)
 	header_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_button("Règles", _show_rules, header)
+	_button("Apprendre", _show_rules, header)
+	music_button = _button("Musique", _show_music_settings, header)
+	fullscreen_button = _button("Plein écran", _toggle_fullscreen, header)
 	_button("Accueil", _confirm_leave, header)
 	content = Control.new()
 	_place(content, ui, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ONE)
@@ -296,6 +329,7 @@ func _clear_cards() -> void:
 			card.get_parent().remove_child(card)
 			card.queue_free()
 	card_nodes.clear()
+	hand_cards.clear()
 
 func _show_menu() -> void:
 	turn_token += 1
@@ -318,9 +352,9 @@ func _show_menu() -> void:
 	_label("Un beau jeu. Une bonne main.\nLe plaisir du rami, où que vous soyez.", 23, Color("bdd0c7"), hero)
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _style(Color(0.035, 0.13, 0.15, 0.96), Color("3a5b51"), 22, 30))
-	_place(panel, content, Vector2(-460, 148), Vector2(-68, 720), Vector2(1,0), Vector2(1,0))
+	_place(panel, content, Vector2(-470, 120), Vector2(-48, -40), Vector2(1,0), Vector2(1,1))
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 17)
+	box.add_theme_constant_override("separation", 12)
 	panel.add_child(box)
 	_label("Installez-vous", 29, INK, box)
 	_label("Comment voulez-vous jouer ?", 17, MUTED, box)
@@ -339,6 +373,10 @@ func _show_menu() -> void:
 	_label("02  ·  EN BONNE COMPAGNIE", 13, GOLD, box)
 	_button("Jouer avec des amis   ↗", _open_friends, box)
 	_label("2 à 4 joueurs · un téléphone par personne", 12, MUTED, box)
+	_label("03  ·  POUR LE PLAISIR DE RANGER", 13, GOLD, box)
+	_button("Défi de tri   →", _start_sorting, box)
+	_label("3 manches · grandes cartes · à votre rythme", 12, MUTED, box)
+	_button("Je débute : apprendre le rami", _show_rules, hero)
 	var footer := HBoxContainer.new()
 	_place(footer, content, Vector2(68,-72), Vector2(-68,-30), Vector2(0,1), Vector2(1,1))
 	footer.add_theme_constant_override("separation", 32)
@@ -347,7 +385,7 @@ func _show_menu() -> void:
 	_label("♦   SANS PUBLICITÉ", 12, MUTED, footer)
 	var menu_ids := ["0:H:1", "0:S:13", "0:D:12", "0:C:11", "0:H:10"]
 	for i in range(menu_ids.size()):
-		var card = _card(menu_ids[i], true, Vector3(-4.3 + i * 1.0, 0.22 + i * 0.035, 3.0 - absf(i - 2) * 0.1))
+		var card = _card(menu_ids[i], true, Vector3(-4.3 + i * 1.0, 0.22 + i * 0.035, 3.85 - absf(i - 2) * 0.1))
 		card.rotation_degrees.y = (i - 2) * -9.0
 		card.scale = Vector3.ONE * 1.8
 
@@ -375,7 +413,7 @@ func _start_solo() -> void:
 	game_mode = "solo"
 	_show_game()
 	_refresh_snapshot()
-	_toast("Piochez une carte pour commencer.")
+	_toast("Piochez pour commencer. « Conseils pas à pas » vous accompagne." if beginner_enabled else "Piochez une carte pour commencer.")
 
 func _show_game() -> void:
 	_clear_content()
@@ -391,13 +429,15 @@ func _show_game() -> void:
 	var draw_row := HBoxContainer.new()
 	draw_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	draw_row.add_theme_constant_override("separation", 16)
-	_place(draw_row, content, Vector2(-270,500), Vector2(270,550), Vector2(0.5,0), Vector2(0.5,0))
+	_place(draw_row, content, Vector2(-270,420), Vector2(270,470), Vector2(0.5,0), Vector2(0.5,0))
 	draw_buttons = []
 	draw_buttons.append(_button("↓  Piocher", func(): _act({"type":"draw", "source":"deck"}), draw_row))
 	draw_buttons.append(_button("↙  Défausse", func(): _act({"type":"draw", "source":"discard"}), draw_row))
 	hand_status = _label("VOTRE MAIN", 14, GOLD, content)
-	_place(hand_status, content, Vector2(40,-335), Vector2(-40,-299), Vector2(0,1), Vector2(1,1))
-	hand_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_place(hand_status, content, Vector2(38,424), Vector2(410,470))
+	hand_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	coach_button = _button("Conseils pas à pas", _show_coach, content, true)
+	_place(coach_button, content, Vector2(-300,420), Vector2(-38,472), Vector2(1,0), Vector2(1,0))
 	action_row = HBoxContainer.new()
 	action_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	action_row.add_theme_constant_override("separation", 12)
@@ -454,42 +494,45 @@ func _render_snapshot() -> void:
 	if snapshot.get("paused", false):
 		game_status.text = "Partie en pause · en attente d’un joueur"
 	elif turn == own:
-		game_status.text = "À vous · " + ("piochez une carte" if phase == "draw" else "posez vos combinaisons, puis défaussez")
+		game_status.text = ("Étape 1/3 · prenez une carte" if phase == "draw" else "Étapes 2–3 · posez si possible, puis défaussez") if beginner_enabled else "À vous · " + ("piochez une carte" if phase == "draw" else "posez vos combinaisons, puis défaussez")
 	else:
 		game_status.text = str(players[turn].get("name", "L’adversaire")) + " joue…" if turn < players.size() else "En attente…"
 	var hand: Array = snapshot.get("hand", []).duplicate()
 	hand.sort_custom(func(a, b): return _sort_key(str(a)) < _sort_key(str(b)))
-	var spacing := minf(0.94, 13.3 / maxf(1, hand.size() - 1))
-	for i in range(hand.size()):
-		var x: float = (i - (hand.size() - 1) / 2.0) * spacing
-		var card = _card(str(hand[i]), true, Vector3(x, 0.23 + i * 0.004, 3.65 + absf(x) * 0.033))
-		card.rotation_degrees.y = -x * 1.25
+	for id in hand:
+		var card = _card(str(id), true, Vector3.ZERO, hand_root)
+		card.set_meta("hand_card", true)
+		card.scale = Vector3.ONE * HAND_SCALE
+		hand_cards.append(card)
 		card.tapped.connect(_select_card)
+	_layout_hand()
 	_update_hand_status()
 	var deck_count := int(snapshot.get("deck_count", 0))
 	for i in range(3 if deck_count > 0 else 0):
-		var back = _card("0:S:1", false, Vector3(-0.8 + i * 0.018, 0.14 + i * 0.045, 0.28))
+		var back = _card("0:S:1", false, Vector3(-0.8 + i * 0.018, 0.14 + i * 0.045, -0.8))
 		back.tapped.connect(func(_c): _act({"type":"draw", "source":"deck"}))
 	var discard_top = snapshot.get("discard_top", "")
 	if discard_top != null and str(discard_top) != "":
-		var face = _card(str(discard_top), true, Vector3(0.85, 0.19, 0.28))
+		var face = _card(str(discard_top), true, Vector3(0.85, 0.19, -0.8))
 		face.rotation_degrees.y = -5
 		face.tapped.connect(func(_c): _act({"type":"draw", "source":"discard"}))
 	var melds: Array = snapshot.get("melds", [])
-	var first_visible := maxi(0, melds.size() - 8)
+	var first_visible := maxi(0, melds.size() - 4)
 	for i in range(first_visible, melds.size()):
 		var cards: Array = melds[i].get("cards", [])
 		var col := (i - first_visible) % 4
-		var row := (i - first_visible) / 4
+		var row := 0
 		for j in range(cards.size()):
 			var gap := minf(0.4, 2.25 / maxf(1, cards.size() - 1))
-			var position_card := Vector3(-5.3 + col * 3.5 + (j - (cards.size()-1)/2.0) * gap, 0.12 + j * 0.005, -3.1 + row * 1.3)
+			var position_card := Vector3(-5.3 + col * 3.5 + (j - (cards.size()-1)/2.0) * gap, 0.12 + j * 0.005, -2.5 + row * 1.3)
 			var card = _card(str(cards[j]), true, position_card)
 			card.scale = Vector3.ONE * 0.70
 			var meld_index := i
 			card.tapped.connect(func(_c): _extend_at(meld_index))
 	if int(snapshot.get("winner", -1)) >= 0:
 		_show_winner()
+	elif overlay_kind == "coach":
+		_show_coach()
 
 func _sort_key(id: String) -> int:
 	var info: Dictionary = engine.card_info(id) if game_mode == "solo" else EngineRules.new().card_info(id)
@@ -499,9 +542,11 @@ func _sort_key(id: String) -> int:
 		return 10000
 	return suit * 100 + rank if sort_suit else rank * 10 + suit
 
-func _card(id: String, face: bool, pos: Vector3) -> Node3D:
+func _card(id: String, face: bool, pos: Vector3, parent: Node = null) -> Node3D:
 	var card = CardView.new()
-	add_child(card)
+	if parent == null:
+		parent = self
+	parent.add_child(card)
 	card.setup(id, face)
 	card.position = pos
 	card_nodes.append(card)
@@ -513,10 +558,10 @@ func _select_card(card) -> void:
 	var id: String = card.card_id
 	if selected.has(id):
 		selected.erase(id)
-		card.set_selected(false)
+		_set_hand_selection(card, false)
 	else:
 		selected.append(id)
-		card.set_selected(true)
+		_set_hand_selection(card, true)
 	suggested.clear()
 	_update_hand_status()
 
@@ -526,10 +571,10 @@ func _update_hand_status() -> void:
 		var own := int(snapshot.get("your_index", 0))
 		var players: Array = snapshot.get("players", [])
 		if own < players.size() and not players[own].get("opened", false):
-			opening = "  ·  PREMIÈRE POSE : 30 POINTS"
+			opening = "\nOUVERTURE : 30 POINTS"
 		hand_status.text = "VOTRE MAIN · " + str(snapshot.get("hand", []).size()) + " CARTES" + opening
 		if not selected.is_empty():
-			hand_status.text += "  /  " + str(selected.size()) + " SÉLECTIONNÉE(S)"
+			hand_status.text = "VOTRE MAIN · " + str(snapshot.get("hand", []).size()) + " CARTES · " + str(selected.size()) + " CHOISIE(S)" + opening
 
 func _my_turn(show_error: bool = true) -> bool:
 	if snapshot.is_empty() or int(snapshot.get("winner", -1)) >= 0:
@@ -576,8 +621,8 @@ func _suggest() -> void:
 	selected.clear()
 	for group in suggested:
 		selected.append_array(group)
-	for card in card_nodes:
-		card.set_selected(selected.has(card.card_id) and card.face_up and card.position.z > 2.8)
+	for card in hand_cards:
+		_set_hand_selection(card, selected.has(card.card_id))
 	_update_hand_status()
 	_toast("Touchez « Poser » pour jouer les cartes proposées." if not selected.is_empty() else "Aucune combinaison à poser pour le moment.")
 
@@ -739,7 +784,8 @@ func _lobby_updated(data: Dictionary) -> void:
 	_button("Quitter le salon", _leave_to_menu, lobby_box)
 
 func _network_game_updated(data: Dictionary) -> void:
-	_close_overlay()
+	if overlay_kind == "connection" or game_mode != "online":
+		_close_overlay()
 	if game_mode != "online":
 		game_mode = "online"
 		_show_game()
@@ -753,6 +799,7 @@ func _connection_changed(connected: bool) -> void:
 			snapshot["paused"] = true
 			_render_snapshot()
 		var box := _modal("Connexion interrompue", "Votre main reste privée. Retrouvez le salon ou revenez à l’accueil.")
+		overlay_kind = "connection"
 		_button("Se reconnecter", func(): _close_overlay(); network.reconnect(), box, true)
 		_button("Retour à l’accueil", _leave_to_menu, box)
 
@@ -760,6 +807,7 @@ func _modal(title: String, subtitle: String) -> VBoxContainer:
 	_close_overlay()
 	toast_label.hide()
 	toast_time = 0.0
+	overlay_kind = "general"
 	var dim := ColorRect.new()
 	dim.color = Color(0.005, 0.025, 0.03, 0.84)
 	_place(dim, overlay, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ONE)
@@ -779,26 +827,165 @@ func _modal(title: String, subtitle: String) -> VBoxContainer:
 	return box
 
 func _close_overlay() -> void:
+	overlay_kind = ""
 	if not is_instance_valid(overlay): return
 	for node in overlay.get_children():
 		node.get_parent().remove_child(node)
 		node.queue_free()
 
 func _show_rules() -> void:
-	var box := _modal("Les règles du salon", "Rami à 13 cartes · 2 jeux de 52 cartes + 4 jokers · 2 à 4 joueurs")
-	var rules := [
-		["1. Piochez", "Prenez une carte de la pioche ou la carte visible de la défausse."],
-		["2. Composez votre jeu", "Posez un brelan ou un carré : 3 ou 4 cartes de même valeur, de couleurs différentes. Ou une suite : au moins 3 cartes consécutives de la même couleur."],
-		["3. Ouvrez avec 30 points", "Votre première pose doit totaliser au moins 30 points, en une ou plusieurs combinaisons. L’as vaut 1 dans A-2-3 et 11 après le roi ou en brelan ; les figures valent 10. Le joker prend la valeur remplacée."],
-		["4. Complétez, puis défaussez", "Après l’ouverture, ajoutez des cartes aux combinaisons de la table. Terminez votre tour en défaussant une carte. Gardez donc toujours une carte pour finir."],
-		["5. Gagnez la manche", "Défaussez votre dernière carte pour gagner. L’as peut précéder le 2 ou suivre le roi ; une suite ne peut pas faire roi-as-2. Les jokers ne peuvent pas constituer plus de la moitié d’une combinaison."],
-		["Sur votre téléphone", "Touchez vos cartes pour les sélectionner. « Suggestion » repère les combinaisons jouables ; « Poser » les joue. « Compléter » permet d’ajouter une carte à une combinaison. Le bouton de tri alterne valeur et couleur."]
-	]
-	for rule in rules:
-		_label(rule[0], 20, GOLD, box)
-		var text := _label(rule[1], 16, INK, box)
-		text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_button("C’est compris", _close_overlay, box, true)
+	_show_lessons(-1)
+
+func _show_lessons(chapter: int = -1) -> void:
+	lesson_index = chapter
+	var lessons: Array = coach.lessons()
+	var box := _modal("Apprendre le rami", "Un guide pour votre première partie, avec des exemples expliqués.")
+	overlay_kind = "lessons"
+	var setting := CheckButton.new()
+	setting.text = "Mode débutant · conseils pendant la partie"
+	setting.button_pressed = beginner_enabled
+	setting.custom_minimum_size.y = 48
+	setting.toggled.connect(func(value: bool): beginner_enabled = value; _save_preferences())
+	box.add_child(setting)
+	if chapter < 0:
+		var intro := _label("Le but : vider votre main en formant des groupes de cartes. Prenez le temps de découvrir une étape, puis essayez-la en solo.", 18, INK, box)
+		intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		for i in range(lessons.size()):
+			var idx := i
+			var button := _button(str(i+1) + ". " + str(lessons[i].get("title", "")), func(): _show_lessons(idx), box)
+			button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		if game_mode in ["solo", "online"]:
+			_button("Expliquer mon tour actuel", _show_coach, box, true)
+	else:
+		var lesson: Dictionary = lessons[clampi(chapter, 0, lessons.size()-1)]
+		_label(str(chapter+1) + " / " + str(lessons.size()) + " · " + str(lesson.get("title", "")), 23, GOLD, box).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_long_text(str(lesson.get("body", "")), box)
+		_label("EXEMPLE EXPLIQUÉ", 13, GOLD, box)
+		_long_text(str(lesson.get("example", "")), box)
+		for tip in lesson.get("tips", []):
+			_long_text("• " + str(tip), box)
+		if chapter < lessons.size()-1:
+			_button("Étape suivante →", func(): _show_lessons(chapter+1), box, true)
+		_button("Toutes les étapes", func(): _show_lessons(-1), box)
+	_button("C’est compris", _close_overlay, box)
+
+func _long_text(text: String, parent: Node) -> Label:
+	var label := _label(text, 19, INK, parent)
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.add_theme_constant_override("line_spacing", 5)
+	return label
+
+func _show_coach() -> void:
+	var advice: Dictionary = coach.advice(snapshot, selected)
+	var box := _modal(str(advice.get("title", "Votre prochain tour")), str(advice.get("body", "")))
+	overlay_kind = "coach"
+	_label("PAS À PAS", 13, GOLD, box)
+	var steps: Array = advice.get("steps", [])
+	for i in range(steps.size()):
+		_long_text(str(i+1) + ". " + str(steps[i]), box)
+	_label("AVEC VOS CARTES", 13, GOLD, box)
+	_long_text(str(advice.get("example", "")), box)
+	_label("PROCHAINE ACTION", 13, GOLD, box)
+	_long_text(str(advice.get("action", "")), box)
+	_button("Revenir à ma main", _close_overlay, box, true)
+	_button("Ouvrir le guide complet", _show_rules, box)
+
+func _start_sorting() -> void:
+	_save_profile()
+	turn_token += 1
+	busy = false
+	game_mode = "sorting"
+	network.leave_room()
+	_close_overlay()
+	snapshot = {}
+	_clear_content()
+	header_status.text = "DÉFI DE TRI · 3 MANCHES"
+	var challenge := SortingChallenge.new()
+	_place(challenge, content, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ONE)
+	challenge.exit_requested.connect(_leave_to_menu)
+	challenge.start_challenge()
+
+func _show_music_settings() -> void:
+	var box := _modal("Votre ambiance musicale", "Trois morceaux instrumentaux originaux, joués en boucle pendant vos parties.")
+	overlay_kind = "music"
+	var toggle := CheckButton.new()
+	toggle.text = "Écouter la musique"
+	toggle.custom_minimum_size.y = 54
+	toggle.button_pressed = music.enabled
+	toggle.toggled.connect(func(value: bool): music.set_enabled(value))
+	box.add_child(toggle)
+	_label("CHOISIR UN MORCEAU", 13, GOLD, box)
+	var choice := OptionButton.new()
+	choice.custom_minimum_size.y = 54
+	for name_text in music.track_names():
+		choice.add_item(str(name_text))
+	choice.selected = music.track_index
+	choice.item_selected.connect(func(index: int): music.set_track(index))
+	box.add_child(choice)
+	var level := _label("Volume · " + str(roundi(music.volume * 100)) + " %", 20, INK, box)
+	var slider := HSlider.new()
+	slider.min_value = 0
+	slider.max_value = 100
+	slider.step = 1
+	slider.value = music.volume * 100
+	slider.custom_minimum_size.y = 56
+	slider.value_changed.connect(func(value: float): music.set_volume(value/100.0); level.text = "Volume · " + str(roundi(value)) + " %")
+	box.add_child(slider)
+	_long_text("Votre choix et le volume sont mémorisés. La musique se met en pause quand vous quittez l’application.", box)
+	_button("Revenir au jeu", _close_overlay, box, true)
+
+func _music_settings_changed() -> void:
+	music_settings = music.get_settings()
+	music_button.text = "Musique" if music.enabled else "Musique coupée"
+	_save_preferences()
+
+func _toggle_fullscreen() -> void:
+	_set_fullscreen(not fullscreen_enabled)
+
+func _set_fullscreen(value: bool, save: bool = true) -> void:
+	fullscreen_enabled = value
+	if DisplayServer.get_name() != "headless":
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if value else DisplayServer.WINDOW_MODE_WINDOWED)
+	if is_instance_valid(fullscreen_button):
+		fullscreen_button.text = "Fenêtre" if value else "Plein écran"
+	if save:
+		_save_preferences()
+	_screen_changed()
+
+func _screen_changed() -> void:
+	if is_instance_valid(ui) and OS.has_feature("android"):
+		var safe := DisplayServer.get_display_safe_area()
+		if safe.size.x > 0 and safe.size.y > 0:
+			var inverse := get_viewport().get_final_transform().affine_inverse()
+			var start := inverse * Vector2(safe.position)
+			var end := inverse * Vector2(safe.end)
+			var size := get_viewport().get_visible_rect().size
+			ui.offset_left = maxf(0, start.x)
+			ui.offset_top = maxf(0, start.y)
+			ui.offset_right = minf(0, end.x-size.x)
+			ui.offset_bottom = minf(0, end.y-size.y)
+	_layout_hand()
+
+func _layout_hand() -> void:
+	if hand_cards.is_empty() or not is_instance_valid(camera):
+		return
+	var size := get_viewport().get_visible_rect().size
+	var ratio := size.x / maxf(1, size.y)
+	var available := camera.size * ratio * 0.90
+	var gap := minf(1.60, (available - 1.05*HAND_SCALE) / maxf(1, hand_cards.size()-1))
+	var center_y := -camera.size/2.0 + 1.95 + 1.52*HAND_SCALE/2.0
+	for i in range(hand_cards.size()):
+		var card = hand_cards[i]
+		var norm: float = (i - (hand_cards.size()-1)/2.0) / maxf(1, (hand_cards.size()-1)/2.0)
+		var y: float = center_y + 0.28*(1.0-norm*norm)
+		card.set_meta("rest_y", y)
+		card.position = Vector3((i-(hand_cards.size()-1)/2.0)*gap, y + (0.32 if selected.has(card.card_id) else 0.0), -10.0+i*0.018)
+		card.basis = (Basis(Vector3.BACK, -norm*0.25) * Basis(Vector3.RIGHT, PI/2.0)).scaled(Vector3.ONE*HAND_SCALE)
+
+func _set_hand_selection(card: Node3D, value: bool) -> void:
+	card.set_selected(value)
+	if card.get_meta("hand_card", false):
+		card.position.y = float(card.get_meta("rest_y", card.position.y)) + (0.32 if value else 0.0)
 
 func _confirm_leave() -> void:
 	if game_mode == "menu":
@@ -826,10 +1013,16 @@ func _load_preferences() -> void:
 	if cfg.load("user://preferences.cfg") == OK:
 		saved_name = str(cfg.get_value("player", "name", "Vous"))
 		saved_address = str(cfg.get_value("network", "server", ""))
+		beginner_enabled = bool(cfg.get_value("help", "beginner", true))
+		var saved_music: Variant = cfg.get_value("music", "settings", music_settings)
+		if saved_music is Dictionary:
+			music_settings = saved_music
 	player_name = saved_name
 
 func _save_preferences() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("player", "name", saved_name)
 	cfg.set_value("network", "server", saved_address)
+	cfg.set_value("help", "beginner", beginner_enabled)
+	cfg.set_value("music", "settings", music_settings)
 	cfg.save("user://preferences.cfg")

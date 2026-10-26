@@ -1,25 +1,59 @@
 Rami Salon 3D — Android test build
+Version: 0.2.0 (2)
 Godot 4.6.3 / Android SDK build-tools 36.0.0 / Java 21
 Package: fr.ramisalon.jeu
-Version: 0.1.0 (1)
 Android minimum: 7.0 (API 24)
 Target SDK: 36
 Architectures: ARM64-v8a, armeabi-v7a
 Orientation: landscape
 Permissions: INTERNET, ACCESS_NETWORK_STATE, ACCESS_WIFI_STATE
+Immersive fullscreen: --fullscreen verified inside APK assets/_cl_
+APK project.binary verified: stretch mode canvas_items, aspect expand, version 0.2.0
+Screen expansion verified under real X11/OpenGL at 1440x900, 1920x1080, 2400x1080 (20:9), 2560x1080; viewport fills physical window with no letterbox offset.
+New coach/sorting/music scripts, three music streams and symbols font verified inside APK.
 Debug signed: APK Signature Scheme v2 + v3 verified
 ZIP integrity: all entries CRC verified
 APK alignment: 4-byte archive + 16KB native-library alignment verified
 Godot export: exit 0; no script errors or warnings
-APK size: 56997884 bytes
-APK SHA256: 92a7aa0d965c6b9a14dce3c08679e101de5da958b346e821a10bbf8f065f9333
+APK size: 58555675 bytes
+APK SHA256: 9be4318cfe6067171d55955b590617a8ed10965003da7cea371edd60696f33dd
 Execution on physical Android devices: not tested in this environment.
 
-Source hashes at export:
-a438c3f96139c66ab6587fc3f62234f83f24238a0b11d290e5e1ef8eda42f147  project.godot
+Source hashes at export (37 runtime source, module and asset files):
+d07be7ff872ec0df77c76491867c7962370758e036a818ce175ba5f23cbea98a  project.godot
 feea0ebe6419ac3f84e889ab0f44e2e4d3dfe3df87a55a8323655f5b10837903  main.tscn
-3dcea8d1be326077d9022ba8e4d9df773dce1f0cfb6826ecdeff65c59cbcdf3b  export_presets.cfg
-82028a3a71f890eaeef8269d930a32e2410efbd07f7451efe6407a0bfdd2d8a4  scripts/main.gd
+83b95f84a5911374ee0435caef11f7cc5a07edec58e7a907b3519f8bcb4b4efa  export_presets.cfg
+92652badc0a7aaf8b44bb61b80cfd844de786e298c68f39d56ed6a9716a3cd47  server/server.gd
+52171681a4e0e75a99a9033f646980ad456196cdf92b704d03cb9f81ec3bf51d  scripts/beginner_coach.gd
+4bcf5d547158411e41a5013088311c9c22a21e375c07b2306860f1db47bbae3f  scripts/beginner_coach.gd.uid
 f2273a7da7efe5ab26c8e8224d11840f709966720c0b44912b8769de36ff607a  scripts/card_3d.gd
-262e16e70b380c743292553b6f0cfbcfa143cf926005c2463abee47197d62895  scripts/rami_engine.gd
+db2c270e77be30858ccc8ac1a1da7d48e9fc0d9149cc2e0bbde92706ff6d1b5c  scripts/card_3d.gd.uid
+63cae93166c008ab06736daa3f4cbf4b18c2db1bc7f96fbe4bd474becf340706  scripts/main.gd
+512f8baa8aa396c23d94abc1d7882945f40fd664ed14222f9f54be46fa8c3ed6  scripts/main.gd.uid
+2bcf8d84614edd8e1fa94e4cfed81f9ba891dc556a9987079022a64969a44b93  scripts/music_manager.gd
+cffb7c095ae2857264128456741e22d9834ceb71a1d60f2b83c197418abb420b  scripts/music_manager.gd.uid
 b07a3ef717b8277ead404a86b7591e34da362454b98211b2ada907ce9a89b08d  scripts/network_manager.gd
+10f60b14dad5f537902dd4171d2c77cd1d0958b9ee07b774e6032f5a2d6ec43b  scripts/network_manager.gd.uid
+262e16e70b380c743292553b6f0cfbcfa143cf926005c2463abee47197d62895  scripts/rami_engine.gd
+ca070a0bffa55aa01f5855368c6e774f44d1bd9e0557ac8841471def750aa53b  scripts/rami_engine.gd.uid
+ef7c328fd5d768fbff8b96b181f138d91b59fba936a3b19d9e870e3f89af3033  scripts/sorting_challenge.gd
+3ecb2f29ab39ad01fbc870b86a7e1c867f8c77d98b0eaddb6577cde5062b8042  scripts/sorting_challenge.gd.uid
+63d3ba759d12804c5b31a9d5940d855c1820d1f5999e6b0872eb1c7ff045fbc9  assets/LICENSE-DejaVu.txt
+075f91382875da1c4b491f1facf2586f55448705133264d98ce15cab6211b125  assets/LICENSE-Noto.txt
+94d4b78643f99d7cfa872145b38da578299f401405ca5cba66a5c95bf13933b0  assets/LICENSE-OpenSans.txt
+572cbe7006edc5060d9b510331cb553c0b65ffcdf5c4042aac883b5d0339fc63  assets/icon.svg
+5b47a7416164b8ab038d3bf16df0641957b6edbcde2aca29daa5bf6b87b4c6b2  assets/icon.svg.import
+174edf6405ce2a86404b51dfabb64ebc8df1db3107a4d0fc10d15c59b2687707  assets/music/README.md
+2a1eb344205781f8fb40323397da0dd954cc5498fbce48a282a16ce01aee13bd  assets/music/chill.ogg
+067e486df55d31330c5ce62a980a5bbde3a6f68e3d2d55597b41b64c206dc5b6  assets/music/chill.ogg.import
+591509b68dffeda52c2bf4036414165ac0233a15111b525eab9c6a1da2dc98d2  assets/music/generate_music.py
+b85b893a7d68ee04d399718ca54a2442eb9cd5d39c8777cebcead114fda6f0a8  assets/music/piano.ogg
+71458dde9a6270a645085690b6fded8e3264d5bd7e606f9a9dbe36d001f2b2cc  assets/music/piano.ogg.import
+79763b8192e98a683510ee66bd15dc095a0162455ad6596c38ec46bae71a9fcb  assets/music/salon.ogg
+7d61dcc9eae810fadb269ec3067ea9c89ad8bd12feb063d15fadde0e49dc6b56  assets/music/salon.ogg.import
+e64e508b2aa2880f907e470c4550980ec4c0694d103a43f36150ac3f93189bee  assets/sans.ttf
+f92a7788338f46c7644004c364b21e683a65f3402d807c24daa96863f2aef4f1  assets/sans.ttf.import
+9d7583b7dc9e812afd32a14280c5cac3160012efe50c8d08938f4fea266ff67f  assets/serif.ttf
+04d9fc75d5d6276fd8ed6b2bc35b8298c049b2492fe17ba2e8116c9313bd8d8f  assets/serif.ttf.import
+57f73e11f51999432bf7ab22ce55b6f945d5eca1bf824404cfa9ec2e3718c84e  assets/symbols.ttf
+ec78b76aaf481789e4a28ddb8131dbd398eb55a5166f6e94963a80502eb98a4b  assets/symbols.ttf.import

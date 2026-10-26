@@ -159,6 +159,12 @@ jobs:
           fi
           timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_engine.gd
           timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_network.gd
+          timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_game_ui.gd
+          timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_update_ui.gd
+          timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_beginner_coach.gd
+          timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_sorting.gd
+          timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_music.gd
+          timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_card_input.gd
           timeout 120 python3 tests/test_internet.py
 
       - name: Export and verify Android APK
