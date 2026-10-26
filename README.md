@@ -2,6 +2,34 @@
 
 Jeu Android de rami en français : une table et des cartes en 3D, un mode solo contre 1 à 3 ordinateurs, et des parties privées à 2–4 joueurs où chacun utilise son téléphone. Projet réalisé avec Godot 4.6.3, sans publicité, compte ni achat intégré.
 
+## Nouveautés de la version 0.3.0
+
+- **Glisser-déposer** : rangez la main au doigt, faites glisser les cartes sélectionnées sur la table pour les poser, sur une combinaison pour la compléter, ou sur la défausse. Les boutons et les touchers simples restent disponibles.
+- **Effets sonores** originaux pour les cartes et la victoire ; activation et volume indépendants de la musique dans **Musique**.
+- **Reprise solo automatique** : chaque action et chaque rangement sont sauvegardés. **Reprendre ma partie solo** restitue les cartes, le tour, la difficulté, les scores et l’ordre choisi, même pendant un tour adverse. Une copie précédente permet de récupérer une sauvegarde interrompue.
+- **Aide au placement** : les combinaisons que la sélection peut compléter s’éclairent ; le total valide sélectionné apparaît pour l’ouverture à 30 points. Le choix des compléments reste disponible pour les groupes hors de l’écran.
+- **Trois difficultés solo** : facile, normal et difficile. L’IA difficile estime les possibilités à partir de sa main et des cartes publiques.
+- **Matchs solo de 1, 3 ou 5 manches**, classement cumulé et statistiques personnelles. Les réglages sont dans **Difficulté, manches et statistiques** à l’accueil.
+- **Adversaires animés** : mains de dos, pioche et défausse visibles, actions successives et petite célébration en fin de manche.
+- **Invitations à copier/coller** : l’hôte choisit **Copier l’invitation** dans le salon. L’ami la colle dans **Jouer avec des amis → Rejoindre avec l’invitation**. L’adresse et le code sont remplis automatiquement.
+
+Une invitation Wi-Fi fonctionne sur le même réseau. Une invitation Internet nécessite un serveur WebSocket accessible, comme dans les versions précédentes ; cette livraison n’installe pas de serveur public. L’invitation est un texte à coller dans le jeu, sans ouverture automatique par Android. Les sauvegardes et statistiques solo restent sur l’appareil.
+
+À la fin de chaque manche, les cartes restantes comptent comme pénalités : nombres à leur valeur, figures à 10, as à 11 et jokers à 20. Le plus petit total gagne le match ; les égalités restent ex æquo. Les manches suivantes alternent le premier joueur. Une nouvelle partie remplace la reprise précédente.
+
+Les règles, les sauvegardes, les invitations et les gestes sont vérifiés automatiquement, avec un rendu en 1440×900 et 2400×1080. L’APK reste à essayer sur des téléphones Android physiques. [Détails de validation](docs/MOBILE-GAMEPLAY.md).
+
+## Animations de la version 0.2.1
+
+- **Distribution progressive** depuis la pioche, avec retournement et dos de carte visible.
+- **Pioche, pose et défausse en mouvement** : la même carte suit un trajet courbe entre la main et la table.
+- **Tri fluide et sélection douce** : les cartes glissent vers leur place ; les touchers rapides peuvent inverser le mouvement sans saut.
+- **Transitions discrètes** à l’accueil, dans les fenêtres d’aide et lors des changements de tour.
+
+Les animations réutilisent les cartes visibles et leurs matériaux. Elles s’arrêtent une fois les cartes posées et suivent les mises à jour du jeu solo ou multijoueur. [Détails et vérifications](docs/ANIMATIONS.md).
+
+![Aperçu des animations](docs/screenshots/animations.webp)
+
 ## Nouveautés de la version 0.2.0
 
 - **Plein écran** : affichage adapté aux téléphones larges, avec un bouton de bascule sur ordinateur et le mode immersif sur Android.
@@ -109,6 +137,8 @@ godot --headless --path . --script tests/test_update_ui.gd
 godot --headless --path . --script tests/test_beginner_coach.gd
 godot --headless --path . --script tests/test_sorting.gd
 godot --headless --path . --script tests/test_music.gd
+godot --headless --path . --script tests/test_animations.gd
+godot --headless --path . --script tests/test_mobile_gameplay.gd
 GODOT_BIN=/chemin/vers/godot python3 tests/test_internet.py
 ```
 
@@ -122,6 +152,9 @@ Le moteur est testé pour la validité des poses, les jokers, l’ordre des tour
 - `scripts/network_manager.gd` : client réseau et hôte Wi-Fi.
 - `scripts/beginner_coach.gd` : leçons et conseils à partir de la main visible.
 - `scripts/music_manager.gd` : pistes, fondu, réglages et pause.
+- `scripts/solo_store.gd` : sauvegarde atomique, récupération et statistiques.
+- `scripts/sound_effects.gd` : effets sonores synthétisés.
+- `scripts/invitation.gd` : invitation avec adresse et code.
 - `scripts/sorting_challenge.gd` : défi de tri indépendant.
 - `server/server.gd` : serveur Internet indépendant avec salons privés.
 

@@ -14,6 +14,7 @@ const IVORY := Color("f6f0df")
 const GOLD := Color("d3ae65")
 
 static var _textures: Dictionary = {}
+static var _materials: Dictionary = {}
 static var _body_mesh: ArrayMesh
 var card_id: String = "0:S:1"
 var face_up: bool = true
@@ -23,6 +24,10 @@ var _face: MeshInstance3D
 var _outline: MeshInstance3D
 var _area: Area3D
 var _lift_tween: Tween
+var _motion_tween: Tween
+var _motion_from := Transform3D.IDENTITY
+var motion_target := Transform3D.IDENTITY
+var _motion_arc := 0.0
 # Godot may deliver both touch and its synthetic mouse press to picking.
 var _last_touch_press_msec: int = -1000
 var _last_emulated_press_msec: int = -1000
@@ -39,19 +44,52 @@ func setup(new_card_id: String, new_face_up: bool = true) -> void:
 	_build_if_needed()
 	_update_art()
 
-func set_selected(value: bool) -> void:
+func set_selected(value: bool, lift_paper: bool = true) -> void:
 	selected = value
 	_build_if_needed()
 	_outline.visible = value
 	if _lift_tween and _lift_tween.is_valid():
 		_lift_tween.kill()
-	var target := REST_HEIGHT + (SELECTED_LIFT if value else 0.0)
-	if is_inside_tree():
+	var target := REST_HEIGHT + (SELECTED_LIFT if value and lift_paper else 0.0)
+	if is_equal_approx(_visual.position.y, target):
+		_set_paper_height(target)
+	elif is_inside_tree():
 		_lift_tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-		_lift_tween.tween_property(_visual, "position:y", target, 0.16)
+		_lift_tween.tween_method(_set_paper_height, _visual.position.y, target, 0.18)
 	else:
-		_visual.position.y = target
-	_area.position.y = target
+		_set_paper_height(target)
+
+func _set_paper_height(height: float) -> void:
+	# The hitbox follows the printed card throughout selection, including on touch.
+	_visual.position.y = height
+	_area.position.y = height
+
+func move_to(target: Transform3D, seconds: float = 0.32, delay: float = 0.0, arc: float = 0.0) -> void:
+	# A repeated network snapshot must not restart a flight already in progress.
+	if seconds > 0.0 and is_moving() and motion_target.is_equal_approx(target):
+		return
+	cancel_motion()
+	motion_target = target
+	if not is_inside_tree() or seconds <= 0.0 or transform.is_equal_approx(target):
+		transform = target
+		return
+	_motion_from = transform
+	_motion_arc = arc
+	_motion_tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_motion_tween.tween_method(_sample_motion, 0.0, 1.0, seconds).set_delay(delay)
+
+func _sample_motion(progress: float) -> void:
+	var pose := _motion_from.interpolate_with(motion_target, progress)
+	pose.origin.y += sin(progress * PI) * _motion_arc
+	transform = pose
+
+func is_moving() -> bool:
+	return _motion_tween != null and _motion_tween.is_valid()
+
+func cancel_motion() -> void:
+	if is_moving():
+		_motion_tween.kill()
+	_motion_tween = null
 
 func _build_if_needed() -> void:
 	if _visual != null:
@@ -93,6 +131,14 @@ func _build_if_needed() -> void:
 	_face.position.y = CARD_DEPTH / 2.0 + 0.001
 	_face.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_visual.add_child(_face)
+	var back := MeshInstance3D.new()
+	back.name = "PrintedBack"
+	back.mesh = quad
+	back.rotation.x = PI / 2.0
+	back.position.y = -CARD_DEPTH / 2.0 - 0.001
+	back.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	back.material_override = _art_material("__back__", _back_svg())
+	_visual.add_child(back)
 	_area = Area3D.new()
 	_area.name = "TouchTarget"
 	_area.position.y = REST_HEIGHT
@@ -112,13 +158,17 @@ func _update_art() -> void:
 	if face_up:
 		var parts := card_id.split(":")
 		key = "__joker__" if parts[0] == "J" else ":".join(parts.slice(1))
+	_face.material_override = _art_material(key, _front_svg(card_id) if face_up else _back_svg())
+
+func _art_material(key: String, svg: String) -> StandardMaterial3D:
+	if _materials.has(key):
+		return _materials[key]
 	if not _textures.has(key):
-		var svg := _front_svg(card_id) if face_up else _back_svg()
 		var img := Image.new()
 		var error := img.load_svg_from_string(svg, 1.4)
 		if error != OK:
 			push_warning("Unable to render card artwork: %s" % key)
-			return
+			return StandardMaterial3D.new()
 		img.generate_mipmaps()
 		_textures[key] = ImageTexture.create_from_image(img)
 	var material := StandardMaterial3D.new()
@@ -128,7 +178,8 @@ func _update_art() -> void:
 	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 	material.alpha_scissor_threshold = 0.25
 	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	_face.material_override = material
+	_materials[key] = material
+	return material
 
 func _on_input_event(_camera: Node, event: InputEvent, _point: Vector3, _normal: Vector3, _shape: int) -> void:
 	var touch_press: bool = event is InputEventScreenTouch and event.pressed

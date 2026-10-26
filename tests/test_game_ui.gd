@@ -45,7 +45,9 @@ func _run() -> void:
 	_check(app.selected == ["0:S:13"], "hand mesh tap selects exact card")
 	_press("Défausser →")
 	_check(app.snapshot.turn == 1 and app.busy and app.snapshot.players[0].count == 1, "discard starts opponent turn")
-	await create_timer(1.15).timeout
+	var bot_deadline := Time.get_ticks_msec() + 15000
+	while app.busy and Time.get_ticks_msec() < bot_deadline:
+		await process_frame
 	_check(app.snapshot.turn == 0 and app.snapshot.phase == "draw" and not app.busy, "bot returns control after its timed turn")
 	_check(app.snapshot.turn_count == 3 and app.snapshot.hand == app.engine.state.players[0].hand, "bot and visible player state stay synchronized")
 

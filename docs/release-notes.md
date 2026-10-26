@@ -1,17 +1,22 @@
-# Rami Salon 3D 0.2.0 — cartes en main, aide et défi de tri
+# Rami Salon 3D 0.3.0 — le jeu au bout des doigts
 
-Cette version répond aux retours sur la taille des cartes et le plein écran.
+- Glisser-déposer pour ranger la main, poser la sélection, compléter et défausser.
+- Effets sonores originaux avec volume indépendant de la musique.
+- Sauvegarde automatique et reprise complète des parties solo, y compris pendant le tour d’un adversaire.
+- Points sélectionnés pour l’ouverture à 30 et surbrillance des compléments possibles.
+- Trois difficultés solo et matchs de 1, 3 ou 5 manches.
+- Classement cumulé, égalités et statistiques personnelles de manches, victoires et pénalités.
+- Mains adverses de dos, actions successives et célébration de fin de manche.
+- Invitation à copier dans le salon puis à coller chez l’ami : aucune adresse à retaper.
 
-- **Plein écran adapté** aux formats larges des téléphones ; mode immersif Android et bouton Plein écran / Fenêtre.
-- **Grandes cartes en éventail au premier plan**, face au joueur ; sélection surélevée et valeurs lisibles.
-- **Douze leçons pour débutants** et conseils détaillés adaptés au tour, à la main et à la sélection, avec des exemples chiffrés.
-- **Trois musiques instrumentales originales**, choix du morceau, volume, coupure, réglages mémorisés et pause en arrière-plan.
-- **Défi de tri séparé** : trois manches de 8, 10 et 12 cartes, échanges par toucher, indices, score et bilan, sans limite de temps.
+Les animations de distribution, de sélection et de déplacement ajoutées en 0.2.1 sont incluses.
 
-Les modes contre l’ordinateur et multijoueur sont conservés. Le Wi-Fi fonctionne via un téléphone hôte ; le jeu par Internet nécessite toujours d’héberger le serveur inclus.
+Les invitations Wi-Fi exigent le même réseau. Les invitations Internet nécessitent un serveur WebSocket accessible : aucun serveur public n’est déployé avec cet APK. Le texte d’invitation se colle dans le jeu ; il n’ouvre pas automatiquement l’application.
 
-Téléchargez **rami-3d.apk** ci-dessous pour Android 7 ou supérieur, ARM32/ARM64. **Si Android refuse de mettre à jour la version 0.1.0, désinstallez l’ancienne version d’essai avant d’installer celle-ci** : chaque compilation GitHub utilise une clé de test temporaire différente.
+Les sauvegardes et statistiques sont locales à l’appareil. Une nouvelle partie remplace la reprise précédente. En fin de manche : figures 10 points, as 11, jokers 20, nombres à leur valeur. Le plus petit cumul gagne le match.
 
-Le jeu, les nouveautés, le réseau et la construction de l’APK sont vérifiés automatiquement. La disposition des cartes et les événements de sélection ont aussi été contrôlés sur des fenêtres de 1440×900 et 2400×1080. Aucun essai sur téléphone physique n’a encore été effectué dans cet environnement.
+Les tests couvrent le moteur, les réseaux, la reprise, les scores, les difficultés, les sons, les animations et de vrais événements tactiles sur des fenêtres de 1440×900 et 2400×1080. Aucun essai sur téléphone Android physique n’a été effectué dans cet environnement.
 
-Les empreintes de cette compilation sont dans **SHA256SUMS** ; **CI-BUILD-INFO.txt** indique son commit et son exécution GitHub. L’archive source inclut le serveur et les tests.
+L’APK d’essai vise Android 7 ou supérieur, ARM32/ARM64. La signature de test GitHub peut changer d’une compilation à l’autre. Si Android refuse la mise à jour, désinstaller l’ancien APK efface aussi les parties et statistiques locales ; faire ce choix seulement en connaissance de cause.
+
+**SHA256SUMS** et **CI-BUILD-INFO.txt** identifient la compilation. Les demandes de fusion produisent des APK dans les artefacts Actions ; seule la branche principale peut publier une version GitHub.
