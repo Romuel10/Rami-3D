@@ -7,6 +7,7 @@ const MusicPlayer = preload("res://scripts/music_manager.gd")
 const Coach = preload("res://scripts/beginner_coach.gd")
 const SortingChallenge = preload("res://scripts/sorting_challenge.gd")
 const HAND_SCALE := 2.15
+const DECK_POSITION := Vector3(-0.8, 0.28, -0.8)
 const INK = Color("ecede3")
 const MUTED = Color("91aba7")
 const GOLD = Color("dfbd78")
@@ -60,6 +61,11 @@ var overlay_kind := ""
 var saved_address := ""
 var saved_name := "Vous"
 var turn_token := 0
+# Public card IDs stay attached to one mesh as it moves between hand/table.
+# Deck backs use separate keys: their placeholder ID is not a physical card.
+var _view_cards: Dictionary = {}
+var _previous_cards: Dictionary = {}
+var _rendered_turn := -1
 
 func _ready() -> void:
 	get_viewport().physics_object_picking = true
@@ -330,6 +336,9 @@ func _clear_cards() -> void:
 			card.queue_free()
 	card_nodes.clear()
 	hand_cards.clear()
+	_view_cards.clear()
+	_previous_cards.clear()
+	_rendered_turn = -1
 
 func _show_menu() -> void:
 	turn_token += 1
@@ -388,6 +397,10 @@ func _show_menu() -> void:
 		var card = _card(menu_ids[i], true, Vector3(-4.3 + i * 1.0, 0.22 + i * 0.035, 3.85 - absf(i - 2) * 0.1))
 		card.rotation_degrees.y = (i - 2) * -9.0
 		card.scale = Vector3.ONE * 1.8
+		var target: Transform3D = card.transform
+		card.position += Vector3(-0.65, -0.4, 0.7)
+		card.rotation_degrees.y -= 12.0
+		card.move_to(target, 0.50, i * 0.055, 0.16)
 
 func _save_profile() -> void:
 	if is_instance_valid(name_input):
@@ -457,11 +470,15 @@ func _refresh_snapshot() -> void:
 		_run_bots()
 
 func _render_snapshot() -> void:
-	_clear_cards()
-	selected.clear()
-	suggested.clear()
 	if not is_instance_valid(players_row):
 		return
+	var initial_deal := _view_cards.is_empty()
+	_previous_cards = _view_cards.duplicate()
+	_view_cards.clear()
+	card_nodes.clear()
+	hand_cards.clear()
+	selected.clear()
+	suggested.clear()
 	for node in players_row.get_children():
 		node.get_parent().remove_child(node)
 		node.queue_free()
@@ -499,40 +516,93 @@ func _render_snapshot() -> void:
 		game_status.text = str(players[turn].get("name", "L’adversaire")) + " joue…" if turn < players.size() else "En attente…"
 	var hand: Array = snapshot.get("hand", []).duplicate()
 	hand.sort_custom(func(a, b): return _sort_key(str(a)) < _sort_key(str(b)))
+	var revealed_discard := false
 	for id in hand:
-		var card = _card(str(id), true, Vector3.ZERO, hand_root)
-		card.set_meta("hand_card", true)
-		card.scale = Vector3.ONE * HAND_SCALE
+		var key := "card:" + str(id)
+		if _previous_cards.has(key) and _previous_cards[key].get_meta("zone", "") == "discard":
+			revealed_discard = true
+		var card = _view_card(str(id), true, hand_root, "card:" + str(id), "hand")
+		if card.get_meta("new_in_view", false):
+			# Turn over the back while the card leaves the deck. Only this
+			# player's already-authorized hand IDs ever reach this view.
+			card.global_transform = Transform3D(Basis(Vector3.RIGHT, PI), DECK_POSITION)
 		hand_cards.append(card)
-		card.tapped.connect(_select_card)
-	_layout_hand()
+	_layout_hand(true, initial_deal)
 	_update_hand_status()
 	var deck_count := int(snapshot.get("deck_count", 0))
 	for i in range(3 if deck_count > 0 else 0):
-		var back = _card("0:S:1", false, Vector3(-0.8 + i * 0.018, 0.14 + i * 0.045, -0.8))
-		back.tapped.connect(func(_c): _act({"type":"draw", "source":"deck"}))
+		var back = _view_card("0:S:1", false, self, "deck:" + str(i), "deck")
+		var target := Transform3D(Basis.IDENTITY, Vector3(-0.8 + i * 0.018, 0.14 + i * 0.045, -0.8))
+		back.move_to(target, 0.0)
 	var discard_top = snapshot.get("discard_top", "")
 	if discard_top != null and str(discard_top) != "":
-		var face = _card(str(discard_top), true, Vector3(0.85, 0.19, -0.8))
-		face.rotation_degrees.y = -5
-		face.tapped.connect(func(_c): _act({"type":"draw", "source":"discard"}))
+		var face = _view_card(str(discard_top), true, self, "card:" + str(discard_top), "discard")
+		_place_table_card(face, Transform3D(Basis(Vector3.UP, deg_to_rad(-5)), Vector3(0.85, 0.19, -0.8)), initial_deal or revealed_discard)
 	var melds: Array = snapshot.get("melds", [])
 	var first_visible := maxi(0, melds.size() - 4)
 	for i in range(first_visible, melds.size()):
 		var cards: Array = melds[i].get("cards", [])
 		var col := (i - first_visible) % 4
-		var row := 0
 		for j in range(cards.size()):
 			var gap := minf(0.4, 2.25 / maxf(1, cards.size() - 1))
-			var position_card := Vector3(-5.3 + col * 3.5 + (j - (cards.size()-1)/2.0) * gap, 0.12 + j * 0.005, -2.5 + row * 1.3)
-			var card = _card(str(cards[j]), true, position_card)
-			card.scale = Vector3.ONE * 0.70
-			var meld_index := i
-			card.tapped.connect(func(_c): _extend_at(meld_index))
+			var position_card := Vector3(-5.3 + col * 3.5 + (j - (cards.size()-1)/2.0) * gap, 0.12 + j * 0.005, -2.5)
+			var card = _view_card(str(cards[j]), true, self, "card:" + str(cards[j]), "meld")
+			card.set_meta("meld_index", i)
+			_place_table_card(card, Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * 0.70), position_card), initial_deal, j * 0.035)
+	# Cards no longer present in the visible snapshot cannot retain callbacks
+	# or keep an animation alive after leaving this table.
+	for card in _previous_cards.values():
+		card.get_parent().remove_child(card)
+		card.queue_free()
+	_previous_cards.clear()
+	if _rendered_turn != turn:
+		game_status.modulate.a = 0.45
+		game_status.create_tween().tween_property(game_status, "modulate:a", 1.0, 0.24)
+	_rendered_turn = turn
 	if int(snapshot.get("winner", -1)) >= 0:
 		_show_winner()
 	elif overlay_kind == "coach":
 		_show_coach()
+
+func _view_card(id: String, face: bool, parent: Node3D, key: String, zone: String) -> Node3D:
+	var card: Node3D
+	var existing := _previous_cards.has(key)
+	if existing:
+		card = _previous_cards[key]
+		_previous_cards.erase(key)
+		if card.get_parent() != parent:
+			# Preserve the visible pose across the camera-relative hand and
+			# world-space table, then start the next flight in the new space.
+			card.cancel_motion()
+			card.reparent(parent, true)
+		card_nodes.append(card)
+	else:
+		card = _card(id, face, Vector3.ZERO, parent)
+		card.tapped.connect(_view_card_tapped)
+	card.set_meta("new_in_view", not existing)
+	card.set_meta("arriving", not existing or card.get_meta("zone", "") != zone)
+	card.set_meta("zone", zone)
+	card.set_meta("hand_card", zone == "hand")
+	card.set_selected(false, zone != "hand")
+	_view_cards[key] = card
+	return card
+
+func _place_table_card(card: Node3D, target: Transform3D, initial: bool, delay: float = 0.0) -> void:
+	if card.get_meta("new_in_view", false):
+		if initial:
+			card.move_to(target, 0.0)
+			return
+		# A newly public opponent card starts at the far side of the table.
+		# This uses no hidden opponent hand data.
+		card.transform = Transform3D(Basis.IDENTITY, Vector3(0, 0.55, -4.6))
+	card.move_to(target, 0.38, delay if card.get_meta("arriving", false) else 0.0, 0.35)
+
+func _view_card_tapped(card: Node3D) -> void:
+	match str(card.get_meta("zone", "")):
+		"hand": _select_card(card)
+		"deck": _act({"type":"draw", "source":"deck"})
+		"discard": _act({"type":"draw", "source":"discard"})
+		"meld": _extend_at(int(card.get_meta("meld_index", -1)))
 
 func _sort_key(id: String) -> int:
 	var info: Dictionary = engine.card_info(id) if game_mode == "solo" else EngineRules.new().card_info(id)
@@ -814,6 +884,10 @@ func _modal(title: String, subtitle: String) -> VBoxContainer:
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _style(Color("0e2e31"), Color("4a6658"), 22, 28))
 	_place(panel, overlay, Vector2(-340,105), Vector2(340,-38), Vector2(0.5,0), Vector2(0.5,1))
+	dim.modulate.a = 0.0
+	dim.create_tween().tween_property(dim, "modulate:a", 1.0, 0.16)
+	panel.modulate.a = 0.0
+	panel.create_tween().tween_property(panel, "modulate:a", 1.0, 0.20)
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	panel.add_child(scroll)
@@ -964,9 +1038,9 @@ func _screen_changed() -> void:
 			ui.offset_top = maxf(0, start.y)
 			ui.offset_right = minf(0, end.x-size.x)
 			ui.offset_bottom = minf(0, end.y-size.y)
-	_layout_hand()
+	_layout_hand(false)
 
-func _layout_hand() -> void:
+func _layout_hand(animate: bool = true, deal: bool = false) -> void:
 	if hand_cards.is_empty() or not is_instance_valid(camera):
 		return
 	var size := get_viewport().get_visible_rect().size
@@ -979,13 +1053,18 @@ func _layout_hand() -> void:
 		var norm: float = (i - (hand_cards.size()-1)/2.0) / maxf(1, (hand_cards.size()-1)/2.0)
 		var y: float = center_y + 0.28*(1.0-norm*norm)
 		card.set_meta("rest_y", y)
-		card.position = Vector3((i-(hand_cards.size()-1)/2.0)*gap, y + (0.32 if selected.has(card.card_id) else 0.0), -10.0+i*0.018)
-		card.basis = (Basis(Vector3.BACK, -norm*0.25) * Basis(Vector3.RIGHT, PI/2.0)).scaled(Vector3.ONE*HAND_SCALE)
+		var pos := Vector3((i-(hand_cards.size()-1)/2.0)*gap, y + (0.32 if selected.has(card.card_id) else 0.0), -10.0+i*0.018)
+		var basis := (Basis(Vector3.BACK, -norm*0.25) * Basis(Vector3.RIGHT, PI/2.0)).scaled(Vector3.ONE*HAND_SCALE)
+		var arriving: bool = card.get_meta("arriving", false)
+		card.move_to(Transform3D(basis, pos), (0.42 if arriving else 0.28) if animate else 0.0, i * 0.045 if deal else 0.0, 0.35 if arriving else 0.08)
+		card.set_meta("arriving", false)
 
 func _set_hand_selection(card: Node3D, value: bool) -> void:
-	card.set_selected(value)
+	card.set_selected(value, false)
 	if card.get_meta("hand_card", false):
-		card.position.y = float(card.get_meta("rest_y", card.position.y)) + (0.32 if value else 0.0)
+		var target: Transform3D = card.motion_target
+		target.origin.y = float(card.get_meta("rest_y", target.origin.y)) + (0.32 if value else 0.0)
+		card.move_to(target, 0.18)
 
 func _confirm_leave() -> void:
 	if game_mode == "menu":

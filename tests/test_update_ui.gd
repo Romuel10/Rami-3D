@@ -47,6 +47,7 @@ func _run() -> void:
 
 	app.solo_select.select(0)
 	_press("Jouer contre l’ordinateur   →")
+	await create_timer(1.05).timeout
 	_check(app.hand_cards.size() == 13 and app.hand_root.get_parent() == app.camera, "own hand lives under camera")
 	var own_nodes_valid := true
 	for card in app.hand_cards:

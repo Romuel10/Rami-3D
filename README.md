@@ -2,6 +2,17 @@
 
 Jeu Android de rami en français : une table et des cartes en 3D, un mode solo contre 1 à 3 ordinateurs, et des parties privées à 2–4 joueurs où chacun utilise son téléphone. Projet réalisé avec Godot 4.6.3, sans publicité, compte ni achat intégré.
 
+## Animations de la version 0.2.1
+
+- **Distribution progressive** depuis la pioche, avec retournement et dos de carte visible.
+- **Pioche, pose et défausse en mouvement** : la même carte suit un trajet courbe entre la main et la table.
+- **Tri fluide et sélection douce** : les cartes glissent vers leur place ; les touchers rapides peuvent inverser le mouvement sans saut.
+- **Transitions discrètes** à l’accueil, dans les fenêtres d’aide et lors des changements de tour.
+
+Les animations réutilisent les cartes visibles et leurs matériaux. Elles s’arrêtent une fois les cartes posées et suivent les mises à jour du jeu solo ou multijoueur. [Détails et vérifications](docs/ANIMATIONS.md).
+
+![Aperçu des animations](docs/screenshots/animations.webp)
+
 ## Nouveautés de la version 0.2.0
 
 - **Plein écran** : affichage adapté aux téléphones larges, avec un bouton de bascule sur ordinateur et le mode immersif sur Android.
@@ -109,6 +120,7 @@ godot --headless --path . --script tests/test_update_ui.gd
 godot --headless --path . --script tests/test_beginner_coach.gd
 godot --headless --path . --script tests/test_sorting.gd
 godot --headless --path . --script tests/test_music.gd
+godot --headless --path . --script tests/test_animations.gd
 GODOT_BIN=/chemin/vers/godot python3 tests/test_internet.py
 ```
 

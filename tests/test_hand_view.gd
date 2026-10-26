@@ -13,6 +13,11 @@ func _initialize() -> void:
 func _frames(count: int = 8) -> void:
 	for _i in range(count):
 		await process_frame
+	# Layout/picking are measured after real time-based flights have settled.
+	var deadline := Time.get_ticks_msec() + 2000
+	while app != null and app.card_nodes.any(func(card): return card.is_moving()) and Time.get_ticks_msec() < deadline:
+		await process_frame
+	await physics_frame
 	await RenderingServer.frame_post_draw
 
 func _check(condition: bool, message: String) -> void:
@@ -93,7 +98,8 @@ func _rank_corners(label: String) -> void:
 func _physics_tap() -> void:
 	tap_signals = 0
 	var card: Node3D = app.hand_cards[0]
-	card.tapped.connect(func(_card): tap_signals += 1)
+	var count_tap := func(_card): tap_signals += 1
+	card.tapped.connect(count_tap)
 	var face: MeshInstance3D = card.get_node("Paper/PrintedFace")
 	var local_point := Vector3(-0.37, 0.50, 0.0)
 	var logical: Vector2 = app.camera.unproject_position(face.to_global(local_point))
@@ -123,6 +129,7 @@ func _physics_tap() -> void:
 	_check(app.selected == [card.card_id], "actual physics picking selects the visible corner's exact card")
 	var after := _card_rect(card)
 	_check(after.position.y < before.position.y - 10, "selected held card lifts upward by >10 logical pixels")
+	card.tapped.disconnect(count_tap)
 	print("PICK logical=", logical, " physical=", physical, " signals=", tap_signals, " before=", before, " after=", after)
 
 func _run() -> void:

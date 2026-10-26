@@ -3,6 +3,8 @@ name: Android APK
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -165,7 +167,19 @@ jobs:
           timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_sorting.gd
           timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_music.gd
           timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_card_input.gd
+          timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_animations.gd
           timeout 120 python3 tests/test_internet.py
+
+      - name: Verify rendered hand and touch picking
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y xvfb libgl1-mesa-dri
+          LIBGL_ALWAYS_SOFTWARE=1 timeout 120 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_hand_view.gd 2>&1 | tee "$RUNNER_TEMP/rami-render.log"
+          if rg -n 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/rami-render.log"; then
+            exit 1
+          fi
 
       - name: Export and verify Android APK
         shell: bash
@@ -216,6 +230,7 @@ jobs:
             builds/android-package.txt
 
       - name: Publish version if it does not already exist
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
           RAMI_TAG: ${{ steps.version.outputs.tag }}
