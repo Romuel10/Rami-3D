@@ -378,7 +378,9 @@ func bot_step(index: int, difficulty: int = 1) -> bool:
 		if difficulty == 0 and state.players[index].opened:
 			groups = [groups[0]]
 		return apply_action(index, {"type":"meld", "groups":groups}).ok
-	if difficulty > 0 and state.players[index].opened:
+	# Even an easy opponent must be able to finish a one/two-card hand.
+	# Difficulty changes planning, never access to legal table extensions.
+	if state.players[index].opened:
 		for meld_index in range(state.melds.size()):
 			for id in state.players[index].hand:
 				if state.players[index].hand.size() > 1 and _validate_meld(state.melds[meld_index].cards + [id]).ok:
@@ -507,7 +509,9 @@ func next_round() -> Dictionary:
 	for player in state.players:
 		names.append(player.name)
 	var session: String = str(state.get("session_id",""))
-	start_game(names,0,int(previous.length))
+	# Continue the saved random sequence, including after an app restart.
+	var deal_seed := maxi(1, int(_rng.randi()))
+	start_game(names,deal_seed,int(previous.length))
 	previous.round = int(previous.round) + 1
 	state.match = previous
 	state.session_id = session

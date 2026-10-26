@@ -89,13 +89,33 @@ func _run() -> void:
 			_check(Store.statistics().rounds == stats.rounds+1,"reopening winner does not count twice")
 			_check(Rules.new().restore_game(game.export_game()),"completed match round is resumable")
 			if round_number < 3:
+				var persisted := Rules.new()
+				persisted.restore_game(game.export_game())
 				var totals: Array = game.state.match.totals.duplicate()
 				_check(game.next_round().ok and game.state.match.totals == totals,"next deal keeps cumulative scores")
+				persisted.next_round()
+				_check(persisted.export_game() == game.export_game(),"resuming preserves the next deal's random sequence")
 				_check(game.state.session_id == session and game.state.turn == round_number%3,"next round rotates dealer and retains match identity")
 				_check(Rules.new().restore_game(game.export_game()),"new round state is resumable")
 			else:
 				_check(not game.next_round().ok,"three-round match stops after third round")
 	_check(completed == 9,"all three difficulties finish three-round matches")
+	# Easy bots still need extensions to finish, once the hand is too small
+	# to form a fresh group. Keep a legal 108-card fixture for this regression.
+	game.start_game(["Vous","Camille"],51)
+	var remaining: Array = game.state.deck + game.state.discard
+	for player in game.state.players: remaining.append_array(player.hand)
+	for id in ["0:H:7","0:H:8","0:H:9","0:H:10","0:S:13"]: remaining.erase(id)
+	game.state.players[0].hand = ["0:H:10","0:S:13"]
+	game.state.players[0].opened = true
+	game.state.players[1].hand = remaining.slice(0,13)
+	game.state.discard = [remaining[13]]
+	game.state.deck = remaining.slice(14)
+	game.state.melds = [{"cards":["0:H:7","0:H:8","0:H:9"],"owner":1,"type":"run"}]
+	game.state.phase = "play"
+	_check(game.bot_step(0,0) and game.state.melds[0].cards.size() == 4,"easy bot extends a group with two cards left")
+	_check(game.bot_step(0,0) and game.state.winner == 0,"easy bot can make its final discard and win")
+	_check(_conserves(game),"easy endgame conserves all physical cards")
 	# Changing unknown deck order has no influence on hard AI's decisions.
 	game.start_game(["Vous","Camille"],23)
 	var other := Rules.new()
