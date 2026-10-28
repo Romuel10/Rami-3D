@@ -273,6 +273,13 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/tri-render" timeout 120 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_tri_ui.gd 2>&1 | tee "$RUNNER_TEMP/tri-render.log"
           if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/tri-render.log"; then exit 1; fi
 
+      - name: Verify realistic table and opponent hands
+        shell: bash
+        run: |
+          set -euo pipefail
+          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/table-realism" timeout 120 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_table_realism.gd 2>&1 | tee "$RUNNER_TEMP/table-realism.log"
+          if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/table-realism.log"; then exit 1; fi
+
       - name: Export and verify Android APK
         shell: bash
         run: |
@@ -308,6 +315,7 @@ jobs:
           sha256sum rami-3d.apk rami-salon-3d-sources.zip CI-BUILD-INFO.txt > SHA256SUMS
 
       - name: Upload downloadable build artifacts
+        id: apk_artifact
         uses: actions/upload-artifact@v4
         with:
           name: rami-android-${{ steps.version.outputs.version }}-${{ github.run_number }}
@@ -321,12 +329,26 @@ jobs:
             builds/android-signature.txt
             builds/android-package.txt
 
-      - name: Require durable signing before publication
+      - name: Explain test-only APK availability
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && steps.signing.outputs.publishable != 'true'
+        env:
+          RAMI_APK_ARTIFACT_URL: ${{ steps.apk_artifact.outputs.artifact-url }}
         shell: bash
         run: |
-          echo "::error::Publication blocked: configure ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD as described in docs/SIGNING.md. The tested APK remains available in this run's artifacts."
-          exit 1
+          echo "::notice::Tests and APK export succeeded. Release publication is skipped until durable Android signing is configured. Download the test APK from this run's artifacts."
+          {
+            echo '### APK de test disponible'
+            echo
+            echo 'Les tests et la compilation Android ont réussi. Aucune version avec une signature temporaire ne sera publiée dans Releases.'
+            echo
+            echo "**[Télécharger l’APK de test (archive ZIP)]($RAMI_APK_ARTIFACT_URL)**"
+            echo
+            echo "1. Ouvrir [cette compilation]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID), puis sa section **Artifacts**."
+            echo '2. Télécharger l’archive `rami-android-…`, la décompresser, puis ouvrir **rami-3d.apk** sur le téléphone. Le fichier ZIP ne s’installe pas directement.'
+            echo '3. Pour les mises à jour avec une signature conservée, configurer les quatre secrets décrits dans **docs/SIGNING.md**, puis relancer ce workflow.'
+            echo
+            echo 'Une ancienne application signée avec une autre clé ne peut pas être mise à jour par cet APK de test. Une désinstallation efface les sauvegardes locales.'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish version if it does not already exist
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && steps.signing.outputs.publishable == 'true'

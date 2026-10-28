@@ -1,3 +1,28 @@
+Rami Salon 3D — table et livraison Android 0.6.0
+
+Vérifications locales sous Linux/Godot 4.6.3 :
+- Table réaliste : 447 contrôles, matériaux texturés, trois places en
+  profondeur, cartes adverses dressées et privées, décor sans collision,
+  client non hôte, forfait visuel et conservation des instances.
+- Grande main/picking : 166 contrôles en 1440×900 et 2400×1080,
+  cartes d’au moins 249 pixels logiques et 13 coins sélectionnables.
+- Gestes réels : 61 contrôles rendus ; Tri : 112 contrôles rendus.
+- Animations : 359 contrôles ; interface : 59 + 79 contrôles.
+- Tri : 541 contrôles de règles et IA, 32 contrôles d’interface sans rendu.
+- Résultats et forfaits via l’interface : 45 contrôles.
+- Signature/workflow : 61 contrôles, dont le résumé de téléchargement.
+- Cartes : 52 illustrations normales valides et entrées tactiles dédupliquées.
+- APK local 0.6.0/code7 : export réussi, signature v2/v3, CRC ZIP,
+  alignement 16Ko, manifeste, ressources et réglages project.binary
+  vérifiés ; 47 empreintes de sources concordent avec l’export.
+
+Le garde de signature durable ne fait plus échouer les builds sans secrets :
+le téléchargement de test reste disponible dans les artefacts. La création
+ultérieure d’une Release nécessite toujours la clé durable configurée.
+Aucun test sur téléphone Android physique dans cet environnement.
+
+--- Historique des vérifications précédentes ---
+
 Rami Salon 3D — Tri en duel 0.5.0
 
 Nouvelles vérifications locales sous Linux/Godot 4.6.3 :

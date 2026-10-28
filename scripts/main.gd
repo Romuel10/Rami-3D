@@ -1,6 +1,7 @@
 extends Node3D
 
 const EngineRules = preload("res://scripts/rami_engine.gd")
+const TableSalon = preload("res://scripts/table_scene.gd")
 const CardView = preload("res://scripts/card_3d.gd")
 const NetworkRoom = preload("res://scripts/network_manager.gd")
 const MusicPlayer = preload("res://scripts/music_manager.gd")
@@ -31,6 +32,7 @@ var player_name := "Vous"
 var tri_choice := 6
 var friends_tri_cards := 0
 var bot_count := 1
+var table_scene: Node3D
 var camera: Camera3D
 var ui: Control
 var content: Control
@@ -149,10 +151,10 @@ func _make_world() -> void:
 	var world := WorldEnvironment.new()
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("07191e")
+	env.background_color = Color("151b18")
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color("c5e1d5")
-	env.ambient_light_energy = 0.32
+	env.ambient_light_color = Color("cbd2ce")
+	env.ambient_light_energy = 0.40
 	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	world.environment = env
 	add_child(world)
@@ -168,51 +170,19 @@ func _make_world() -> void:
 	hand_root.name = "VotreMain"
 	camera.add_child(hand_root)
 	var key := DirectionalLight3D.new()
-	key.rotation_degrees = Vector3(-58, -30, 0)
+	key.rotation_degrees = Vector3(-62, -22, 0)
 	key.light_color = Color("fff1d4")
-	key.light_energy = 0.65
+	key.light_energy = 0.53
 	key.shadow_enabled = true
 	add_child(key)
 	var light := OmniLight3D.new()
 	light.position = Vector3(0, 7, -3)
-	light.light_color = Color("6bb8a5")
-	light.light_energy = 0.35
+	light.light_color = Color("b8c9dd")
+	light.light_energy = 0.18
 	light.omni_range = 18
 	add_child(light)
-	_cylinder(9.7, 0.60, -0.55, Color("241e19"), Vector3(1, 1, 0.68))
-	_cylinder(9.62, 0.11, -0.20, Color("a17f4a"), Vector3(1, 1, 0.68))
-	_cylinder(9.47, 0.16, -0.12, Color("1d3937"), Vector3(1, 1, 0.68))
-	_cylinder(9.10, 0.12, -0.02, Color("14564c"), Vector3(1, 1, 0.68))
-	# An inset edge creates a quiet, physical table with no downloaded assets.
-	var ring := TorusMesh.new()
-	ring.inner_radius = 8.88
-	ring.outer_radius = 8.91
-	ring.rings = 96
-	ring.ring_segments = 12
-	var stitch := MeshInstance3D.new()
-	stitch.mesh = ring
-	stitch.scale = Vector3(1, 0.14, 0.68)
-	stitch.position.y = 0.051
-	stitch.material_override = _material(Color("638b6e"))
-	add_child(stitch)
-	var floor_mesh := MeshInstance3D.new()
-	var plane := PlaneMesh.new()
-	plane.size = Vector2(200, 200)
-	floor_mesh.mesh = plane
-	floor_mesh.position.y = -1.1
-	floor_mesh.material_override = _material(Color("071b20"))
-	add_child(floor_mesh)
-	var brand := Label3D.new()
-	brand.text = "R A M I   S A L O N"
-	brand.font = load("res://assets/serif.ttf")
-	brand.font_size = 90
-	brand.pixel_size = 0.009
-	brand.modulate = Color(0.60, 0.77, 0.62, 0.32)
-	brand.outline_size = 0
-	brand.no_depth_test = false
-	brand.rotation_degrees.x = -90
-	brand.position = Vector3(0, 0.065, -2.15)
-	add_child(brand)
+	table_scene = TableSalon.new()
+	add_child(table_scene)
 
 func _cylinder(radius: float, height: float, y: float, color: Color, scl: Vector3) -> void:
 	var node := MeshInstance3D.new()
@@ -365,6 +335,7 @@ func _clear_content() -> void:
 	_clear_cards()
 
 func _clear_cards() -> void:
+	if is_instance_valid(table_scene): table_scene.clear_seats()
 	_cancel_drag(false)
 	for card in card_nodes:
 		if is_instance_valid(card):
@@ -488,10 +459,11 @@ func _show_game() -> void:
 	players_row = HBoxContainer.new()
 	players_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	players_row.add_theme_constant_override("separation", 18)
-	_place(players_row, content, Vector2(0,103), Vector2(0,178), Vector2(0,0), Vector2(1,0))
-	game_status = _label("", 21, INK, content)
-	_place(game_status, content, Vector2(-420,194), Vector2(420,238), Vector2(0.5,0), Vector2(0.5,0))
-	game_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_place(players_row, content, Vector2(0,98), Vector2(0,136), Vector2(0,0), Vector2(1,0))
+	game_status = _label("", 17, INK, content)
+	_place(game_status, content, Vector2(38,364), Vector2(565,414))
+	game_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	game_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	game_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	var draw_row := HBoxContainer.new()
 	draw_row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -552,18 +524,18 @@ func _render_snapshot() -> void:
 		header_status.text = "SOLO · %s · %d/%d" % [["FACILE","NORMAL","DIFFICILE"][difficulty],int(snapshot.get("match",{}).get("round",1)),int(snapshot.get("match",{}).get("length",1))]
 	for i in range(players.size()):
 		var panel := PanelContainer.new()
-		panel.custom_minimum_size = Vector2(210, 65)
-		panel.add_theme_stylebox_override("panel", _style(Color("123c38") if i == turn else Color("0c292d"), GOLD if i == turn else Color("30504b"), 12, 10))
+		panel.custom_minimum_size = Vector2(172, 32)
+		panel.add_theme_stylebox_override("panel", _style(Color("123c38") if i == turn else Color("0c292d"), GOLD if i == turn else Color("30504b"), 12, 6))
 		players_row.add_child(panel)
-		var column := VBoxContainer.new()
-		column.add_theme_constant_override("separation", 2)
+		var column := HBoxContainer.new()
+		column.add_theme_constant_override("separation", 8)
 		panel.add_child(column)
 		var p: Dictionary = players[i]
 		var name_text := str(p.get("name", "Joueur")) + (" · vous" if i == own and p.get("name", "") != "Vous" else "")
-		var l := _label(("●  " if i == turn else "○  ") + name_text, 17, GOLD if i == turn else INK, column)
+		var l := _label(("●  " if i == turn else "○  ") + name_text, 15, GOLD if i == turn else INK, column)
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		var count := int(p.get("count", p.get("hand_count", 13)))
-		l = _label("Abandon · éliminé" if p.get("forfeited",false) else str(count) + " cartes  ·  " + ("main cachée" if _is_tri() else ("ouvert" if p.get("opened", false) else "à ouvrir : 30 pts")), 12, MUTED, column)
+		l = _label("Abandon · éliminé" if p.get("forfeited",false) else str(count) + " cartes" + (" · ouvert" if p.get("opened",false) else ""), 11, MUTED, column)
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	if _is_tri(): header_status.text = "TRI · %d CARTES · OBJECTIF %d TRIS" % [int(snapshot.tri_hand_size),int(snapshot.tri_goal)]
 	var phase: String = snapshot.get("phase", "draw")
@@ -626,7 +598,7 @@ func _render_snapshot() -> void:
 		var col := (i - first_visible) % 4
 		for j in range(cards.size()):
 			var gap := minf(0.4, 2.25 / maxf(1, cards.size() - 1))
-			var position_card := Vector3(-5.3 + col * 3.5 + (j - (cards.size()-1)/2.0) * gap, 0.12 + j * 0.005, -2.5)
+			var position_card := Vector3(-5.3 + col * 3.5 + (j - (cards.size()-1)/2.0) * gap, 0.12 + j * 0.005, -1.9)
 			var card = _view_card(str(cards[j]), true, self, "card:" + str(cards[j]), "meld")
 			card.set_meta("meld_index", i)
 			_place_table_card(card, Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * 0.70), position_card), initial_deal, j * 0.035)
@@ -1455,30 +1427,39 @@ func _play_snapshot_sound(initial: bool) -> void:
 	else:
 		effects.play(str(snapshot.get("last_action",{}).get("type","")))
 
-func _opponent_position(player: int) -> Vector3:
+func _opponent_indices() -> Array:
+	var result: Array = []
 	var own := int(snapshot.get("your_index",0))
-	var opponents: Array = []
-	for i in range(snapshot.get("players",[]).size()):
-		if i != own: opponents.append(i)
-	var index := opponents.find(player)
-	return Vector3((index - (opponents.size()-1)/2.0) * 5.0, 0.45, -4.5)
+	for index in range(snapshot.get("players",[]).size()):
+		if index != own: result.append(index)
+	return result
+
+func _opponent_position(player: int) -> Vector3:
+	var opponents := _opponent_indices()
+	return TableSalon.seat_position(maxi(0,opponents.find(player)),opponents.size())
 
 func _render_opponents(initial: bool) -> void:
 	var players: Array = snapshot.get("players",[])
 	var own := int(snapshot.get("your_index",0))
-	for i in range(players.size()):
-		if i == own: continue
-		var count := clampi(int(players[i].get("count",13)),0,108)
+	table_scene.set_players(players,own,int(snapshot.get("turn",-1)))
+	var opponents := _opponent_indices()
+	for i in opponents:
+		var count := 0 if players[i].get("forfeited",false) else clampi(int(players[i].get("count",13)),0,108)
+		var yaw := TableSalon.seat_yaw(opponents.find(i),opponents.size())
 		for j in range(count):
 			var card := _view_card("0:S:1",false,self,"opponent:%d:%d" % [i,j],"opponent")
+			card.set_meta("seat_index",i)
 			card._area.input_ray_pickable = false
 			card._area.collision_layer = 0
-			var pos := _opponent_position(i) + Vector3((j-(count-1)/2.0)*minf(0.12,1.8/maxf(1,count-1)),j*0.003,0)
-			var basis := Basis(Vector3.UP,(j-(count-1)/2.0)*minf(0.035,0.45/maxf(1,count-1))).scaled(Vector3.ONE*0.60)
+			var norm: float = (j-(count-1)/2.0)/maxf(1,(count-1)/2.0)
+			var spread := minf(.19,2.15/maxf(1,count-1))
+			var local := Vector3((j-(count-1)/2.0)*spread,.11*(1.0-norm*norm),.12*norm*norm+j*.004)
+			var pos := _opponent_position(i) + Basis(Vector3.UP,yaw)*local
+			var basis := (Basis(Vector3.UP,yaw)*Basis(Vector3.RIGHT,1.05)*Basis(Vector3.UP,-norm*.22)).scaled(Vector3.ONE*.94)
 			if card.get_meta("new_in_view",false):
 				var last: Dictionary = snapshot.get("last_action",{})
-				card.position = Vector3(0.85,0.19,-0.8) if not initial and int(last.get("player",-1)) == i and last.get("source","") == "discard" else DECK_POSITION
-			card.move_to(Transform3D(basis,pos),0.35, j*0.025 if initial else 0.0,0.35)
+				card.position = Vector3(.85,.19,-.8) if not initial and int(last.get("player",-1)) == i and last.get("source","") == "discard" else DECK_POSITION
+			card.move_to(Transform3D(basis,pos),.35 if animations_enabled else 0.0,j*.025 if initial else 0.0,.35)
 
 func _copy_invitation() -> void:
 	var address: String = network.local_address

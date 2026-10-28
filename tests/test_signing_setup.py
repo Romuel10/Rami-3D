@@ -42,7 +42,7 @@ for match in re.finditer(r'^      - name: ([^\n]+)\n(.*?)(?=^      - name: |\Z)'
         if value: step[key]=value.group(1)
     program=re.search(r'^        run: \|\n((?:          [^\n]*\n|\n)+)',block,re.M)
     if program: step['run']=textwrap.dedent(program.group(1))
-    step['env']=dict(re.findall(r'^          (ANDROID_[A-Z0-9_]+): ([^\n]+)',block,re.M))
+    step['env']=dict(re.findall(r'^          ([A-Z][A-Z0-9_]+): ([^\n]+)',block,re.M))
     steps.append(step)
 for step in steps:
     if 'run' in step:
@@ -59,10 +59,23 @@ signing=next(s for s in steps if s.get('id')=='signing')
 check(len(signing['env'])==4,'All four signing secrets are protected')
 for expression in signing['env'].values():
     check("github.ref == 'refs/heads/main'" in expression and "github.event_name != 'pull_request'" in expression,'Protected secret context')
-guard=next(s for s in steps if s['name']=='Require durable signing before publication')
+guard=next(s for s in steps if s['name']=='Explain test-only APK availability')
 publish=next(s for s in steps if s['name']=='Publish version if it does not already exist')
-check("publishable != 'true'" in guard['if'] and 'exit 1' in guard['run'],'Missing-secret publication guard')
-check("publishable == 'true'" in publish['if'],'Publishing requires stable signing')
+check("publishable != 'true'" in guard['if'],'Test-only explanation appears without durable signing')
+check('::error::' not in guard['run'],'Missing signing is not reported as an APK build error')
+check("publishable == 'true'" in publish['if'],'Publishing still requires stable signing')
+upload=next(s for s in steps if s['name']=='Upload downloadable build artifacts')
+check(upload.get('id')=='apk_artifact' and guard['env'].get('RAMI_APK_ARTIFACT_URL')=='${{ steps.apk_artifact.outputs.artifact-url }}','Summary receives the actual uploaded artifact URL')
+with tempfile.TemporaryDirectory(prefix='rami-artifact-summary-') as raw:
+    summary=Path(raw)/'summary.md'
+    environment=os.environ.copy()
+    environment.update({'GITHUB_STEP_SUMMARY':str(summary),'GITHUB_SERVER_URL':'https://github.com','GITHUB_REPOSITORY':'Romuel10/Rami-3D','GITHUB_RUN_ID':'123','RAMI_APK_ARTIFACT_URL':'https://github.com/Romuel10/Rami-3D/actions/runs/123/artifacts/456'})
+    explained=subprocess.run(['bash','-euo','pipefail','-c',guard['run']],env=environment,capture_output=True,text=True)
+    check(explained.returncode==0,'Successful test build stays successful without release signing')
+    report=summary.read_text()
+    check('https://github.com/Romuel10/Rami-3D/actions/runs/123' in report and 'rami-3d.apk' in report,'Summary links the correct build and APK file')
+    check('https://github.com/Romuel10/Rami-3D/actions/runs/123/artifacts/456' in report,'Summary offers a direct link to the real APK artifact')
+    check('ZIP ne s’installe pas' in report and 'autre clé' in report,'Summary explains extraction and update-signature limitation')
 
 with tempfile.TemporaryDirectory(prefix='rami-signing-tests-') as raw:
     temporary=Path(raw); key=temporary/'private/key.jks'

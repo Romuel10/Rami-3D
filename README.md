@@ -2,6 +2,17 @@
 
 Jeu Android de rami en français : une table et des cartes en 3D, un mode solo contre 1 à 3 ordinateurs, et des parties privées à 2–4 joueurs où chacun utilise son téléphone. Projet réalisé avec Godot 4.6.3, sans publicité, compte ni achat intégré.
 
+## Table et cartes plus réalistes — version 0.6.0
+
+- **Table physique** : feutre texturé, plateau en bois, rebord rembourré, coutures et ombres.
+- **Adversaires autour de la table** : places en profondeur, cartes dressées en éventail et mains/manches visibles. Seuls les dos des cartes adverses sont affichés.
+- **Cartes en carton** : chants biseautés, papier mat, grain léger, dos gravé et figures illustrées. Les cartes du joueur gardent leur grande taille et leur sélection tactile.
+- **Téléchargement corrigé** : sans clé durable configurée, le workflow réussit ses tests et sa compilation, puis propose l’APK dans **Artifacts**. L’absence de clé ne marque plus la compilation en échec. Le résumé de l’exécution contient le lien de téléchargement.
+
+Dans **Actions → Android APK → dernière compilation réussie**, ouvrir **Artifacts**, télécharger l’archive `rami-android-0.6.0-…`, la décompresser et ouvrir `rami-3d.apk` sur le téléphone. Le ZIP ne s’installe pas directement. La publication dans **Releases** nécessite toujours la [clé de signature durable](docs/SIGNING.md).
+
+Les rendus et le picking sont vérifiés en 1440×900 et 2400×1080. Les performances sur les téléphones physiques restent à tester. [Détails du rendu et des vérifications](docs/REALISM-0.6.0.md).
+
 ## Tri en duel — version 0.5.0
 
 Le **Tri** est maintenant un vrai duel de cartes, contre l’ordinateur ou un ami sur un autre téléphone. Depuis l’accueil, choisir **Jouer au Tri**, puis **6 cartes** (objectif **2 tris**) ou **12 cartes** (objectif **3 tris**).

@@ -107,7 +107,7 @@ func _run() -> void:
 	view.melds.push_front({"cards":["1:S:3", "1:S:4", "1:S:5"], "owner":1})
 	app._network_game_updated(view.duplicate(true))
 	_check(seven.get_meta("meld_index") == 1 and seven.tapped.get_connections().size() == 1, "reused meld updates its index with exactly one input connection")
-	_check(app._view_cards["card:1:S:3"].position.is_equal_approx(Vector3(0, 0.45, -4.5)), "new public opponent card enters from the far table edge")
+	_check(app._view_cards["card:1:S:3"].position.is_equal_approx(app._opponent_position(1)), "new public opponent card enters from its owner’s seat")
 	await _settled()
 
 	# Rapid network updates interrupt an in-flight draw with a discard.

@@ -1,58 +1,34 @@
 Rami Salon 3D — local Android TEST build
-Version: 0.5.0 (versionCode 6)
-Build verified UTC: 2026-10-28 16:45:57
+Version: 0.6.0 (versionCode 7)
+Build verified UTC: 2026-10-28 17:29:07
 Godot 4.6.3 / Android SDK build-tools 36.0.0 / Java 21
 Package: fr.ramisalon.jeu
 Android minimum: 7.0 (API 24); target SDK: 36
 Architectures: ARM64-v8a, armeabi-v7a
 Orientation: landscape; immersive fullscreen flag verified in assets/_cl_
-Permissions: INTERNET, ACCESS_NETWORK_STATE, ACCESS_WIFI_STATE
-APK project.binary verified: version 0.5.0, canvas_items, expand
-Tri duel rules (6/12 cards, hidden tris, sorting), tutorial, coach, music, network/session and card scripts present in APK.
+Permissions include INTERNET; existing network/Wi-Fi configuration retained.
+Actual APK project.binary: version 0.6.0, canvas_items, expand, landscape verified.
+Realistic table_scene, new physical card art/materials, main scene, private Tri/rummy rules,
+network/session, tutorial, sorting exercise and music scripts verified inside APK.
 Three imported music streams verified in APK.
-Signing: retained LOCAL DEBUG key; debuggable=true; test artifact only.
+Signing: retained LOCAL DEBUG key; test artifact only.
 Certificate SHA256: d1eb528bce26ecf9bde8d80477e7be6ffb73329e1ab805475f1d979bf59e2e5d
-APK Signature Schemes v2 + v3 verified; ZIP entries CRC verified.
+APK Signature Schemes v2 + v3 verified; every ZIP entry CRC verified.
 APK alignment: 4-byte archive + 16KB native-library alignment verified.
-Godot export: exit 0; no script errors or warnings.
-The export-only check initially reported no ADB daemon; daemon was started and all APK verification checks passed.
-APK: builds/rami-3d-v0.5.0-test.apk
-APK size: 58630043 bytes
-APK SHA256: b80237cd65bba77dccfe807c2294b4ebabfe2e444b05a4af293d56e7c0ba9eb8
-This local key differs from previous GitHub Actions temporary signatures.
-It cannot update an APK signed with another certificate; preserve any needed data before replacing an older test installation.
-Protected version publication requires the durable GitHub Actions signing secrets described in docs/SIGNING.md.
+Godot export: exit 0; no script errors or warnings. ADB daemon started before export.
+APK: builds/rami-3d-v0.6.0-test.apk
+APK size: 58642488 bytes
+APK SHA256: b441009ba8d58af1b93aac9a71d2de8307d7e689aec7f8870a0f1624a60164c7
+Local source hashes checked unchanged across export before verification.
+This local key differs from GitHub Actions temporary test signatures; Android will not
+update an application signed with another certificate. Uninstalling erases local saves.
+Without durable GitHub Actions signing secrets, successful CI builds upload test artifacts
+and skip release publication with an explicit download link; see docs/SIGNING.md.
 Each CI build produces its own build record and checksums; this file records the local test APK only.
 Execution on a physical Android device: not tested in this environment.
 No Internet host was deployed or preconfigured; the user-provided server endpoint is still required.
 
-Source hashes at export (45 runtime source, module and asset files):
-62ef96aa1038afe048366f0ae4aefa8472f7f8850f051d9a69389addc56a4877  project.godot
-feea0ebe6419ac3f84e889ab0f44e2e4d3dfe3df87a55a8323655f5b10837903  main.tscn
-b9c7be4e901302dccd1f2cf62ba810621f65749b0895e27390064494c3715086  export_presets.cfg
-229f2e671b40b86de78c6d65b83d1ecc8269097d2e19125cf20ce7e6051ff9f9  server/server.gd
-52171681a4e0e75a99a9033f646980ad456196cdf92b704d03cb9f81ec3bf51d  scripts/beginner_coach.gd
-ee4556cc3c0e7b29e3be28fbc659dad4607524fbb20ab9fc41379713fd8e78a6  scripts/card_3d.gd
-2b8648f2efee2e14d346e270e3738286f5c30993671f2525a504b4df7eb9b17d  scripts/invitation.gd
-a83a5c0301bd91d918109b2d005266c75704b49e4d472e488d045c79e66eabc2  scripts/main.gd
-2bcf8d84614edd8e1fa94e4cfed81f9ba891dc556a9987079022a64969a44b93  scripts/music_manager.gd
-22d86d2d6997ffc4b980a006426b5911418219288e8df584f0e772ba6b35795c  scripts/network_manager.gd
-c561577ebba68b1ed61619cfc918aa8c1222fa03223419b7a541d77eee505dce  scripts/rami_engine.gd
-ca0926f24bd2866d9a1d32dd2da08cd4182003cfb1f41f96d9e8ef6e4e10557a  scripts/solo_store.gd
-3bfb05a9f19eb8f30a76f2887f91b8a636567a76b28a81631ebb0323d5543217  scripts/sorting_challenge.gd
-6c70e102e62cdc1e3eabdc300824cee0b596cb58c16ef450a40d77b26d0e183d  scripts/sound_effects.gd
-788134862ef4b53bbfa4a30a246963ca53f8bd6a54b3ce4ff04b05b5d6130762  scripts/tutorial_practice.gd
-4bcf5d547158411e41a5013088311c9c22a21e375c07b2306860f1db47bbae3f  scripts/beginner_coach.gd.uid
-db2c270e77be30858ccc8ac1a1da7d48e9fc0d9149cc2e0bbde92706ff6d1b5c  scripts/card_3d.gd.uid
-b3ca4543653463f8e17061ecfc1f6e610a0ac31f1e4d3d82fe90f0b3081b4852  scripts/invitation.gd.uid
-512f8baa8aa396c23d94abc1d7882945f40fd664ed14222f9f54be46fa8c3ed6  scripts/main.gd.uid
-cffb7c095ae2857264128456741e22d9834ceb71a1d60f2b83c197418abb420b  scripts/music_manager.gd.uid
-10f60b14dad5f537902dd4171d2c77cd1d0958b9ee07b774e6032f5a2d6ec43b  scripts/network_manager.gd.uid
-ca070a0bffa55aa01f5855368c6e774f44d1bd9e0557ac8841471def750aa53b  scripts/rami_engine.gd.uid
-54cafe5d5c214158f6c1db606ba75eb6ff9324ddea240124a44716fc139483ad  scripts/solo_store.gd.uid
-3ecb2f29ab39ad01fbc870b86a7e1c867f8c77d98b0eaddb6577cde5062b8042  scripts/sorting_challenge.gd.uid
-dd9280c5beb29ad7844a2776117f056d1840ed4518a0baf7ede5639acc2200d6  scripts/sound_effects.gd.uid
-a62b443e8f5c479f12620ad635712f9a3a0eb92e7db69fe63b12931b7effd2e4  scripts/tutorial_practice.gd.uid
+Source hashes at export (47 runtime source, module and asset files):
 63d3ba759d12804c5b31a9d5940d855c1820d1f5999e6b0872eb1c7ff045fbc9  assets/LICENSE-DejaVu.txt
 075f91382875da1c4b491f1facf2586f55448705133264d98ce15cab6211b125  assets/LICENSE-Noto.txt
 94d4b78643f99d7cfa872145b38da578299f401405ca5cba66a5c95bf13933b0  assets/LICENSE-OpenSans.txt
@@ -72,3 +48,31 @@ f92a7788338f46c7644004c364b21e683a65f3402d807c24daa96863f2aef4f1  assets/sans.tt
 04d9fc75d5d6276fd8ed6b2bc35b8298c049b2492fe17ba2e8116c9313bd8d8f  assets/serif.ttf.import
 57f73e11f51999432bf7ab22ce55b6f945d5eca1bf824404cfa9ec2e3718c84e  assets/symbols.ttf
 ec78b76aaf481789e4a28ddb8131dbd398eb55a5166f6e94963a80502eb98a4b  assets/symbols.ttf.import
+b0bf78641400a2a1697ebed7eb3814d76ea63893965b25f0a9081672ba61f264  export_presets.cfg
+feea0ebe6419ac3f84e889ab0f44e2e4d3dfe3df87a55a8323655f5b10837903  main.tscn
+147f98d40e077f77efdf06980dcdfee8c4fa03ffb17768ae1cd841a96d167d52  project.godot
+52171681a4e0e75a99a9033f646980ad456196cdf92b704d03cb9f81ec3bf51d  scripts/beginner_coach.gd
+4bcf5d547158411e41a5013088311c9c22a21e375c07b2306860f1db47bbae3f  scripts/beginner_coach.gd.uid
+a892a26ff1f8cd7ac1a1e1c6132a3057bd6e4030f5147775630e8ba103d5cbf3  scripts/card_3d.gd
+db2c270e77be30858ccc8ac1a1da7d48e9fc0d9149cc2e0bbde92706ff6d1b5c  scripts/card_3d.gd.uid
+2b8648f2efee2e14d346e270e3738286f5c30993671f2525a504b4df7eb9b17d  scripts/invitation.gd
+b3ca4543653463f8e17061ecfc1f6e610a0ac31f1e4d3d82fe90f0b3081b4852  scripts/invitation.gd.uid
+20e02371ce4fb6009cdf971956d49ee5a5756d55faaefb948ed285cdd20846fa  scripts/main.gd
+512f8baa8aa396c23d94abc1d7882945f40fd664ed14222f9f54be46fa8c3ed6  scripts/main.gd.uid
+2bcf8d84614edd8e1fa94e4cfed81f9ba891dc556a9987079022a64969a44b93  scripts/music_manager.gd
+cffb7c095ae2857264128456741e22d9834ceb71a1d60f2b83c197418abb420b  scripts/music_manager.gd.uid
+22d86d2d6997ffc4b980a006426b5911418219288e8df584f0e772ba6b35795c  scripts/network_manager.gd
+10f60b14dad5f537902dd4171d2c77cd1d0958b9ee07b774e6032f5a2d6ec43b  scripts/network_manager.gd.uid
+c561577ebba68b1ed61619cfc918aa8c1222fa03223419b7a541d77eee505dce  scripts/rami_engine.gd
+ca070a0bffa55aa01f5855368c6e774f44d1bd9e0557ac8841471def750aa53b  scripts/rami_engine.gd.uid
+ca0926f24bd2866d9a1d32dd2da08cd4182003cfb1f41f96d9e8ef6e4e10557a  scripts/solo_store.gd
+54cafe5d5c214158f6c1db606ba75eb6ff9324ddea240124a44716fc139483ad  scripts/solo_store.gd.uid
+3bfb05a9f19eb8f30a76f2887f91b8a636567a76b28a81631ebb0323d5543217  scripts/sorting_challenge.gd
+3ecb2f29ab39ad01fbc870b86a7e1c867f8c77d98b0eaddb6577cde5062b8042  scripts/sorting_challenge.gd.uid
+6c70e102e62cdc1e3eabdc300824cee0b596cb58c16ef450a40d77b26d0e183d  scripts/sound_effects.gd
+dd9280c5beb29ad7844a2776117f056d1840ed4518a0baf7ede5639acc2200d6  scripts/sound_effects.gd.uid
+eefdb927b6bbcc1cc214e7668b07d89f22238316c6778d3c86a96e75849063bd  scripts/table_scene.gd
+394e24d7ac4766546b9d72faa7603a9884ab0630190055322c7ccde77706adf4  scripts/table_scene.gd.uid
+788134862ef4b53bbfa4a30a246963ca53f8bd6a54b3ce4ff04b05b5d6130762  scripts/tutorial_practice.gd
+a62b443e8f5c479f12620ad635712f9a3a0eb92e7db69fe63b12931b7effd2e4  scripts/tutorial_practice.gd.uid
+229f2e671b40b86de78c6d65b83d1ecc8269097d2e19125cf20ce7e6051ff9f9  server/server.gd
