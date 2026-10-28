@@ -1,5 +1,8 @@
 Rami Salon 3D — table et livraison Android 0.6.0
 
+GitHub Actions 40736372281 : SUCCESS. Tous les tests/rendus, export et
+upload de l’artefact rami-android-0.6.0-10 ont réussi.
+
 Vérifications locales sous Linux/Godot 4.6.3 :
 - Table réaliste : 447 contrôles, matériaux texturés, trois places en
   profondeur, cartes adverses dressées et privées, décor sans collision,

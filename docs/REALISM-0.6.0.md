@@ -16,6 +16,8 @@ La version 0.6.0 affiche une compilation réussie lorsque les tests, l’export,
 
 ## Vérifications
 
+La [compilation Android 40736372281](https://github.com/Romuel10/Rami-3D/actions/runs/40736372281) est terminée avec le statut **success**. Tests, rendus, export et upload ont réussi. L’[archive APK 0.6.0](https://github.com/Romuel10/Rami-3D/actions/runs/40736372281/artifacts/12836114444) est disponible ; la publication dans Releases a été ignorée comme prévu en l’absence de clé durable.
+
 `tests/test_table_realism.gd` contrôle les matériaux texturés, les places distinctes, la profondeur, les dos privés dressés, l’absence de collisions décoratives, la conservation des instances et le changement de place entre hôte et client. En rendu 1440×900 et 2400×1080, les 13 cartes du joueur restent contenues dans l’écran, hautes de plus de 200 pixels logiques, séparées des boutons et sélectionnables par leurs coins de valeur.
 
 Les suites historiques vérifient aussi les gestes réels, les nouvelles destinations d’animation, le Tri, les sauvegardes, les forfaits et les commandes de l’interface. Le workflow Android exécute ces suites avant l’export.
