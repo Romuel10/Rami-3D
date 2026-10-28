@@ -51,7 +51,9 @@ func set_selected(value: bool, lift_paper: bool = true) -> void:
 	if _lift_tween and _lift_tween.is_valid():
 		_lift_tween.kill()
 	var target := REST_HEIGHT + (SELECTED_LIFT if value and lift_paper else 0.0)
-	if is_equal_approx(_visual.position.y, target):
+	if get_meta("reduced_motion",false):
+		_set_paper_height(target)
+	elif is_equal_approx(_visual.position.y, target):
 		_set_paper_height(target)
 	elif is_inside_tree():
 		_lift_tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
@@ -65,6 +67,10 @@ func _set_paper_height(height: float) -> void:
 	_area.position.y = height
 
 func move_to(target: Transform3D, seconds: float = 0.32, delay: float = 0.0, arc: float = 0.0) -> void:
+	if get_meta("reduced_motion",false):
+		seconds = 0.0
+		delay = 0.0
+		arc = 0.0
 	# A repeated network snapshot must not restart a flight already in progress.
 	if seconds > 0.0 and is_moving() and motion_target.is_equal_approx(target):
 		return

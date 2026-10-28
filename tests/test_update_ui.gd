@@ -41,7 +41,7 @@ func _run() -> void:
 	_check(not app.beginner_enabled, "beginner setting updates through actual control")
 	_press("C’est compris")
 	_check(app.overlay.get_child_count() == 0 and app.game_mode == "menu", "lesson closes without changing screen")
-	_press("Je débute : apprendre le rami")
+	_press("Lire le guide complet")
 	_check(not _find_type(app.overlay, "CheckButton").button_pressed, "lesson overview reflects saved beginner choice")
 	_press("C’est compris")
 
@@ -139,7 +139,7 @@ func _run() -> void:
 	app._network_game_updated(remote_view.duplicate(true))
 	_check(app.overlay.get_child_count() == 0 and not app.snapshot.get("paused", false), "fresh online state closes reconnect dialog")
 	_press("Accueil")
-	_press("Quitter la partie")
+	_press("Abandonner la partie")
 
 	_press("Défi de tri   →")
 	var challenge = _find_sorting()
@@ -157,7 +157,7 @@ func _run() -> void:
 	_press("Défausser →")
 	_check(app.busy, "opponent thinking delay is pending")
 	_press("Accueil")
-	_press("Quitter la partie")
+	_press("Abandonner la partie")
 	_press("Défi de tri   →")
 	challenge = _find_sorting()
 	var sorting_hand: Array = challenge.cards.duplicate()

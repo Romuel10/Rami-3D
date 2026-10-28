@@ -37,7 +37,7 @@ func start_game(names: Array, seed_value: int = 0, rounds: int = 1) -> Dictionar
 	var players: Array = []
 	for i in range(names.size()):
 		var player_name := str(names[i]).strip_edges().substr(0, 24)
-		players.append({"name": player_name if not player_name.is_empty() else "Joueur %d" % (i + 1), "hand": [], "opened": false})
+		players.append({"name": player_name if not player_name.is_empty() else "Joueur %d" % (i + 1), "hand": [], "opened": false, "forfeited": false})
 	for _round in range(13):
 		for player in players:
 			player.hand.append(deck.pop_back())
@@ -46,6 +46,9 @@ func start_game(names: Array, seed_value: int = 0, rounds: int = 1) -> Dictionar
 	state["session_id"] = "%x%x" % [_rng.randi(), _rng.randi()]
 	state["revision"] = 0
 	state["last_action"] = {}
+	state["win_by_forfeit"] = false
+	state["end_reason"] = ""
+	state["forfeit_winners"] = []
 	state["match"] = {"round":1, "length":rounds if rounds in [1,3,5] else 1, "totals":[], "results":[]}
 	for _name in names:
 		state.match.totals.append(0)
@@ -67,6 +70,8 @@ func _apply_checked(player_index: int, action: Dictionary) -> Dictionary:
 		return _fail("Joueur inconnu.")
 	if state.winner >= 0:
 		return _fail("La manche est terminée.")
+	if bool(state.players[player_index].get("forfeited", false)):
+		return _fail("Vous avez abandonné cette partie.")
 	if state.turn != player_index:
 		return _fail("Ce n'est pas votre tour.")
 	var kind = action.get("type", "")
@@ -92,8 +97,8 @@ func view_for(player_index: int) -> Dictionary:
 		return {}
 	var players: Array = []
 	for player in state.players:
-		players.append({"name": player.name, "count": player.hand.size(), "opened": player.opened})
-	return {"players": players, "hand": state.players[player_index].hand.duplicate() if player_index >= 0 and player_index < state.players.size() else [], "deck_count": state.deck.size(), "discard_top": state.discard.back() if not state.discard.is_empty() else "", "melds": state.melds.duplicate(true), "turn": state.turn, "phase": state.phase, "winner": state.winner, "log": state.log, "turn_count": state.turn_count, "revision":state.get("revision",0), "last_action":state.get("last_action",{}).duplicate(true), "session_id":state.get("session_id",""), "match":state.get("match",{}).duplicate(true)}
+		players.append({"name": player.name, "count": player.hand.size(), "opened": player.opened, "forfeited":bool(player.get("forfeited",false))})
+	return {"players": players, "hand": state.players[player_index].hand.duplicate() if player_index >= 0 and player_index < state.players.size() else [], "deck_count": state.deck.size(), "discard_top": state.discard.back() if not state.discard.is_empty() else "", "melds": state.melds.duplicate(true), "turn": state.turn, "phase": state.phase, "winner": state.winner, "log": state.log, "turn_count": state.turn_count, "revision":state.get("revision",0), "last_action":state.get("last_action",{}).duplicate(true), "session_id":state.get("session_id",""), "match":state.get("match",{}).duplicate(true), "forfeited":_forfeited_indices(), "end_reason":state.get("end_reason",""), "win_by_forfeit":state.get("win_by_forfeit",false), "match_result":match_result()}
 
 func _draw(index: int, action: Dictionary) -> Dictionary:
 	if state.phase != "draw":
@@ -182,11 +187,77 @@ func _discard(index: int, action: Dictionary) -> Dictionary:
 		state.winner = index
 		state.log = "%s remporte la manche !" % state.players[index].name
 	else:
-		state.turn = (index + 1) % state.players.size()
+		state.turn = _next_active_player(index)
 		state.phase = "draw"
 		state.turn_count += 1
 		state.log = "Au tour de %s : piochez une carte." % state.players[state.turn].name
 	return _ok()
+
+func forfeit_player(index: int, reason: String = "abandon", finish_match: bool = false) -> Dictionary:
+	if state.is_empty(): return _fail("Aucune partie en cours.")
+	if index < 0 or index >= state.players.size(): return _fail("Joueur inconnu.")
+	if int(state.winner) >= 0: return _fail("La manche est déjà terminée.")
+	if bool(state.players[index].get("forfeited",false)): return _fail("Ce joueur a déjà abandonné.")
+	state.players[index]["forfeited"] = true
+	var remaining: Array = []
+	for i in range(state.players.size()):
+		if not bool(state.players[i].get("forfeited",false)): remaining.append(i)
+	state["revision"] = int(state.get("revision",0)) + 1
+	state["last_action"] = {"type":"forfeit","player":index,"reason":reason}
+	if remaining.size() == 1 or finish_match:
+		state["winner"] = int(remaining[0])
+		state["win_by_forfeit"] = true
+		state["end_reason"] = reason if not reason.is_empty() else "abandon"
+		state["forfeit_winners"] = remaining.duplicate()
+		state.log = "%s abandonne. %s remporte le match par forfait." % [state.players[index].name, state.players[state.winner].name] if remaining.size() == 1 else "%s abandonne. Les autres joueurs gagnent par forfait." % state.players[index].name
+		_record_round()
+	else:
+		if int(state.turn) == index:
+			state.turn = _next_active_player(index)
+			state.phase = "draw"
+			state.turn_count += 1
+		state.log = "%s abandonne ; les autres joueurs continuent." % state.players[index].name
+	return _ok()
+
+func _forfeited_indices() -> Array:
+	var result: Array = []
+	if state.is_empty(): return result
+	for i in range(state.players.size()):
+		if bool(state.players[i].get("forfeited",false)): result.append(i)
+	return result
+
+func _next_active_player(after: int) -> int:
+	for offset in range(1,state.players.size()+1):
+		var index: int = (after+offset) % state.players.size()
+		if not bool(state.players[index].get("forfeited",false)): return index
+	return after
+
+func match_result() -> Dictionary:
+	var result := {"finished":false,"winners":[],"forfeit":false,"reason":"","round_finished":false,"round_winner":-1}
+	if state.is_empty(): return result
+	result.round_finished = int(state.get("winner",-1)) >= 0
+	result.round_winner = int(state.get("winner",-1))
+	if bool(state.get("win_by_forfeit",false)):
+		result.finished = true
+		result.forfeit = true
+		result.reason = str(state.get("end_reason","abandon"))
+		result.winners = state.get("forfeit_winners",[state.winner]).duplicate()
+		return result
+	var scores: Dictionary = state.get("match",{})
+	if not result.round_finished or int(scores.get("round",1)) < int(scores.get("length",1)):
+		return result
+	result.finished = true
+	var totals: Array = scores.get("totals",[])
+	var best := 2147483647
+	for i in range(state.players.size()):
+		if state.players[i].get("forfeited",false): continue
+		var total: int = int(totals[i]) if i < totals.size() else 0
+		if total < best:
+			best = total
+			result.winners = [i]
+		elif total == best:
+			result.winners.append(i)
+	return result
 
 func _validate_meld(cards: Array) -> Dictionary:
 	if cards.size() < 3 or cards.size() > 13:
@@ -262,88 +333,157 @@ func _suggest_for_hand(hand: Array, opened: bool) -> Array:
 	var candidates := _candidates(hand)
 	if candidates.is_empty():
 		return []
-	# Reachable masks choose disjoint combinations. For the same cards, retain
-	# the arrangement with the highest opening value (ace/joker ambiguity).
-	var reachable: Dictionary = {0: {"points": 0, "groups": []}}
-	var best_score := 0
-	var best_groups: Array = []
+	# Partition a used-card mask around its lowest card. Every partition has
+	# exactly one group containing that card, so this avoids exploring every
+	# permutation of the same disjoint groups.
 	var full_mask: int = (1 << hand.size()) - 1
-	for mask in range(full_mask):
-		if not reachable.has(mask):
-			continue
-		var current: Dictionary = reachable[mask]
-		for candidate in candidates:
-			if mask & candidate.mask:
-				continue
-			var new_mask: int = mask | candidate.mask
-			if new_mask == full_mask:
-				continue
-			var points: int = current.points + candidate.points
-			if reachable.has(new_mask) and reachable[new_mask].points >= points:
-				continue
-			var groups: Array = current.groups.duplicate()
-			groups.append(candidate.cards)
-			reachable[new_mask] = {"points": points, "groups": groups}
-			if not opened and points < 30:
-				continue
-			var score := 0
-			for i in range(hand.size()):
-				if new_mask & (1 << i):
-					score += 100 + int(card_info(hand[i]).points)
-			if score > best_score:
-				best_score = score
-				best_groups = groups
-	return best_groups
+	var by_lowest: Dictionary = {}
+	var by_mask: Dictionary = {}
+	var card_weights: Array = []
+	var all_score := 0
+	var minimum_weight := 2147483647
+	for id in hand:
+		var weight := 100 + int(card_info(id).points)
+		card_weights.append(weight)
+		all_score += weight
+		minimum_weight = mini(minimum_weight,weight)
+	var usable_mask := 0
+	for candidate in candidates: usable_mask |= int(candidate.mask)
+	var upper_score := 0
+	for i in range(hand.size()):
+		if usable_mask & (1 << i): upper_score += int(card_weights[i])
+	if usable_mask == full_mask: upper_score = all_score-minimum_weight
+	# A single long run can already attain the provable optimum, especially
+	# joker-rich hands. Return it before attempting any group partitions.
+	for candidate in candidates:
+		if not opened and int(candidate.points) < 30: continue
+		var score := 0
+		for i in range(hand.size()):
+			if candidate.mask & (1 << i): score += int(card_weights[i])
+		if score == upper_score: return [candidate.cards]
+	for candidate in candidates:
+		by_mask[candidate.mask] = candidate
+		for i in range(hand.size()):
+			var bit := 1 << i
+			if candidate.mask & bit:
+				if not by_lowest.has(bit): by_lowest[bit] = []
+				by_lowest[bit].append(candidate)
+	for bucket in by_lowest.values():
+		bucket.sort_custom(func(a,b): return int(a.mask) < int(b.mask))
+	var points := PackedInt32Array()
+	var chosen := PackedInt32Array()
+	var group_count := PackedInt32Array()
+	var scores := PackedInt32Array()
+	points.resize(full_mask+1)
+	points.fill(-1)
+	points[0] = 0
+	chosen.resize(full_mask+1)
+	group_count.resize(full_mask+1)
+	scores.resize(full_mask+1)
+	var bit_scores: Dictionary = {}
+	for i in range(hand.size()):
+		bit_scores[1 << i] = card_weights[i]
+	var best_score := 0
+	var best_mask := 0
+	for mask in range(1,full_mask):
+		var bit: int = mask & -mask
+		scores[mask] = scores[mask ^ bit] + int(bit_scores[bit])
+		if mask & usable_mask != mask: continue
+		for candidate in by_lowest.get(bit,[]):
+			var candidate_mask: int = candidate.mask
+			if candidate_mask > mask: break
+			if candidate_mask & mask != candidate_mask: continue
+			var rest: int = mask ^ candidate_mask
+			if points[rest] < 0 or group_count[rest] >= 4: continue
+			var total: int = points[rest] + int(candidate.points)
+			if total > points[mask] or total == points[mask] and group_count[rest]+1 < group_count[mask]:
+				points[mask] = total
+				chosen[mask] = candidate_mask
+				group_count[mask] = group_count[rest]+1
+		if points[mask] >= (0 if opened else 30) and scores[mask] > best_score:
+			best_score = scores[mask]
+			best_mask = mask
+			if best_score == upper_score: break
+	var groups: Array = []
+	while best_mask != 0:
+		var selected_mask: int = chosen[best_mask]
+		groups.append(by_mask[selected_mask].cards)
+		best_mask ^= selected_mask
+	return groups
 
 func _candidates(hand: Array) -> Array:
+	# A physical-card bitmask represents every duplicate copy and every joker
+	# independently. There are at most 16,384 subsets in a real 14-card hand.
+	# Incremental bit fields reject impossible groups before allocating arrays
+	# or calling the complete meld validator; there is no Cartesian expansion.
+	var size := hand.size()
+	if size < 3 or size > 16:
+		return []
+	var card_ranks := PackedInt32Array()
+	var card_suits := PackedInt32Array()
+	var bit_indices: Dictionary = {}
+	for i in range(size):
+		var info := card_info(str(hand[i]))
+		if info.is_empty():
+			return []
+		card_ranks.append(0 if info.joker else (1 << (int(info.rank)-1)))
+		card_suits.append(0 if info.joker else (1 << SUITS.find(info.suit)))
+		bit_indices[1 << i] = i
+	var limit := 1 << size
+	var counts := PackedInt32Array()
+	var jokers := PackedInt32Array()
+	var ranks := PackedInt32Array()
+	var suits := PackedInt32Array()
+	var distinct_ranks := PackedInt32Array()
+	var distinct_suits := PackedInt32Array()
+	counts.resize(limit)
+	jokers.resize(limit)
+	ranks.resize(limit)
+	suits.resize(limit)
+	distinct_ranks.resize(limit)
+	distinct_suits.resize(limit)
 	var candidates: Array = []
-	var keys: Dictionary = {}
-	var jokers: Array = []
-	var by_rank: Dictionary = {}
-	var by_suit: Dictionary = {}
-	for suit in SUITS:
-		by_suit[suit] = {}
-	for id in hand:
-		var info := card_info(id)
-		if info.joker:
-			jokers.append(id)
-		else:
-			if not by_rank.has(info.rank):
-				by_rank[info.rank] = {}
-			if not by_rank[info.rank].has(info.suit):
-				by_rank[info.rank][info.suit] = id
-			if not by_suit[info.suit].has(info.rank):
-				by_suit[info.suit][info.rank] = id
-	for rank in by_rank:
-		var natural_ids: Array = by_rank[rank].values()
-		for suit_mask in range(1, 1 << natural_ids.size()):
-			var group: Array = []
-			for i in range(natural_ids.size()):
-				if suit_mask & (1 << i):
-					group.append(natural_ids[i])
-			for joker_count in range(mini(jokers.size(), group.size()) + 1):
-				var with_jokers := group + jokers.slice(0, joker_count)
-				if with_jokers.size() >= 3 and with_jokers.size() <= 4:
-					_add_candidate(with_jokers, hand, keys, candidates)
-	for suit in SUITS:
-		for high_ace in [false, true]:
-			var lower := 2 if high_ace else 1
-			var upper := 14 if high_ace else 13
-			for first in range(lower, upper - 1):
-				for last in range(first + 2, upper + 1):
-					if last - first + 1 >= hand.size():
-						continue
-					var group: Array = []
-					var missing := 0
-					for rank in range(first, last + 1):
-						var actual_rank := 1 if rank == 14 else rank
-						if by_suit[suit].has(actual_rank):
-							group.append(by_suit[suit][actual_rank])
-						else:
-							missing += 1
-					if missing <= jokers.size() and missing <= group.size():
-						_add_candidate(group + jokers.slice(0, missing), hand, keys, candidates)
+	for mask in range(1, limit):
+		var rest: int = mask & (mask-1)
+		var index: int = int(bit_indices[mask ^ rest])
+		var rank_bit: int = card_ranks[index]
+		var suit_bit: int = card_suits[index]
+		counts[mask] = counts[rest] + 1
+		jokers[mask] = jokers[rest] + (1 if rank_bit == 0 else 0)
+		ranks[mask] = ranks[rest] | rank_bit
+		suits[mask] = suits[rest] | suit_bit
+		distinct_ranks[mask] = distinct_ranks[rest] + (1 if rank_bit != 0 and not (ranks[rest] & rank_bit) else 0)
+		distinct_suits[mask] = distinct_suits[rest] + (1 if suit_bit != 0 and not (suits[rest] & suit_bit) else 0)
+		var length: int = counts[mask]
+		if length < 3 or length >= size or length > 13 or jokers[mask]*2 > length:
+			continue
+		var natural_count: int = length-jokers[mask]
+		var is_set: bool = length <= 4 and distinct_ranks[mask] == 1 and distinct_suits[mask] == natural_count
+		var is_run: bool = distinct_suits[mask] == 1 and distinct_ranks[mask] == natural_count and _run_span_fits(ranks[mask], length)
+		if not is_set and not is_run:
+			continue
+		var cards: Array = []
+		for i in range(size):
+			if mask & (1 << i):
+				cards.append(hand[i])
+		var checked := _validate_meld(cards)
+		if checked.ok:
+			candidates.append({"cards":checked.cards,"points":checked.points,"mask":mask})
 	return candidates
+
+func _run_span_fits(rank_bits: int, length: int) -> bool:
+	var first := 14
+	var last := 0
+	var high_first := 14
+	var high_last := 0
+	for rank in range(1,14):
+		if rank_bits & (1 << (rank-1)):
+			first = mini(first,rank)
+			last = maxi(last,rank)
+			var high_rank := 14 if rank == 1 else rank
+			high_first = mini(high_first,high_rank)
+			high_last = maxi(high_last,high_rank)
+	return last-first+1 <= length or high_last-high_first+1 <= length
 
 func _add_candidate(cards: Array, hand: Array, keys: Dictionary, candidates: Array) -> void:
 	var sorted := cards.duplicate()
@@ -369,7 +509,7 @@ func bot_turn(index: int, difficulty: int = 1) -> void:
 			break
 
 func bot_step(index: int, difficulty: int = 1) -> bool:
-	if state.is_empty() or state.winner >= 0 or state.turn != index:
+	if state.is_empty() or state.winner >= 0 or state.turn != index or index < 0 or index >= state.players.size() or state.players[index].get("forfeited",false):
 		return false
 	if state.phase == "draw":
 		return apply_action(index, {"type":"draw", "source":_bot_draw_source(index, difficulty)}).ok
@@ -495,17 +635,27 @@ func _record_round() -> void:
 		var points := 0
 		for id in state.players[i].hand:
 			points += int(card_info(id).points)
+		if bool(state.get("win_by_forfeit",false)) and i in state.get("forfeit_winners",[]):
+			points = 0
 		penalties.append(points)
 		match_data.totals[i] = int(match_data.totals[i]) + points
-	match_data.results.append({"winner":int(state.winner),"points":penalties})
+	var result := {"winner":int(state.winner),"points":penalties}
+	if bool(state.get("win_by_forfeit",false)):
+		result["forfeit"] = true
+		result["reason"] = str(state.get("end_reason","abandon"))
+		result["winners"] = state.get("forfeit_winners",[]).duplicate()
+	match_data.results.append(result)
 
 func next_round() -> Dictionary:
+	if not state.is_empty() and bool(state.get("win_by_forfeit",false)):
+		return _fail("Ce match est terminé par abandon.")
 	if state.is_empty() or int(state.winner) < 0:
 		return _fail("Terminez cette manche avant la suivante.")
 	var previous: Dictionary = state.get("match",{}).duplicate(true)
 	if previous.is_empty() or int(previous.round) >= int(previous.length):
 		return _fail("Ce match est terminé.")
 	var names: Array = []
+	var eliminated := _forfeited_indices()
 	for player in state.players:
 		names.append(player.name)
 	var session: String = str(state.get("session_id",""))
@@ -515,7 +665,11 @@ func next_round() -> Dictionary:
 	previous.round = int(previous.round) + 1
 	state.match = previous
 	state.session_id = session
+	for index in eliminated:
+		state.players[index].forfeited = true
 	state.turn = (int(previous.round)-1) % names.size()
+	if state.players[state.turn].get("forfeited",false):
+		state.turn = _next_active_player(state.turn)
 	state.log = "Manche %d : %s commence." % [int(previous.round),state.players[state.turn].name]
 	return _ok()
 
@@ -569,6 +723,8 @@ func restore_game(saved: Variant) -> bool:
 	for player in candidate.players:
 		if not player is Dictionary or not player.get("hand") is Array or not player.get("opened") is bool or not player.get("name") is String:
 			return false
+		if not player.get("forfeited",false) is bool: return false
+		player["forfeited"] = bool(player.get("forfeited",false))
 		all_cards.append_array(player.hand)
 	for meld in candidate.melds:
 		if not meld is Dictionary or not meld.get("cards") is Array:
@@ -597,10 +753,34 @@ func restore_game(saved: Variant) -> bool:
 		candidate[field] = int(raw)
 	if candidate.turn < 0 or candidate.turn >= candidate.players.size() or candidate.winner < -1 or candidate.winner >= candidate.players.size() or not candidate.get("phase","") in ["draw","play"]:
 		return false
-	for i in range(candidate.players.size()):
-		if candidate.players[i].hand.is_empty() != (i == candidate.winner): return false
+	if not candidate.get("win_by_forfeit",false) is bool or not candidate.get("end_reason","") is String:
+		return false
+	candidate["win_by_forfeit"] = bool(candidate.get("win_by_forfeit",false))
+	candidate["end_reason"] = str(candidate.get("end_reason",""))
+	var forfeit_winners: Variant = candidate.get("forfeit_winners",[])
+	if not forfeit_winners is Array or not _unique(forfeit_winners): return false
+	var normalized_winners: Array = []
+	for index in forfeit_winners:
+		if not _saved_integer(index,0,candidate.players.size()-1) or candidate.players[int(index)].forfeited: return false
+		normalized_winners.append(int(index))
+	forfeit_winners = normalized_winners
+	candidate["forfeit_winners"] = normalized_winners
+	if candidate.win_by_forfeit:
+		if candidate.winner < 0 or forfeit_winners.is_empty() or not candidate.winner in forfeit_winners or candidate.end_reason.is_empty(): return false
+		var eliminated := 0
+		for player in candidate.players:
+			if player.forfeited: eliminated += 1
+		if eliminated == 0: return false
+		for i in range(candidate.players.size()):
+			if not candidate.players[i].forfeited and not i in forfeit_winners: return false
+	else:
+		if not forfeit_winners.is_empty(): return false
+		for i in range(candidate.players.size()):
+			if candidate.players[i].hand.is_empty() != (i == candidate.winner): return false
+	if candidate.winner >= 0 and candidate.players[candidate.winner].forfeited: return false
+	if candidate.winner < 0 and candidate.players[candidate.turn].forfeited: return false
 	if not candidate.last_action.is_empty():
-		if not _saved_integer(candidate.last_action.get("player"),0,candidate.players.size()-1) or not candidate.last_action.get("type","") in ["draw","meld","extend","discard"]: return false
+		if not _saved_integer(candidate.last_action.get("player"),0,candidate.players.size()-1) or not candidate.last_action.get("type","") in ["draw","meld","extend","discard","forfeit"]: return false
 	var match_data: Variant = candidate.get("match",{})
 	if not match_data is Dictionary or not match_data.get("totals") is Array or match_data.totals.size() != candidate.players.size() or not match_data.get("results") is Array:
 		return false

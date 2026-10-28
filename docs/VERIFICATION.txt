@@ -1,25 +1,38 @@
-Rami Salon 3D — version d’essai 0.2.0
+Rami Salon 3D — corrections 0.4.0
 
 Vérifications sous Linux/Godot 4.6.3 :
-- Moteur : 594 assertions et cinq parties IA terminées.
+- Moteur : 524 contrôles, cinq parties IA terminées.
+- Solveur et forfait : 308 contrôles, doubles exemplaires/jokers,
+  conservation des 108cartes, éliminations et reprise JSON.
 - Partie via l’interface : 59 contrôles.
-- Nouveautés intégrées : 79 contrôles (aide, musique mémorisée,
+- Nouveautés intégrées : 79contrôles (guide, musique mémorisée,
   plein écran, multijoueur et navigation vers le défi de tri).
-- Coach débutant : 46 contrôles, données de la main privée uniquement.
-- Défi de tri : 45 contrôles (trois manches, indices, score et résultat).
-- Musique : 30 contrôles (trois pistes, réglages, fondus, pause, fermeture).
-- Rendu de la main : 164 contrôles en 1440×900 et 2400×1080.
-  Cartes dressées >=249 pixels logiques ; valeurs accessibles ;
-  vrais événements de sélection sans doublon ; levée de 24 pixels.
-- Aspect d’écran : fenêtres 16:10,16:9,20:9 et21:9 sans bandes de ratio.
-- Réseau Wi-Fi et serveur : mains privées, droits de jeu, salons,
-  pause après déconnexion et reprise de session.
+- Coach débutant : 46contrôles, main privée et données publiques.
+- Défi de tri : 45contrôles.
+- Musique : 30contrôles.
+- Animations : 359contrôles.
+- Sauvegarde/difficultés/scores/invitations : 135contrôles.
+- Session réseau : 72contrôles, dont reprise dans un nouveau client.
+- Serveur Internet : suites test_internet.py, test_forfeit_server.py
+  et test_server_restart.py réussies sur de vraies connexions locales.
+  Abandons à 2/3/4joueurs, délai d’absence, redémarrage réel,
+  mains privées et récupération d’une copie de secours vérifiés.
+- Confort : 67contrôles sans rendu et 203avec rendu en 1440×900
+  et 2400×1080 ; 14cartes contenues dans l’écran à 85 % et 105 %.
+- Résultat/abandon via l’interface : 45 contrôles.
+- Main rendue : 166 contrôles en 1440×900 et 2400×1080.
+- Gestes mobiles avec rendu : 61 contrôles.
+- Signature et workflow : 53 contrôles reproductibles.
+- Premier tour guidé : 52contrôles sans rendu et 200avec rendu.
 - Entrées tactiles : toucher/souris émulée dédupliqués.
-- APK : compilation, signature, intégrité ZIP, alignement16Ko,
-  Android7+, ARM32/ARM64, paysage et configuration immersive.
+
+Ces suites sont aussi exécutées par le workflow ; consulter ses
+journaux pour les résultats de chaque compilation.
+Les comptes dépendent des scénarios et ne mesurent pas la couverture.
 
 Limites : aucun téléphone physique ni émulateur Android utilisé ici.
-Le serveur Internet est fourni sans hébergement public.
-Les signatures de test GitHub varient d’une compilation à l’autre.
+Le serveur Internet est fourni sans hébergement public préconfiguré.
+La publication 0.4.0 exige les secrets de signature durable décrits
+dans docs/SIGNING.md. Sans ceux-ci, seul un artefact de test est produit.
 Le rapport android-build-info.txt décrit la compilation locale ;
-chaque version GitHub contient son propre CI-BUILD-INFO.txt et SHA256SUMS.
+chaque compilation Actions contient CI-BUILD-INFO.txt et SHA256SUMS.

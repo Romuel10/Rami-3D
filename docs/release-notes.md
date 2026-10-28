@@ -1,22 +1,18 @@
-# Rami Salon 3D 0.3.0 — le jeu au bout des doigts
+# Rami Salon 3D 0.4.0 — abandons, reprise et apprentissage
 
-- Glisser-déposer pour ranger la main, poser la sélection, compléter et défausser.
-- Effets sonores originaux avec volume indépendant de la musique.
-- Sauvegarde automatique et reprise complète des parties solo, y compris pendant le tour d’un adversaire.
-- Points sélectionnés pour l’ouverture à 30 et surbrillance des compléments possibles.
-- Trois difficultés solo et matchs de 1, 3 ou 5 manches.
-- Classement cumulé, égalités et statistiques personnelles de manches, victoires et pénalités.
-- Mains adverses de dos, actions successives et célébration de fin de manche.
-- Invitation à copier dans le salon puis à coller chez l’ami : aucune adresse à retaper.
+- Abandon volontaire : défaite du joueur qui part et victoire de l’adversaire en duel.
+- À trois ou quatre, élimination du joueur qui part et poursuite pour les autres. Le départ de l’hôte Wi-Fi ferme le salon et donne la victoire aux joueurs restants.
+- Coupure réseau : pause et délai de reconnexion de 60 secondes avant le forfait.
+- Places du salon libérées avant le début ; jeton de reprise conservé sur le téléphone après fermeture du jeu.
+- Sauvegarde optionnelle des salons du serveur Internet, avec copie de secours et restauration validée.
+- Suggestions corrigées pour les doubles exemplaires et les jokers.
+- Gagnant du match calculé au cumul des manches ; égalités et éliminations affichées correctement.
+- Premier tour guidé avec pioche, deux suites, ouverture à 33 points et défausse.
+- Réglages Confort : taille des cartes, ordre des commandes pour les gauchers et désactivation des animations.
+- Publication Android avec signature durable protégée dans les secrets GitHub.
 
-Les animations de distribution, de sélection et de déplacement ajoutées en 0.2.1 sont incluses.
+Les grandes cartes en éventail, le plein écran, les douze leçons, les conseils contextuels, les musiques originales, le défi de tri séparé et les animations des versions précédentes sont inclus.
 
-Les invitations Wi-Fi exigent le même réseau. Les invitations Internet nécessitent un serveur WebSocket accessible : aucun serveur public n’est déployé avec cet APK. Le texte d’invitation se colle dans le jeu ; il n’ouvre pas automatiquement l’application.
+La publication de l’APK 0.4.0 exige une configuration unique de la clé Android : [instructions](SIGNING.md). Sans cette configuration, le workflow propose un APK d’essai dans ses artefacts, puis bloque la publication d’une version signée temporairement. Une ancienne installation signée autrement peut encore nécessiter une réinstallation avec perte des données locales.
 
-Les sauvegardes et statistiques sont locales à l’appareil. Une nouvelle partie remplace la reprise précédente. En fin de manche : figures 10 points, as 11, jokers 20, nombres à leur valeur. Le plus petit cumul gagne le match.
-
-Les tests couvrent le moteur, les réseaux, la reprise, les scores, les difficultés, les sons, les animations et de vrais événements tactiles sur des fenêtres de 1440×900 et 2400×1080. Aucun essai sur téléphone Android physique n’a été effectué dans cet environnement.
-
-L’APK d’essai vise Android 7 ou supérieur, ARM32/ARM64. La signature de test GitHub peut changer d’une compilation à l’autre. Si Android refuse la mise à jour, désinstaller l’ancien APK efface aussi les parties et statistiques locales ; faire ce choix seulement en connaissance de cause.
-
-**SHA256SUMS** et **CI-BUILD-INFO.txt** identifient la compilation. Les demandes de fusion produisent des APK dans les artefacts Actions ; seule la branche principale peut publier une version GitHub.
+Le serveur Internet fourni nécessite toujours votre hébergement et son adresse WSS. Aucune adresse de serveur public n’est préconfigurée. Les essais réseau et de rendu sont réalisés sous Linux ; l’installation et les performances sur les téléphones Android physiques restent à vérifier.

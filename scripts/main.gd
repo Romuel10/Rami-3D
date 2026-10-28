@@ -6,6 +6,7 @@ const NetworkRoom = preload("res://scripts/network_manager.gd")
 const MusicPlayer = preload("res://scripts/music_manager.gd")
 const Coach = preload("res://scripts/beginner_coach.gd")
 const SortingChallenge = preload("res://scripts/sorting_challenge.gd")
+const Practice = preload("res://scripts/tutorial_practice.gd")
 const SoloStore = preload("res://scripts/solo_store.gd")
 const SoundEffects = preload("res://scripts/sound_effects.gd")
 const Invitation = preload("res://scripts/invitation.gd")
@@ -85,6 +86,11 @@ var _drag_selection: Array = []
 var _drag_offset := Vector3.ZERO
 var _last_touch_ms := -1000
 var invitation_input: LineEdit
+var animations_enabled := true
+var hand_scale_factor := 1.0
+var left_handed := false
+var play_buttons: Array = []
+var action_buttons_base: Array = []
 
 func _ready() -> void:
 	get_viewport().physics_object_picking = true
@@ -272,6 +278,7 @@ func _make_interface() -> void:
 	header_status = _label("HORS LIGNE · SANS COMPTE", 13, MUTED, header)
 	header_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_button("Apprendre", _show_rules, header)
+	_button("Confort", _show_comfort_settings, header)
 	music_button = _button("Musique", _show_music_settings, header)
 	fullscreen_button = _button("Plein écran", _toggle_fullscreen, header)
 	_button("Accueil", _confirm_leave, header)
@@ -414,11 +421,14 @@ func _show_menu() -> void:
 	_button("Jouer contre l’ordinateur   →", _start_solo, box, true)
 	_label("02  ·  EN BONNE COMPAGNIE", 13, GOLD, box)
 	_button("Jouer avec des amis   ↗", _open_friends, box)
+	if network.has_saved_session():
+		_button("Retrouver mon salon", _resume_network, box)
 	_label("2 à 4 joueurs · un téléphone par personne", 12, MUTED, box)
 	_label("03  ·  POUR LE PLAISIR DE RANGER", 13, GOLD, box)
 	_button("Défi de tri   →", _start_sorting, box)
 	_label("3 manches · grandes cartes · à votre rythme", 12, MUTED, box)
-	_button("Je débute : apprendre le rami", _show_rules, hero)
+	_button("Je débute : jouer mon premier tour", _start_tutorial, hero)
+	_button("Lire le guide complet", _show_rules, hero)
 	_button("Difficulté, manches et statistiques", _show_solo_settings, hero)
 	var footer := HBoxContainer.new()
 	_place(footer, content, Vector2(68,-72), Vector2(-68,-30), Vector2(0,1), Vector2(1,1))
@@ -493,10 +503,13 @@ func _show_game() -> void:
 	action_row.add_theme_constant_override("separation", 12)
 	_place(action_row, content, Vector2(24,-94), Vector2(-24,-35), Vector2(0,1), Vector2(1,1))
 	_button("Trier ♠", _sort_hand, action_row)
-	_button("Suggestion", _suggest, action_row)
-	_button("Poser", _meld_selected, action_row, true)
-	_button("Compléter", _extend_selected, action_row)
-	_button("Défausser →", _discard_selected, action_row)
+	play_buttons = []
+	play_buttons.append(_button("Suggestion", _suggest, action_row))
+	play_buttons.append(_button("Poser", _meld_selected, action_row, true))
+	play_buttons.append(_button("Compléter", _extend_selected, action_row))
+	play_buttons.append(_button("Défausser →", _discard_selected, action_row))
+	action_buttons_base = action_row.get_children()
+	_apply_comfort()
 
 func _refresh_snapshot() -> void:
 	if game_mode == "solo":
@@ -540,18 +553,22 @@ func _render_snapshot() -> void:
 		var l := _label(("●  " if i == turn else "○  ") + name_text, 17, GOLD if i == turn else INK, column)
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		var count := int(p.get("count", p.get("hand_count", 13)))
-		l = _label(str(count) + " cartes  ·  " + ("ouvert" if p.get("opened", false) else "à ouvrir : 30 pts"), 12, MUTED, column)
+		l = _label("Abandon · éliminé" if p.get("forfeited",false) else str(count) + " cartes  ·  " + ("ouvert" if p.get("opened", false) else "à ouvrir : 30 pts"), 12, MUTED, column)
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var phase: String = snapshot.get("phase", "draw")
-	var can_act: bool = turn == own and not snapshot.get("paused", false) and int(snapshot.get("winner", -1)) < 0
+	var can_act: bool = turn == own and not snapshot.get("paused", false) and int(snapshot.get("winner", -1)) < 0 and own < players.size() and not players[own].get("forfeited",false)
 	for button in draw_buttons:
 		button.disabled = not can_act or phase != "draw"
 	if not draw_buttons.is_empty():
 		draw_buttons[0].text = "↓  Piocher · " + str(snapshot.get("deck_count", 0))
-	for i in range(1, action_row.get_child_count()):
-		action_row.get_child(i).disabled = not can_act or phase != "play"
-	if snapshot.get("paused", false):
-		game_status.text = "Partie en pause · en attente d’un joueur"
+	for button in play_buttons:
+		if is_instance_valid(button): button.disabled = not can_act or phase != "play"
+	if int(snapshot.get("winner",-1)) >= 0:
+		game_status.text = str(_winner_result().title)
+	elif own < players.size() and players[own].get("forfeited",false):
+		game_status.text = "Vous avez abandonné cette partie."
+	elif snapshot.get("paused", false):
+		game_status.text = "Reconnexion en cours · 60 s avant défaite par forfait"
 	elif turn == own:
 		game_status.text = ("Étape 1/3 · prenez une carte" if phase == "draw" else "Étapes 2–3 · posez si possible, puis défaussez") if beginner_enabled else "À vous · " + ("piochez une carte" if phase == "draw" else "posez vos combinaisons, puis défaussez")
 	else:
@@ -632,6 +649,7 @@ func _view_card(id: String, face: bool, parent: Node3D, key: String, zone: Strin
 	else:
 		card = _card(id, face, Vector3.ZERO, parent)
 		card.tapped.connect(_view_card_tapped)
+	card.set_meta("reduced_motion", not animations_enabled)
 	card.set_meta("new_in_view", not existing)
 	card.set_meta("arriving", not existing or card.get_meta("zone", "") != zone)
 	card.set_meta("zone", zone)
@@ -671,6 +689,7 @@ func _card(id: String, face: bool, pos: Vector3, parent: Node = null) -> Node3D:
 		parent = self
 	parent.add_child(card)
 	card.setup(id, face)
+	card.set_meta("reduced_motion", not animations_enabled)
 	card.position = pos
 	card_nodes.append(card)
 	return card
@@ -708,6 +727,11 @@ func _update_hand_status() -> void:
 
 func _my_turn(show_error: bool = true) -> bool:
 	if snapshot.is_empty() or int(snapshot.get("winner", -1)) >= 0:
+		return false
+	var own := int(snapshot.get("your_index",0))
+	var players: Array = snapshot.get("players",[])
+	if own < players.size() and players[own].get("forfeited",false):
+		if show_error: _toast("Vous avez abandonné et ne pouvez plus jouer dans ce match.")
 		return false
 	if snapshot.get("paused", false):
 		if show_error: _toast("Un joueur doit se reconnecter pour continuer.")
@@ -811,39 +835,90 @@ func _run_bots() -> void:
 		_autosave()
 	busy = false
 
+func _winner_result() -> Dictionary:
+	var players: Array = snapshot.get("players",[])
+	var own := int(snapshot.get("your_index",0))
+	var round_winner := int(snapshot.get("winner",-1))
+	var scores: Dictionary = snapshot.get("match",{})
+	var forfeit: bool = bool(snapshot.get("win_by_forfeit",false))
+	var finished: bool = forfeit or (round_winner >= 0 and int(scores.get("round",1)) >= int(scores.get("length",1)))
+	var winners: Array = []
+	var authoritative: Dictionary = snapshot.get("match_result",{})
+	if not authoritative.is_empty():
+		finished = bool(authoritative.get("finished",finished))
+		forfeit = bool(authoritative.get("forfeit",forfeit))
+		if authoritative.get("winners") is Array:
+			for index in authoritative.winners:
+				if index is int or index is float: winners.append(int(index))
+	if finished and winners.is_empty():
+		if forfeit:
+			for index in snapshot.get("forfeit_winners",[round_winner]):
+				if index is int or index is float: winners.append(int(index))
+		else:
+			var best := 2147483647
+			var totals: Array = scores.get("totals",[])
+			for i in range(players.size()):
+				if players[i].get("forfeited",false): continue
+				var total: int = int(totals[i]) if i < totals.size() else (0 if i == round_winner else 1)
+				if total < best:
+					best = total
+					winners = [i]
+				elif total == best: winners.append(i)
+	var names: Array[String] = []
+	for index in winners:
+		if int(index) >= 0 and int(index) < players.size(): names.append(str(players[int(index)].get("name","Joueur")))
+	var title := "Manche remportée" if round_winner == own else "Manche terminée"
+	var body := "Vous remportez cette manche. Le classement du match dépend du total de toutes les manches." if round_winner == own else (str(players[round_winner].get("name","L’adversaire")) + " remporte cette manche." if round_winner >= 0 and round_winner < players.size() else "La manche est terminée.")
+	if finished:
+		if forfeit:
+			title = "Victoire par forfait" if own in winners else "Défaite par abandon"
+			body = ("Vous gagnez : votre adversaire a abandonné." if winners.size() == 1 else "Les joueurs restants sont déclarés gagnants : " + ", ".join(names) + ".") if own in winners else "Votre abandon termine votre participation. " + ", ".join(names) + " remporte(nt) le match."
+		elif winners.size() > 1:
+			title = "Match terminé · ex æquo"
+			body = ", ".join(names) + " partage(nt) la victoire avec le plus petit total de pénalités."
+		else:
+			title = "Match remporté !" if own in winners else "Match terminé"
+			body = "Vous gagnez le match au total des points." if own in winners else ", ".join(names) + " gagne le match au total des points."
+	return {"title":title,"body":body,"winners":winners,"finished":finished,"forfeit":forfeit,"round_winner":round_winner}
+
 func _show_winner() -> void:
-	var winner := int(snapshot.get("winner", -1))
-	var players: Array = snapshot.get("players", [])
+	var winner := int(snapshot.get("winner",-1))
+	var players: Array = snapshot.get("players",[])
 	if winner < 0 or winner >= players.size(): return
-	var key := str(snapshot.get("session_id","")) + ":" + str(snapshot.get("match",{}).get("round",1))
+	var key := str(snapshot.get("session_id","")) + ":" + str(snapshot.get("match",{}).get("round",1)) + ":" + str(snapshot.get("win_by_forfeit",false))
 	if _winner_key == key and overlay_kind == "winner": return
 	_winner_key = key
-	var own := int(snapshot.get("your_index", 0))
-	var box := _modal("Belle partie !" if winner == own else "La manche est terminée", "Vous avez gagné !" if winner == own else str(players[winner].get("name", "L’adversaire")) + " remporte cette manche.")
+	var result := _winner_result()
+	var box := _modal(result.title,result.body)
 	overlay_kind = "winner"
-	var celebration := _label("✦  ✦  ✦",40,GOLD,box)
-	celebration.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var sparkle := celebration.create_tween().set_loops(3)
-	sparkle.tween_property(celebration,"modulate:a",0.35,0.32)
-	sparkle.tween_property(celebration,"modulate:a",1.0,0.32)
+	if int(snapshot.get("your_index",0)) in (result.winners if result.finished else [winner]):
+		var celebration := _label("✦  ✦  ✦",40,GOLD,box)
+		celebration.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		if animations_enabled:
+			var sparkle := celebration.create_tween().set_loops(3)
+			_UI_sparkles.append(sparkle)
+			sparkle.tween_property(celebration,"modulate:a",0.35,0.32)
+			sparkle.tween_property(celebration,"modulate:a",1.0,0.32)
 	var scores: Dictionary = snapshot.get("match",{})
 	if not scores.is_empty():
-		_label("Manche %d / %d · le plus petit total gagne" % [int(scores.round),int(scores.length)], 17, INK, box)
-		var ranking := range(players.size())
+		_label("Manche %d / %d · le plus petit total gagne" % [int(scores.get("round",1)),int(scores.get("length",1))],17,INK,box)
+		var ranking: Array = []
+		for index in range(players.size()):
+			if not players[index].get("forfeited",false): ranking.append(index)
 		ranking.sort_custom(func(a,b): return int(scores.totals[a]) < int(scores.totals[b]))
 		var rank := 1
 		for place in range(ranking.size()):
 			var index: int = ranking[place]
 			if place > 0 and int(scores.totals[index]) != int(scores.totals[ranking[place-1]]): rank = place+1
-			_label("%d. %s · %d points" % [rank, players[index].name, int(scores.totals[index])], 19, GOLD if rank == 1 else INK, box)
-	for i in range(players.size()):
-		_label(str(players[i].get("name", "")) + "  ·  " + str(players[i].get("count",0)) + " cartes restantes", 17, GOLD if i == winner else MUTED, box)
+			_label("%d. %s · %d points" % [rank,players[index].name,int(scores.totals[index])],19,GOLD if index in result.winners else INK,box)
+		for player in players:
+			if player.get("forfeited",false):
+				_label(str(player.name) + " · éliminé par abandon",18,MUTED,box)
 	if game_mode == "solo":
 		SoloStore.record_round(engine.state)
-		if int(scores.get("round",1)) < int(scores.get("length",1)):
-			_button("Manche suivante", _next_round, box, true)
-		_button("Nouvelle partie", _start_solo, box, true)
-	_button("Retour à l’accueil", _leave_to_menu, box)
+		if not result.finished: _button("Manche suivante",_next_round,box,true)
+		_button("Nouvelle partie",_start_solo,box,true)
+	_button("Retour à l’accueil",_leave_to_menu,box)
 
 func _open_friends() -> void:
 	_save_profile()
@@ -946,6 +1021,7 @@ func _lobby_updated(data: Dictionary) -> void:
 	_button("Quitter le salon", _leave_to_menu, lobby_box)
 
 func _network_game_updated(data: Dictionary) -> void:
+	if network.local_player < 0: return
 	if overlay_kind == "connection" or game_mode != "online":
 		_close_overlay()
 	if game_mode != "online":
@@ -956,14 +1032,16 @@ func _network_game_updated(data: Dictionary) -> void:
 	_render_snapshot()
 
 func _connection_changed(connected: bool) -> void:
+	if not connected and game_mode == "online" and int(snapshot.get("winner",-1)) >= 0:
+		return
 	if not connected and (game_mode == "lobby" or game_mode == "online"):
 		if not snapshot.is_empty():
 			snapshot["paused"] = true
 			_render_snapshot()
-		var box := _modal("Connexion interrompue", "Votre main reste privée. Retrouvez le salon ou revenez à l’accueil.")
+		var box := _modal("Connexion interrompue", "La partie vous laisse 60 secondes pour vous reconnecter. Passé ce délai, votre absence vaut abandon. Revenir à l’accueil maintenant compte aussi comme un abandon.")
 		overlay_kind = "connection"
 		_button("Se reconnecter", func(): _close_overlay(); network.reconnect(), box, true)
-		_button("Retour à l’accueil", _leave_to_menu, box)
+		_button("Abandonner la partie", _abandon_to_menu, box)
 
 func _modal(title: String, subtitle: String) -> VBoxContainer:
 	_cancel_drag()
@@ -977,10 +1055,11 @@ func _modal(title: String, subtitle: String) -> VBoxContainer:
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _style(Color("0e2e31"), Color("4a6658"), 22, 28))
 	_place(panel, overlay, Vector2(-340,105), Vector2(340,-38), Vector2(0.5,0), Vector2(0.5,1))
-	dim.modulate.a = 0.0
-	dim.create_tween().tween_property(dim, "modulate:a", 1.0, 0.16)
-	panel.modulate.a = 0.0
-	panel.create_tween().tween_property(panel, "modulate:a", 1.0, 0.20)
+	if animations_enabled:
+		dim.modulate.a = 0.0
+		dim.create_tween().tween_property(dim, "modulate:a", 1.0, 0.16)
+		panel.modulate.a = 0.0
+		panel.create_tween().tween_property(panel, "modulate:a", 1.0, 0.20)
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	panel.add_child(scroll)
@@ -1021,8 +1100,9 @@ func _show_lessons(chapter: int = -1) -> void:
 			var idx := i
 			var button := _button(str(i+1) + ". " + str(lessons[i].get("title", "")), func(): _show_lessons(idx), box)
 			button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		_button("Pratiquer mon premier tour", _start_tutorial, box, true)
 		if game_mode in ["solo", "online"]:
-			_button("Expliquer mon tour actuel", _show_coach, box, true)
+			_button("Expliquer mon tour actuel", _show_coach, box)
 	else:
 		var lesson: Dictionary = lessons[clampi(chapter, 0, lessons.size()-1)]
 		_label(str(chapter+1) + " / " + str(lessons.size()) + " · " + str(lesson.get("title", "")), 23, GOLD, box).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1152,18 +1232,19 @@ func _layout_hand(animate: bool = true, deal: bool = false) -> void:
 		return
 	var size := get_viewport().get_visible_rect().size
 	var ratio := size.x / maxf(1, size.y)
+	var scale_value := HAND_SCALE * hand_scale_factor
 	var available := camera.size * ratio * 0.90
-	var gap := minf(1.60, (available - 1.05*HAND_SCALE) / maxf(1, hand_cards.size()-1))
-	var center_y := -camera.size/2.0 + 1.95 + 1.52*HAND_SCALE/2.0
+	var gap := minf(1.60, (available - 1.05*scale_value) / maxf(1, hand_cards.size()-1))
+	var center_y := -camera.size/2.0 + 1.95 + 1.52*scale_value/2.0
 	for i in range(hand_cards.size()):
 		var card = hand_cards[i]
 		var norm: float = (i - (hand_cards.size()-1)/2.0) / maxf(1, (hand_cards.size()-1)/2.0)
 		var y: float = center_y + 0.28*(1.0-norm*norm)
 		card.set_meta("rest_y", y)
 		var pos := Vector3((i-(hand_cards.size()-1)/2.0)*gap, y + (0.32 if selected.has(card.card_id) else 0.0), -10.0+i*0.018)
-		var basis := (Basis(Vector3.BACK, -norm*0.25) * Basis(Vector3.RIGHT, PI/2.0)).scaled(Vector3.ONE*HAND_SCALE)
+		var basis := (Basis(Vector3.BACK, -norm*0.25) * Basis(Vector3.RIGHT, PI/2.0)).scaled(Vector3.ONE*scale_value)
 		var arriving: bool = card.get_meta("arriving", false)
-		card.move_to(Transform3D(basis, pos), (0.42 if arriving else 0.28) if animate else 0.0, i * 0.045 if deal else 0.0, 0.35 if arriving else 0.08)
+		card.move_to(Transform3D(basis, pos), (0.42 if arriving else 0.28) if animate and animations_enabled else 0.0, i * 0.045 if deal else 0.0, 0.35 if arriving else 0.08)
 		card.set_meta("arriving", false)
 
 func _set_hand_selection(card: Node3D, value: bool) -> void:
@@ -1177,9 +1258,35 @@ func _confirm_leave() -> void:
 	if game_mode == "menu":
 		_close_overlay()
 		return
-	var box := _modal("Quitter cette table ?", "Votre partie solo est sauvegardée automatiquement. Si vous hébergez un salon Wi-Fi, il sera fermé.")
-	_button("Rester à la table", _close_overlay, box, true)
-	_button("Quitter la partie", _leave_to_menu, box)
+	if game_mode in ["sorting","tutorial"]:
+		var exercise := _modal("Quitter cet exercice ?", "Vous pourrez recommencer depuis l’accueil.")
+		_button("Continuer",_close_overlay,exercise,true)
+		_button("Retour à l’accueil",_leave_to_menu,exercise)
+		return
+	if int(snapshot.get("winner",-1)) >= 0:
+		_leave_to_menu()
+		return
+	var message := "Abandonner termine le match : vous perdez et votre adversaire gagne."
+	if game_mode == "online" and network._hosting_locally:
+		message += " Comme vous hébergez le salon Wi-Fi, celui-ci sera fermé et les joueurs restants seront déclarés gagnants."
+	elif game_mode == "online" and snapshot.get("players",[]).size() > 2:
+		message = "Vous serez éliminé du match. Les joueurs restants continueront ; le dernier encore en jeu gagnera."
+	var box := _modal("Abandonner la partie ?",message)
+	_button("Rester à la table",_close_overlay,box,true)
+	if game_mode == "solo":
+		_button("Sauvegarder et revenir à l’accueil",_leave_to_menu,box)
+	_button("Abandonner la partie",_abandon_to_menu,box)
+
+func _abandon_to_menu() -> void:
+	turn_token += 1
+	busy = false
+	if game_mode == "solo" and engine != null and int(engine.state.get("winner",-1)) < 0:
+		engine.forfeit_player(0,"abandon",true)
+		snapshot = engine.view_for(0)
+		snapshot["your_index"] = 0
+		SoloStore.record_round(engine.state)
+		_autosave()
+	_leave_to_menu()
 
 func _leave_to_menu() -> void:
 	_autosave()
@@ -1206,6 +1313,9 @@ func _load_preferences() -> void:
 		effects_volume = clampf(float(cfg.get_value("effects","volume",0.55)),0,1)
 		effects_enabled = bool(cfg.get_value("effects","enabled",true))
 		beginner_enabled = bool(cfg.get_value("help", "beginner", true))
+		animations_enabled = bool(cfg.get_value("comfort","animations",true))
+		hand_scale_factor = clampf(float(cfg.get_value("comfort","hand_scale",1.0)),0.85,1.05)
+		left_handed = bool(cfg.get_value("comfort","left_handed",false))
 		var saved_music: Variant = cfg.get_value("music", "settings", music_settings)
 		if saved_music is Dictionary:
 			music_settings = saved_music
@@ -1221,6 +1331,9 @@ func _save_preferences() -> void:
 	cfg.set_value("solo","rounds",match_length)
 	cfg.set_value("effects","volume",effects_volume)
 	cfg.set_value("effects","enabled",effects_enabled)
+	cfg.set_value("comfort","animations",animations_enabled)
+	cfg.set_value("comfort","hand_scale",hand_scale_factor)
+	cfg.set_value("comfort","left_handed",left_handed)
 	cfg.save("user://preferences.cfg")
 
 func _autosave() -> void:
@@ -1478,3 +1591,74 @@ func _cancel_drag(restore: bool = true) -> void:
 		selected = _drag_selection.duplicate()
 		_layout_hand()
 		for item in hand_cards: item.set_selected(item.card_id in selected,false)
+
+var _UI_sparkles: Array = []
+
+func _show_comfort_settings() -> void:
+	var box := _modal("Votre confort de jeu","Ces réglages sont mémorisés sur ce téléphone.")
+	var motion := CheckButton.new()
+	motion.text = "Animations des cartes et transitions"
+	motion.custom_minimum_size.y = 52
+	motion.button_pressed = animations_enabled
+	motion.toggled.connect(func(value: bool): animations_enabled = value; _apply_comfort(); _save_preferences())
+	box.add_child(motion)
+	var handed := CheckButton.new()
+	handed.text = "Mode gaucher · actions principales à gauche"
+	handed.custom_minimum_size.y = 52
+	handed.button_pressed = left_handed
+	handed.toggled.connect(func(value: bool): left_handed = value; _apply_comfort(); _save_preferences())
+	box.add_child(handed)
+	var size_label := _label("Taille de votre main · " + str(roundi(hand_scale_factor*100)) + " %",20,INK,box)
+	var slider := HSlider.new()
+	slider.min_value = 85
+	slider.max_value = 105
+	slider.step = 1
+	slider.value = hand_scale_factor*100
+	slider.custom_minimum_size.y = 54
+	slider.value_changed.connect(func(value: float): hand_scale_factor = value/100.0; size_label.text = "Taille de votre main · " + str(roundi(value)) + " %"; _apply_comfort(); _save_preferences())
+	box.add_child(slider)
+	_long_text("Le mode gaucher inverse l’ordre des boutons sous la main. Désactivez les animations pour des déplacements instantanés et moins de mouvement.",box)
+	_button("Terminé",_close_overlay,box,true)
+
+func _apply_comfort() -> void:
+	hand_scale_factor = clampf(hand_scale_factor,0.85,1.05)
+	for card in card_nodes:
+		if not is_instance_valid(card): continue
+		card.set_meta("reduced_motion",not animations_enabled)
+		if not animations_enabled:
+			var target: Transform3D = card.motion_target
+			card.move_to(target,0)
+	if not animations_enabled:
+		for sparkle in _UI_sparkles:
+			if sparkle != null and sparkle.is_valid(): sparkle.kill()
+		_UI_sparkles.clear()
+	if is_instance_valid(action_row) and not action_buttons_base.is_empty():
+		var order := action_buttons_base.duplicate()
+		if left_handed: order.reverse()
+		for i in range(order.size()):
+			if is_instance_valid(order[i]) and order[i].get_parent() == action_row: action_row.move_child(order[i],i)
+	_layout_hand(false)
+
+func _start_tutorial() -> void:
+	if game_mode == "online" and int(snapshot.get("winner",-1)) < 0:
+		_toast("Terminez votre partie ou abandonnez-la avant de lancer l’entraînement.")
+		return
+	_autosave()
+	turn_token += 1
+	busy = false
+	game_mode = "tutorial"
+	network.leave_room()
+	_close_overlay()
+	_clear_content()
+	header_status.text = "MON PREMIER TOUR · ENTRAÎNEMENT"
+	var practice := Practice.new()
+	_place(practice,content,Vector2.ZERO,Vector2.ZERO,Vector2.ZERO,Vector2.ONE)
+	practice.exit_requested.connect(_leave_to_menu)
+	practice.completed.connect(func(): _toast("Premier tour réussi ! Vous pouvez maintenant essayer une partie solo."))
+	practice.start_lesson()
+
+func _resume_network() -> void:
+	if network.resume_session():
+		_toast("Reconnexion à votre salon…")
+	else:
+		_toast("Aucun salon ne peut être repris. Rejoignez un nouveau salon.")

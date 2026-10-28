@@ -127,29 +127,74 @@ jobs:
           PY
           echo "GODOT_BIN=$RAMI_GODOT_DIR/godot" >> "$GITHUB_ENV"
 
-      - name: Configure Android test signing
+      - name: Configure protected Android signing
+        id: signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && secrets.ANDROID_KEYSTORE_BASE64 || '' }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
+          ANDROID_KEY_ALIAS: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && secrets.ANDROID_KEY_ALIAS || '' }}
+          ANDROID_KEY_PASSWORD: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && secrets.ANDROID_KEY_PASSWORD || '' }}
         shell: bash
         run: |
           set -euo pipefail
-          RAMI_DEBUG_KEYSTORE="$RUNNER_TEMP/rami-debug.keystore"
-          keytool -genkeypair -noprompt -keystore "$RAMI_DEBUG_KEYSTORE" -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Rami Android Test, O=Rami Salon, C=FR"
-          export RAMI_DEBUG_KEYSTORE
-          python3 - <<'PY'
-          import json, os
+          python3 - <<'PY_SIGNING'
+          import base64, binascii, json, os, subprocess
           from pathlib import Path
+          names = ['ANDROID_KEYSTORE_BASE64', 'ANDROID_KEYSTORE_PASSWORD', 'ANDROID_KEY_ALIAS', 'ANDROID_KEY_PASSWORD']
+          present = [bool(os.environ.get(name, '')) for name in names]
+          if any(present) and not all(present):
+              raise SystemExit('Incomplete Android signing configuration. Configure all four secrets listed in docs/SIGNING.md.')
+          durable = all(present)
+          keystore = Path(os.environ['RUNNER_TEMP']) / 'rami-signing.keystore'
+          if durable:
+              try:
+                  raw = base64.b64decode(''.join(os.environ[names[0]].split()), validate=True)
+              except (ValueError, binascii.Error):
+                  raise SystemExit('ANDROID_KEYSTORE_BASE64 is not a valid base64 keystore.')
+              if not raw or len(raw) > 65536:
+                  raise SystemExit('Unexpected Android keystore size.')
+              keystore.write_bytes(raw)
+              store_password, alias, key_password = (os.environ[name] for name in names[1:])
+          else:
+              store_password, alias, key_password = 'android', 'androiddebugkey', 'android'
+          command_env = os.environ.copy()
+          command_env['RAMI_SIGN_STORE_PASS'] = store_password
+          command_env['RAMI_SIGN_KEY_PASS'] = key_password
+          if not durable:
+              generated = subprocess.run(['keytool', '-genkeypair', '-noprompt', '-keystore', str(keystore), '-alias', alias, '-storepass:env', 'RAMI_SIGN_STORE_PASS', '-keypass:env', 'RAMI_SIGN_KEY_PASS', '-keyalg', 'RSA', '-keysize', '2048', '-validity', '10000', '-dname', 'CN=Rami Temporary Test, O=Rami Salon, C=FR'], env=command_env, capture_output=True)
+              if generated.returncode:
+                  raise SystemExit('Could not create the temporary artifact-only signing key.')
+          keystore.chmod(0o600)
+          csr = Path(os.environ['RUNNER_TEMP']) / 'rami-signing-check.csr'
+          checked = subprocess.run(['keytool', '-certreq', '-keystore', str(keystore), '-alias', alias, '-storepass:env', 'RAMI_SIGN_STORE_PASS', '-keypass:env', 'RAMI_SIGN_KEY_PASS', '-file', str(csr)], env=command_env, capture_output=True)
+          csr.unlink(missing_ok=True)
+          if checked.returncode:
+              raise SystemExit('Android signing key validation failed. Check the keystore, alias and passwords.')
           config = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'godot'
           config.mkdir(parents=True, exist_ok=True)
           settings = {
               'export/android/java_sdk_path': os.environ['JAVA_HOME'],
               'export/android/android_sdk_path': os.environ['RAMI_ANDROID_SDK'],
-              'export/android/debug_keystore': os.environ['RAMI_DEBUG_KEYSTORE'],
-              'export/android/debug_keystore_user': 'androiddebugkey',
-              'export/android/debug_keystore_pass': 'android',
+              'export/android/debug_keystore': str(keystore),
+              'export/android/debug_keystore_user': alias,
+              'export/android/debug_keystore_pass': store_password,
           }
+          if key_password != store_password:
+              raise SystemExit('This standard Godot APK export requires the key password to match the keystore password. Reconfigure a compatible keystore before publishing.')
           text = '[gd_resource type="EditorSettings" format=3]\n\n[resource]\n'
           text += ''.join(f'{name} = {json.dumps(value)}\n' for name, value in settings.items())
-          (config / 'editor_settings-4.6.tres').write_text(text)
-          PY
+          settings_file = config / 'editor_settings-4.6.tres'
+          settings_file.write_text(text)
+          settings_file.chmod(0o600)
+          mode = 'durable' if durable else 'temporary-test'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'publishable={str(durable).lower()}\nmode={mode}\n')
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write(f'RAMI_SIGNING_MODE={mode}\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
+              output.write('Android signature: protected durable key.\n' if durable else 'Android signature: temporary test artifact only. Version publication requires the four secrets in docs/SIGNING.md.\n')
+          print('Protected durable signing configured.' if durable else 'No durable signing secrets: this APK is an artifact-only test build.')
+          PY_SIGNING
 
       - name: Import project and test gameplay
         shell: bash
@@ -169,7 +214,15 @@ jobs:
           timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_card_input.gd
           timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_animations.gd
           XDG_DATA_HOME="$RUNNER_TEMP/rami-mobile-tests" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_mobile_gameplay.gd
+          XDG_DATA_HOME="$RUNNER_TEMP/rami-solver-tests" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_solver_forfeit.gd
+          XDG_DATA_HOME="$RUNNER_TEMP/rami-session-tests" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_session_forfeit.gd
+          XDG_DATA_HOME="$RUNNER_TEMP/rami-forfeit-ui-tests" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_forfeit_ui.gd
+          XDG_DATA_HOME="$RUNNER_TEMP/rami-tutorial-tests" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_tutorial_practice.gd
+          XDG_DATA_HOME="$RUNNER_TEMP/rami-comfort-tests" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_accessibility.gd
+          timeout 120 python3 tests/test_signing_setup.py
           timeout 120 python3 tests/test_internet.py
+          timeout 120 python3 tests/test_forfeit_server.py
+          timeout 120 python3 tests/test_server_restart.py
 
       - name: Verify rendered hand and touch picking
         shell: bash
@@ -188,6 +241,24 @@ jobs:
           set -euo pipefail
           LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/rami-mobile-ui" timeout 120 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_mobile_ui.gd 2>&1 | tee "$RUNNER_TEMP/rami-mobile-ui.log"
           if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/rami-mobile-ui.log"; then
+            exit 1
+          fi
+
+      - name: Verify rendered beginner tutorial
+        shell: bash
+        run: |
+          set -euo pipefail
+          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/rami-tutorial-ui" timeout 120 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_tutorial_practice.gd 2>&1 | tee "$RUNNER_TEMP/rami-tutorial-ui.log"
+          if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/rami-tutorial-ui.log"; then
+            exit 1
+          fi
+
+      - name: Verify rendered comfort settings
+        shell: bash
+        run: |
+          set -euo pipefail
+          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/rami-comfort-ui" timeout 120 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_accessibility.gd 2>&1 | tee "$RUNNER_TEMP/rami-comfort-ui.log"
+          if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/rami-comfort-ui.log"; then
             exit 1
           fi
 
@@ -214,9 +285,9 @@ jobs:
               f'Commit: {os.environ["GITHUB_SHA"]}',
               f'Workflow run: https://github.com/{os.environ["GITHUB_REPOSITORY"]}/actions/runs/{os.environ["GITHUB_RUN_ID"]}',
               'Godot: 4.6.3 / Java: 21 / Android build-tools: 36.0.0',
-              'Debug signed; APK signature, ZIP integrity and 16 KB alignment verified.',
+              f'Signing mode: {os.environ.get("RAMI_SIGNING_MODE", "unknown")}; APK signature, ZIP integrity and 16 KB alignment verified.',
               f'APK SHA256: {hashlib.sha256(apk.read_bytes()).hexdigest()}',
-              'The temporary CI signing key differs from the local development key.',
+              'Durable mode keeps the configured signing certificate across published updates; temporary-test artifacts cannot replace a published app.',
               'No physical Android device test was performed by this workflow.',
               'Internet multiplayer requires hosting the included game server.',
           ])
@@ -239,8 +310,15 @@ jobs:
             builds/android-signature.txt
             builds/android-package.txt
 
+      - name: Require durable signing before publication
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && steps.signing.outputs.publishable != 'true'
+        shell: bash
+        run: |
+          echo "::error::Publication blocked: configure ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD as described in docs/SIGNING.md. The tested APK remains available in this run's artifacts."
+          exit 1
+
       - name: Publish version if it does not already exist
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && steps.signing.outputs.publishable == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           RAMI_TAG: ${{ steps.version.outputs.tag }}
@@ -260,3 +338,16 @@ jobs:
               exit 1
               ;;
           esac
+
+      - name: Remove temporary signing material
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY_CLEANUP'
+          import os
+          from pathlib import Path
+          for name in ['rami-signing.keystore', 'rami-signing-check.csr']:
+              (Path(os.environ['RUNNER_TEMP']) / name).unlink(missing_ok=True)
+          config = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'godot/editor_settings-4.6.tres'
+          config.unlink(missing_ok=True)
+          PY_CLEANUP

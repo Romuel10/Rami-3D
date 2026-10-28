@@ -1,5 +1,7 @@
 # Rami Salon 3D 0.3.0 — interactions et reprise
 
+Pour les correctifs 0.4.0, l’abandon, les sessions, le tutoriel et le confort, consulter [CORRECTIONS-0.4.0.md](CORRECTIONS-0.4.0.md). Les résultats actuels figurent dans [VERIFICATION.txt](VERIFICATION.txt).
+
 ## Vérification automatisée
 
 Le workflow Android exécute les tests existants du moteur, des réseaux, de l’interface, des animations, du tactile, du guide, du tri et de la musique avant de compiler l’APK. Les nouveaux contrôles couvrent :

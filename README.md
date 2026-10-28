@@ -2,6 +2,18 @@
 
 Jeu Android de rami en français : une table et des cartes en 3D, un mode solo contre 1 à 3 ordinateurs, et des parties privées à 2–4 joueurs où chacun utilise son téléphone. Projet réalisé avec Godot 4.6.3, sans publicité, compte ni achat intégré.
 
+## Corrections de la version 0.4.0
+
+- **Abandon en cours de match** : quitter volontairement élimine le joueur. À deux, son adversaire gagne immédiatement ; à trois ou quatre, les joueurs restants continuent. Une coupure de connexion laisse 60 secondes pour revenir avant le forfait. Si le téléphone hôte du Wi-Fi quitte, le salon ferme et les joueurs restants gagnent.
+- **Salons et reprise réseau** : les places quittées avant le début sont libérées. Le jeton de reprise reste sur le téléphone après fermeture du jeu ; **Retrouver mon salon** rejoint la même place tant que le délai de reconnexion n’est pas dépassé. Le serveur peut sauvegarder ses salons pour survivre à un redémarrage.
+- **Suggestions corrigées** pour les deux exemplaires d’une même carte et les différentes répartitions des jokers.
+- **Résultat du match corrigé** : le cumul de toutes les manches détermine le gagnant, avec les égalités et les joueurs éliminés affichés correctement.
+- **Premier tour guidé** : un exercice jouable apprend à piocher, sélectionner deux suites, ouvrir à 33 points et défausser.
+- **Confort** : taille des cartes de 85 à 105 % de leur grande taille actuelle, ordre des boutons adapté aux gauchers et animations désactivables. Les choix sont mémorisés.
+- **Signature Android durable** : le workflow exige une clé conservée dans les secrets GitHub pour publier une version. [Configuration à effectuer une fois](docs/SIGNING.md).
+
+Les sources 0.4.0 et les vérifications sont disponibles dans ce dépôt. La publication d’un APK 0.4.0 avec signature durable nécessite la configuration décrite ci-dessus. L’APK 0.3.0 lié plus bas reste la précédente version publiée. [Validation des corrections](docs/CORRECTIONS-0.4.0.md).
+
 ## Nouveautés de la version 0.3.0
 
 - **Glisser-déposer** : rangez la main au doigt, faites glisser les cartes sélectionnées sur la table pour les poser, sur une combinaison pour la compléter, ou sur la défausse. Les boutons et les touchers simples restent disponibles.
@@ -53,7 +65,7 @@ Les animations réutilisent les cartes visibles et leurs matériaux. Elles s’a
 3. Lancer **Rami Salon 3D**. Le jeu s’affiche en paysage.
 4. Choisir **Jouer contre l’ordinateur** pour une partie immédiate sans connexion, ou **Défi de tri** pour le nouveau jeu de rangement.
 
-Les APK de test GitHub utilisent une clé temporaire qui peut changer entre compilations. Si Android refuse une mise à jour, désinstaller l’ancien APK efface aussi les parties et statistiques locales.
+Les anciennes versions de test utilisaient une clé temporaire différente selon les compilations. Le passage à la première signature durable peut encore nécessiter une réinstallation, qui efface les parties et statistiques locales. Les publications suivantes devront conserver cette signature. [Détails](docs/SIGNING.md).
 
 L’APK fourni est signé pour les essais. Ce n’est pas une publication sur Google Play. L’installation et les performances restent à vérifier sur des téléphones physiques ; les essais de cette livraison ont été effectués sous Linux avec Godot et sur des connexions réseau locales distinctes.
 
@@ -61,7 +73,7 @@ L’APK fourni est signé pour les essais. Ce n’est pas une publication sur Go
 
 L’affichage remplit le format de l’écran en paysage. **Plein écran / Fenêtre** permet de basculer sur ordinateur ; Android démarre en mode immersif. Le fond occupe toute la surface et les commandes prennent en compte les zones réservées du téléphone.
 
-**Apprendre** ouvre douze chapitres : objectif, déroulement d’un tour, couleurs, brelans, suites, ouverture à 30 points, as, jokers, compléments, commandes et fin de manche. Pendant le rami, **Conseils pas à pas** explique quoi faire avec votre main actuelle et donne des exemples précis. Les conseils utilisent uniquement vos cartes et les informations publiques. Le mode débutant ajoute des repères d’étapes ; le guide reste accessible à tous.
+**Je débute : jouer mon premier tour** lance un exercice interactif avec de vraies actions. **Lire le guide complet** ouvre douze chapitres : objectif, déroulement d’un tour, couleurs, brelans, suites, ouverture à 30 points, as, jokers, compléments, commandes et fin de manche. Pendant le rami, **Conseils pas à pas** explique quoi faire avec votre main actuelle et donne des exemples précis. Les conseils utilisent uniquement vos cartes et les informations publiques. Le mode débutant ajoute des repères d’étapes ; le guide reste accessible à tous.
 
 **Musique** ouvre le choix entre *Salon acoustique*, *Piano tranquille* et *Escale chill*. Le volume et l’activation sont réglables et mémorisés. La lecture se met en pause lorsque l’application passe en arrière-plan. Les compositions et sons sont originaux ; leur licence CC0 et leur générateur sont dans [assets/music/README.md](assets/music/README.md).
 
@@ -97,7 +109,7 @@ Une fois le serveur accessible :
 3. Les autres saisissent le code et rejoignent le salon.
 4. Le créateur commence la partie.
 
-Chaque connexion reçoit uniquement sa propre main. Le serveur valide les actions et suspend la partie pendant une coupure réseau. La reconnexion automatique ou le bouton **Se reconnecter** récupère la même place tant que l’application reste ouverte. Un arrêt complet du jeu efface le jeton de reconnexion ; les salons ne survivent pas à un redémarrage du serveur. Pour rejouer en multijoueur, créer un nouveau salon.
+Chaque connexion reçoit uniquement sa propre main. Le serveur valide les actions et suspend la partie pendant une coupure réseau, pendant 60 secondes au maximum. La reconnexion automatique, **Se reconnecter** ou **Retrouver mon salon** récupère la même place dans ce délai, y compris après une fermeture du jeu. Un abandon volontaire transmis au serveur est définitif et efface le jeton local. Après expiration du délai, le joueur absent perd. Le serveur peut sauvegarder les salons avec `--state-file` ; voir le guide du serveur. Pour rejouer après un match terminé, créer un nouveau salon.
 
 ## Règles de cette version
 
@@ -139,7 +151,14 @@ godot --headless --path . --script tests/test_sorting.gd
 godot --headless --path . --script tests/test_music.gd
 godot --headless --path . --script tests/test_animations.gd
 godot --headless --path . --script tests/test_mobile_gameplay.gd
+godot --headless --path . --script tests/test_solver_forfeit.gd
+godot --headless --path . --script tests/test_session_forfeit.gd
+godot --headless --path . --script tests/test_forfeit_ui.gd
+godot --headless --path . --script tests/test_tutorial_practice.gd
+godot --headless --path . --script tests/test_accessibility.gd
 GODOT_BIN=/chemin/vers/godot python3 tests/test_internet.py
+GODOT_BIN=/chemin/vers/godot python3 tests/test_forfeit_server.py
+GODOT_BIN=/chemin/vers/godot python3 tests/test_server_restart.py
 ```
 
 Le moteur est testé pour la validité des poses, les jokers, l’ordre des tours, la conservation des cartes et les parties IA complètes. Les tests réseau vérifient les mains privées, les salons distincts, les codes, les droits du créateur, la pause et la reconnexion. Les tests d’intégration `tests/test_game_ui.gd` et `tests/test_update_ui.gd` couvrent une vraie partie et les nouveautés. Le test rendu `tests/test_hand_view.gd`, à lancer avec un affichage graphique, contrôle les grandes cartes et de véritables événements de sélection en 1440×900 et 2400×1080.
@@ -150,6 +169,7 @@ Le moteur est testé pour la validité des poses, les jokers, l’ordre des tour
 - `scripts/card_3d.gd` : cartes, graphismes vectoriels et sélection tactile.
 - `scripts/rami_engine.gd` : règles et IA.
 - `scripts/network_manager.gd` : client réseau et hôte Wi-Fi.
+- `scripts/tutorial_practice.gd` : premier tour guidé avec les règles réelles.
 - `scripts/beginner_coach.gd` : leçons et conseils à partir de la main visible.
 - `scripts/music_manager.gd` : pistes, fondu, réglages et pause.
 - `scripts/solo_store.gd` : sauvegarde atomique, récupération et statistiques.

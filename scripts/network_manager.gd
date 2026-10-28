@@ -13,6 +13,10 @@ const MAX_PLAYERS := 4
 const MAX_PACKET_BYTES := 32768
 const AUTH_TIMEOUT_MS := 8000
 const RECONNECT_DELAY_MS := 1800
+const RECONNECT_GRACE_MS := 60000
+const SESSION_TTL_SECONDS := 86400
+const SESSION_FILE := "user://network-session.save"
+const LEAVE_FLUSH_MS := 250
 const EngineScript = preload("res://scripts/rami_engine.gd")
 
 var room_code: String = ""
@@ -22,6 +26,11 @@ var local_address: String = ""
 var server_port: int = PORT
 var match_started: bool = false
 var connected: bool = false
+var reconnect_grace_ms: int = RECONNECT_GRACE_MS
+var session_path: String = SESSION_FILE
+var _match_finished: bool = false
+var _leaving: bool = false
+var _draining: Array = []
 
 var _hosting_locally: bool = false
 var _client_mode: String = "join"
@@ -62,7 +71,7 @@ func host_room(player_name: String, port: int = PORT) -> bool:
 	server_port = port
 	room_code = "%06d" % randi_range(0, 999999)
 	local_address = _lan_address()
-	_players = [{"name": _clean_name(player_name), "connected": true, "token": _new_token()}]
+	_players = [{"name": _clean_name(player_name), "connected": true, "token": _new_token(), "forfeited": false, "disconnect_at": 0}]
 	connection_changed.emit(true)
 	_broadcast_lobby()
 	return true
@@ -151,17 +160,109 @@ func reconnect() -> bool:
 	return _connect_client()
 
 func leave_room() -> void:
+	# A menu departure is an authenticated abandon, unlike losing transport.
+	_leaving = true
 	_wants_connection = false
-	if _client != null:
-		_client.close(1000, "Départ du salon")
-		_client = null
-	for entry: Dictionary in _peers.values():
-		var peer: WebSocketPeer = entry.peer
-		peer.close(1001, "Le salon a été fermé")
-	_peers.clear()
-	if _server != null:
-		_server.stop()
-		_server = null
+	forget_session()
+	if _hosting_locally and match_started and _engine != null and int(_engine.state.get("winner", -1)) < 0:
+		# This telephone owns the Wi-Fi server. Closing it ends the table and
+		# declares the other active players winners before sockets are closed.
+		_engine.forfeit_player(0, "hote_abandon", true)
+		_players[0].forfeited = true
+		_broadcast_game()
+	elif _client != null and _client.get_ready_state() == WebSocketPeer.STATE_OPEN:
+		_send(_client, {"type": "leave"})
+		_client.poll()
+	# Keep old sockets alive for a bounded flush. A new connection uses distinct
+	# objects, so completion of this drain cannot close a replacement room.
+	_drain_current()
+	_clear_current(true)
+	_leaving = false
+
+func has_saved_session() -> bool:
+	return not _read_session().is_empty()
+
+func resume_session() -> bool:
+	if connected:
+		return true
+	var saved := _read_session()
+	if saved.is_empty():
+		notice.emit("Aucune session multijoueur à reprendre.")
+		return false
+	_reset_transport(false)
+	_client_url = str(saved.url)
+	_client_name = str(saved.name)
+	room_code = str(saved.code)
+	_session_token = str(saved.token)
+	local_player = int(saved.player)
+	local_address = _client_url
+	_client_mode = "join"
+	_wants_connection = true
+	_match_finished = false
+	return _connect_client()
+
+func forget_session() -> void:
+	if FileAccess.file_exists(session_path):
+		DirAccess.remove_absolute(session_path)
+	if FileAccess.file_exists(session_path + ".tmp"):
+		DirAccess.remove_absolute(session_path + ".tmp")
+
+func _read_session() -> Dictionary:
+	var file := FileAccess.open(session_path, FileAccess.READ)
+	if file == null:
+		return {}
+	if file.get_length() > 8192:
+		return {}
+	var text := file.get_as_text()
+	file.close()
+	var parser := JSON.new()
+	if parser.parse(text) != OK:
+		return {}
+	var value: Variant = parser.data
+	if not value is Dictionary or value.get("version") != 1:
+		return {}
+	for field in ["url", "name", "code", "token"]:
+		if not value.get(field) is String:
+			return {}
+	var url: String = value.url
+	if url.length() > 512 or not (url.begins_with("ws://") or url.begins_with("wss://")) or _normalise_address(url) != url:
+		return {}
+	for character in url:
+		if character.unicode_at(0) <= 32:
+			return {}
+	if value.name.is_empty() or value.name.length() > 20 or value.code.length() != 6 or not value.code.is_valid_int() or value.token.length() != 48:
+		return {}
+	for digit in value.token:
+		if not digit in "0123456789abcdef":
+			return {}
+	for field in ["player", "updated_at"]:
+		var number: Variant = value.get(field)
+		if not (number is int or number is float) or not is_finite(float(number)) or floor(float(number)) != float(number):
+			return {}
+	if int(value.player) < 0 or int(value.player) > 3:
+		return {}
+	value.player = int(value.player)
+	value.updated_at = int(value.updated_at)
+	var age := int(Time.get_unix_time_from_system()) - int(value.updated_at)
+	if age < -300 or age > SESSION_TTL_SECONDS:
+		return {}
+	return value
+
+func _persist_session() -> void:
+	if _hosting_locally or _match_finished or _session_token.is_empty() or _client_url.is_empty() or room_code.length() != 6 or local_player < 0:
+		return
+	var saved := {"version": 1, "url": _client_url, "name": _client_name, "code": room_code, "token": _session_token, "player": local_player, "updated_at": int(Time.get_unix_time_from_system())}
+	var file := FileAccess.open(session_path + ".tmp", FileAccess.WRITE)
+	if file == null:
+		return
+	file.store_string(JSON.stringify(saved))
+	file.flush()
+	var result := file.get_error()
+	file.close()
+	if result == OK:
+		DirAccess.rename_absolute(session_path + ".tmp", session_path)
+
+func _clear_current(emit_change: bool) -> void:
 	var was_connected := connected
 	is_host = false
 	_hosting_locally = false
@@ -171,6 +272,7 @@ func leave_room() -> void:
 	room_code = ""
 	local_address = ""
 	match_started = false
+	_match_finished = false
 	_engine = null
 	_players.clear()
 	_session_token = ""
@@ -179,20 +281,69 @@ func leave_room() -> void:
 	_auth_sent = false
 	_known_lobby.clear()
 	_last_action_at.clear()
-	if was_connected:
+	if emit_change and was_connected:
 		connection_changed.emit(false)
+
+func _drain_current() -> void:
+	var sockets: Array = []
+	if _client != null:
+		sockets.append(_client)
+		_client = null
+	for entry: Dictionary in _peers.values():
+		sockets.append(entry.peer)
+	_peers.clear()
+	if _server != null:
+		_server.stop()
+		_server = null
+	if not sockets.is_empty():
+		_draining.append({"sockets": sockets, "until": Time.get_ticks_msec() + LEAVE_FLUSH_MS})
+
+func _poll_draining() -> void:
+	for i in range(_draining.size()-1, -1, -1):
+		var entry: Dictionary = _draining[i]
+		for peer: WebSocketPeer in entry.sockets:
+			peer.poll()
+		if Time.get_ticks_msec() >= int(entry.until):
+			for peer: WebSocketPeer in entry.sockets:
+				peer.close(1000, "Départ du salon")
+				peer.poll()
+			_draining.remove_at(i)
+
+func _reset_transport(emit_change: bool) -> void:
+	_wants_connection = false
+	if _client != null:
+		_client.close(1001, "Connexion interrompue")
+		_client.poll()
+		_client = null
+	for entry: Dictionary in _peers.values():
+		var peer: WebSocketPeer = entry.peer
+		peer.close(1001, "Connexion interrompue")
+		peer.poll()
+	_peers.clear()
+	if _server != null:
+		_server.stop()
+		_server = null
+	_clear_current(emit_change)
 
 func get_lobby() -> Dictionary:
 	return _known_lobby.duplicate(true)
 
 func _process(_delta: float) -> void:
+	_poll_draining()
 	if _hosting_locally:
 		_poll_server()
+		_expire_disconnected()
 	elif _wants_connection:
 		_poll_client()
 
 func _exit_tree() -> void:
-	leave_room()
+	# App destruction is transport loss: keep the authenticated session on disk.
+	_reset_transport(false)
+	for entry: Dictionary in _draining:
+		for peer: WebSocketPeer in entry.sockets:
+			peer.close(1000, "Départ du salon")
+			peer.poll()
+	_draining.clear()
 
 func _poll_server() -> void:
 	while _server.is_connection_available():
@@ -225,6 +376,8 @@ func _poll_server() -> void:
 				var value: Variant = JSON.parse_string(packet.get_string_from_utf8())
 				if value is Dictionary:
 					_server_message(peer_id, value)
+					if not _peers.has(peer_id):
+						break
 				else:
 					peer.close(1007, "Message incorrect")
 					break
@@ -243,6 +396,9 @@ func _server_message(peer_id: int, message: Dictionary) -> void:
 		if kind != "join":
 			return
 		_accept_join(peer_id, message)
+		return
+	if kind == "leave":
+		_remove_peer(peer_id, true)
 		return
 	if kind == "action":
 		var action: Variant = message.get("action")
@@ -271,6 +427,11 @@ func _accept_join(peer_id: int, message: Dictionary) -> void:
 		if seat < 0:
 			_reject(peer, "La session a expiré. Rejoignez à nouveau le salon.")
 			return
+		if bool(_players[seat].get("forfeited", false)):
+			if _engine != null:
+				_send(peer, {"type":"state", "data":_snapshot_for(seat)})
+			_reject(peer, "Cette place a perdu par abandon.")
+			return
 		if bool(_players[seat].connected):
 			_reject(peer, "Cette place est déjà connectée.")
 			return
@@ -282,8 +443,9 @@ func _accept_join(peer_id: int, message: Dictionary) -> void:
 			_reject(peer, "Ce salon est complet (quatre joueurs maximum).")
 			return
 		seat = _players.size()
-		_players.append({"name": _clean_name(str(message.get("name", "Joueur"))), "connected": true, "token": _new_token()})
+		_players.append({"name": _clean_name(str(message.get("name", "Joueur"))), "connected": true, "token": _new_token(), "forfeited": false, "disconnect_at": 0})
 	_players[seat].connected = true
+	_players[seat].disconnect_at = 0
 	entry.player = seat
 	_peers[peer_id] = entry
 	_send(peer, {"type": "welcome", "player": seat, "token": _players[seat].token, "code": room_code, "is_host": false})
@@ -295,18 +457,61 @@ func _reject(peer: WebSocketPeer, message: String) -> void:
 	_send(peer, {"type": "error", "message": message, "fatal": true})
 	# Keep the socket open long enough to deliver the error. The client closes it.
 
-func _remove_peer(peer_id: int) -> void:
+func _remove_peer(peer_id: int, voluntary: bool = false) -> void:
 	if not _peers.has(peer_id):
 		return
-	var index: int = int(_peers[peer_id].player)
+	var entry: Dictionary = _peers[peer_id]
+	var index: int = int(entry.player)
+	if index >= 1 and index < _players.size():
+		if match_started:
+			_players[index].connected = false
+			if voluntary:
+				_forfeit_seat(index, "abandon")
+			else:
+				_players[index].disconnect_at = Time.get_ticks_msec() + reconnect_grace_ms
+				notice.emit("%s s’est déconnecté. Reconnexion possible pendant %d secondes." % [_players[index].name, ceili(reconnect_grace_ms/1000.0)])
+		else:
+			# Lobby seats are not permanent: a missing guest must not block start.
+			_players.remove_at(index)
+			for other_id: int in _peers.keys():
+				if other_id == peer_id:
+					continue
+				var other: Dictionary = _peers[other_id]
+				if int(other.player) > index:
+					other.player = int(other.player) - 1
+					var seat := int(other.player)
+					_send(other.peer, {"type":"welcome", "player":seat, "token":_players[seat].token, "code":room_code, "is_host":false})
 	_peers.erase(peer_id)
 	_last_action_at.erase(peer_id)
-	if index >= 1 and index < _players.size():
-		_players[index].connected = false
-		notice.emit("%s s’est déconnecté. Sa place reste réservée." % _players[index].name)
+	if voluntary:
+		var peer: WebSocketPeer = entry.peer
+		_draining.append({"sockets":[peer], "until":Time.get_ticks_msec()+LEAVE_FLUSH_MS})
+	_broadcast_lobby()
+	if match_started:
+		_broadcast_game()
+
+func _forfeit_seat(index: int, reason: String) -> void:
+	if _engine == null or int(_engine.state.get("winner", -1)) >= 0 or bool(_players[index].get("forfeited", false)):
+		return
+	var result: Dictionary = _engine.forfeit_player(index, reason)
+	if result.get("ok", false):
+		_players[index].forfeited = true
+		_players[index].disconnect_at = 0
+		notice.emit("%s a perdu par abandon." % _players[index].name)
+
+func _expire_disconnected() -> void:
+	if not match_started or _engine == null or int(_engine.state.get("winner", -1)) >= 0:
+		return
+	var changed := false
+	var now := Time.get_ticks_msec()
+	for index in range(1, _players.size()):
+		var player: Dictionary = _players[index]
+		if not bool(player.connected) and not bool(player.get("forfeited", false)) and int(player.get("disconnect_at", 0)) > 0 and now >= int(player.disconnect_at):
+			_forfeit_seat(index, "déconnexion")
+			changed = true
+	if changed:
 		_broadcast_lobby()
-		if match_started:
-			_broadcast_game()
+		_broadcast_game()
 
 func _apply_action(player: int, action: Dictionary, reply_peer: WebSocketPeer = null) -> void:
 	var error := ""
@@ -329,7 +534,7 @@ func _apply_action(player: int, action: Dictionary, reply_peer: WebSocketPeer = 
 func _broadcast_lobby() -> void:
 	var players: Array = []
 	for player: Dictionary in _players:
-		players.append({"name": player.name, "connected": player.connected})
+		players.append({"name": player.name, "connected": player.connected, "forfeited": player.get("forfeited", false)})
 	var lobby := {"code": room_code, "players": players, "address": local_address, "port": server_port, "started": match_started, "host": true, "your_index": 0}
 	_known_lobby = lobby
 	lobby_updated.emit(lobby)
@@ -344,7 +549,8 @@ func _broadcast_game() -> void:
 	if _engine == null:
 		return
 	var mine: Dictionary = _snapshot_for(0)
-	game_updated.emit(mine)
+	if not _leaving:
+		game_updated.emit(mine)
 	for entry: Dictionary in _peers.values():
 		if int(entry.player) >= 1:
 			_send(entry.peer, {"type": "state", "data": _snapshot_for(int(entry.player))})
@@ -354,11 +560,20 @@ func _snapshot_for(index: int) -> Dictionary:
 	snapshot["paused"] = _has_missing_players()
 	snapshot["your_index"] = index
 	snapshot["online"] = true
+	var remaining := 0
+	if snapshot["paused"]:
+		for player: Dictionary in _players:
+			if not bool(player.connected) and not bool(player.get("forfeited", false)):
+				var until := maxi(0, int(player.get("disconnect_at", 0)) - Time.get_ticks_msec())
+				remaining = until if remaining == 0 else mini(remaining, until)
+	snapshot["reconnect_remaining_ms"] = remaining
 	return snapshot
 
 func _has_missing_players() -> bool:
+	if _engine != null and int(_engine.state.get("winner", -1)) >= 0:
+		return false
 	for player: Dictionary in _players:
-		if not bool(player.connected):
+		if not bool(player.connected) and not bool(player.get("forfeited", false)):
 			return true
 	return false
 
@@ -399,11 +614,15 @@ func _poll_client() -> void:
 				_client_message(value)
 	elif state == WebSocketPeer.STATE_CLOSED:
 		_client = null
-		if connected:
+		if connected and not _match_finished:
 			connected = false
 			connection_changed.emit(false)
 			notice.emit("Connexion interrompue. Reconnexion en cours…")
-		_retry_at = Time.get_ticks_msec() + RECONNECT_DELAY_MS
+		if _match_finished:
+			connected = false
+			_wants_connection = false
+		else:
+			_retry_at = Time.get_ticks_msec() + RECONNECT_DELAY_MS
 	_last_client_state = state
 
 func _client_message(message: Dictionary) -> void:
@@ -416,6 +635,8 @@ func _client_message(message: Dictionary) -> void:
 			is_host = bool(message.get("is_host", false))
 			_client_mode = "join"
 			connected = true
+			_match_finished = false
+			_persist_session()
 			connection_changed.emit(true)
 		"lobby":
 			var data: Variant = message.get("data")
@@ -423,20 +644,31 @@ func _client_message(message: Dictionary) -> void:
 				_known_lobby = data
 				is_host = bool(data.get("host", is_host))
 				match_started = bool(data.get("started", false))
+				local_player = int(data.get("your_index", local_player))
+				_persist_session()
 				lobby_updated.emit(data)
 		"state", "game":
 			var data: Variant = message.get("data")
 			if data is Dictionary:
 				match_started = true
+				var summaries: Array = data.get("players", [])
+				var own_forfeit: bool = local_player >= 0 and local_player < summaries.size() and bool(summaries[local_player].get("forfeited", false))
+				_match_finished = int(data.get("winner", -1)) >= 0 or own_forfeit
+				if _match_finished:
+					forget_session()
+				else:
+					_persist_session()
 				game_updated.emit(data)
 		"error":
 			notice.emit(str(message.get("message", "Connexion impossible.")))
 			if bool(message.get("fatal", false)):
 				_wants_connection = false
+				forget_session()
 				if _client != null:
 					_client.close(1000, "Connexion refusée")
 				connected = false
-				connection_changed.emit(false)
+				if not _match_finished:
+					connection_changed.emit(false)
 
 func _send(peer: WebSocketPeer, message: Dictionary) -> void:
 	if peer != null and peer.get_ready_state() == WebSocketPeer.STATE_OPEN:
