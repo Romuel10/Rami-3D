@@ -54,6 +54,79 @@ func start_game(names: Array, seed_value: int = 0, rounds: int = 1) -> Dictionar
 		state.match.totals.append(0)
 	return {"ok": true, "error": ""}
 
+func start_tri_game(names: Array, hand_size: int = 6, seed_value: int = 0) -> Dictionary:
+	if names.size() != 2 or not hand_size in [6,12]:
+		return _fail("Le Tri se joue en duel, avec 6 ou 12 cartes par joueur.")
+	start_game(names, seed_value, 1)
+	var cards: Array = state.deck + state.discard
+	for player in state.players:
+		cards.append_array(player.hand)
+		player.hand = []
+	cards = cards.filter(func(id): return not card_info(id).joker)
+	_shuffle(cards)
+	for _deal in range(hand_size):
+		for player in state.players: player.hand.append(cards.pop_back())
+	state.deck = cards
+	state.discard = [state.deck.pop_back()]
+	state["variant"] = "tri"
+	state["tri_hand_size"] = hand_size
+	state["tri_goal"] = 2 if hand_size == 6 else 3
+	state.log = "Tri : gardez vos combinaisons en main. Piochez, puis défaussez."
+	return _ok()
+
+func tri_groups(cards: Array) -> Array:
+	# Per-rank search prevents a physical card from belonging to two tris.
+	var ranks: Dictionary = {}
+	for id in cards:
+		if not id is String: return []
+		var info := card_info(id)
+		if info.is_empty() or info.joker: continue
+		if not ranks.has(info.rank): ranks[info.rank] = []
+		if id in ranks[info.rank]: return []
+		ranks[info.rank].append(id)
+	var result: Array = []
+	for rank in ranks: result.append_array(_tri_rank_groups(ranks[rank]))
+	return result
+
+func _tri_rank_groups(cards: Array) -> Array:
+	var best: Array = []
+	for a in range(cards.size()-2):
+		for b in range(a+1,cards.size()-1):
+			for c in range(b+1,cards.size()):
+				if card_info(cards[a]).suit == card_info(cards[b]).suit and card_info(cards[b]).suit == card_info(cards[c]).suit: continue
+				var group: Array = [cards[a],cards[b],cards[c]]
+				var rest: Array = cards.duplicate()
+				for id in group: rest.erase(id)
+				var found: Array = [group] + _tri_rank_groups(rest)
+				if found.size() > best.size(): best = found
+				if best.size() == cards.size()/3: return best
+	return best
+
+func _tri_score(cards: Array) -> int:
+	var groups := tri_groups(cards)
+	var rest := cards.duplicate()
+	for group in groups:
+		for id in group: rest.erase(id)
+	var counts: Dictionary = {}
+	for id in rest:
+		var rank: int = card_info(id).rank
+		counts[rank] = int(counts.get(rank,0)) + 1
+	var score: int = groups.size()*1000
+	for count in counts.values(): score += 30 * (int(count)/2)
+	return score
+
+func _tri_discard(cards: Array) -> String:
+	var best: String = cards[0]
+	var best_score := -1
+	for id in cards:
+		var rest := cards.duplicate()
+		rest.erase(id)
+		var score := _tri_score(rest)
+		if score > best_score:
+			best_score = score
+			best = id
+	return best
+
 func apply_action(player_index: int, action: Dictionary) -> Dictionary:
 	var result := _apply_checked(player_index, action)
 	if result.get("ok", false):
@@ -79,6 +152,8 @@ func _apply_checked(player_index: int, action: Dictionary) -> Dictionary:
 		return _fail("Action inconnue.")
 	if kind == "draw":
 		return _draw(player_index, action)
+	if state.get("variant", "rami") == "tri" and kind in ["meld","extend"]:
+		return _fail("Au Tri, les combinaisons restent en main jusqu’à la victoire.")
 	if not kind in ["meld", "extend", "discard"]:
 		return _fail("Action inconnue.")
 	if state.phase != "play":
@@ -98,7 +173,7 @@ func view_for(player_index: int) -> Dictionary:
 	var players: Array = []
 	for player in state.players:
 		players.append({"name": player.name, "count": player.hand.size(), "opened": player.opened, "forfeited":bool(player.get("forfeited",false))})
-	return {"players": players, "hand": state.players[player_index].hand.duplicate() if player_index >= 0 and player_index < state.players.size() else [], "deck_count": state.deck.size(), "discard_top": state.discard.back() if not state.discard.is_empty() else "", "melds": state.melds.duplicate(true), "turn": state.turn, "phase": state.phase, "winner": state.winner, "log": state.log, "turn_count": state.turn_count, "revision":state.get("revision",0), "last_action":state.get("last_action",{}).duplicate(true), "session_id":state.get("session_id",""), "match":state.get("match",{}).duplicate(true), "forfeited":_forfeited_indices(), "end_reason":state.get("end_reason",""), "win_by_forfeit":state.get("win_by_forfeit",false), "match_result":match_result()}
+	return {"players": players, "hand": state.players[player_index].hand.duplicate() if player_index >= 0 and player_index < state.players.size() else [], "deck_count": state.deck.size(), "discard_top": state.discard.back() if not state.discard.is_empty() else "", "melds": state.melds.duplicate(true), "turn": state.turn, "phase": state.phase, "winner": state.winner, "log": state.log, "turn_count": state.turn_count, "revision":state.get("revision",0), "last_action":state.get("last_action",{}).duplicate(true), "session_id":state.get("session_id",""), "match":state.get("match",{}).duplicate(true), "forfeited":_forfeited_indices(), "end_reason":state.get("end_reason",""), "win_by_forfeit":state.get("win_by_forfeit",false), "match_result":match_result(), "variant":state.get("variant","rami"), "tri_hand_size":state.get("tri_hand_size",0), "tri_goal":state.get("tri_goal",0), "winning_tris":tri_groups(state.players[state.winner].hand).slice(0,int(state.get("tri_goal",0))) if state.get("variant", "rami") == "tri" and state.winner >= 0 and not state.get("win_by_forfeit",false) else []}
 
 func _draw(index: int, action: Dictionary) -> Dictionary:
 	if state.phase != "draw":
@@ -183,7 +258,7 @@ func _discard(index: int, action: Dictionary) -> Dictionary:
 		return _fail("Sélectionnez une carte de votre main à défausser.")
 	state.players[index].hand.erase(id)
 	state.discard.append(id)
-	if state.players[index].hand.is_empty():
+	if state.players[index].hand.is_empty() or (state.get("variant","rami") == "tri" and tri_groups(state.players[index].hand).size() >= int(state.tri_goal)):
 		state.winner = index
 		state.log = "%s remporte la manche !" % state.players[index].name
 	else:
@@ -511,6 +586,17 @@ func bot_turn(index: int, difficulty: int = 1) -> void:
 func bot_step(index: int, difficulty: int = 1) -> bool:
 	if state.is_empty() or state.winner >= 0 or state.turn != index or index < 0 or index >= state.players.size() or state.players[index].get("forfeited",false):
 		return false
+	if state.get("variant","rami") == "tri":
+		var hand: Array = state.players[index].hand
+		if state.phase == "draw":
+			var source := "deck"
+			if not state.discard.is_empty():
+				var with_top: Array = hand + [state.discard.back()]
+				var drop := _tri_discard(with_top)
+				with_top.erase(drop)
+				if _tri_score(with_top) > _tri_score(hand) or state.deck.is_empty(): source = "discard" if state.discard.size() < 2 or not state.deck.is_empty() else "deck"
+			return apply_action(index, {"type":"draw","source":source}).ok
+		return apply_action(index, {"type":"discard","card":_tri_discard(hand)}).ok
 	if state.phase == "draw":
 		return apply_action(index, {"type":"draw", "source":_bot_draw_source(index, difficulty)}).ok
 	var groups := suggest_melds(index)
@@ -635,7 +721,7 @@ func _record_round() -> void:
 		var points := 0
 		for id in state.players[i].hand:
 			points += int(card_info(id).points)
-		if bool(state.get("win_by_forfeit",false)) and i in state.get("forfeit_winners",[]):
+		if (bool(state.get("win_by_forfeit",false)) and i in state.get("forfeit_winners",[])) or (state.get("variant","rami") == "tri" and i == int(state.winner)):
 			points = 0
 		penalties.append(points)
 		match_data.totals[i] = int(match_data.totals[i]) + points
@@ -735,10 +821,21 @@ func restore_game(saved: Variant) -> bool:
 			return false
 		meld.owner = owner
 		all_cards.append_array(meld.cards)
-	if all_cards.size() != 108 or not _unique(all_cards):
+	var tri: bool = candidate.get("variant","rami") == "tri"
+	if not candidate.get("variant","rami") in ["rami","tri"]: return false
+	if tri:
+		if candidate.players.size() != 2 or not _saved_integer(candidate.get("tri_hand_size"),6,12) or not int(candidate.tri_hand_size) in [6,12]: return false
+		candidate.tri_hand_size = int(candidate.tri_hand_size)
+		if candidate.get("tri_goal") != (2 if candidate.tri_hand_size == 6 else 3) or not candidate.melds.is_empty(): return false
+		candidate.tri_goal = int(candidate.tri_goal)
+		for i in range(candidate.players.size()):
+			if candidate.players[i].opened: return false
+			var expected_count: int = candidate.tri_hand_size + (1 if i == candidate.get("turn") and candidate.get("phase") == "play" and candidate.get("winner") == -1 else 0)
+			if candidate.players[i].hand.size() != expected_count and not candidate.get("win_by_forfeit",false): return false
+	if all_cards.size() != (104 if tri else 108) or not _unique(all_cards):
 		return false
 	for id in all_cards:
-		if not id is String or card_info(id).is_empty():
+		if not id is String or card_info(id).is_empty() or (tri and card_info(id).joker):
 			return false
 	for meld in candidate.melds:
 		var checked := _validate_meld(meld.cards)
@@ -775,8 +872,11 @@ func restore_game(saved: Variant) -> bool:
 			if not candidate.players[i].forfeited and not i in forfeit_winners: return false
 	else:
 		if not forfeit_winners.is_empty(): return false
-		for i in range(candidate.players.size()):
-			if candidate.players[i].hand.is_empty() != (i == candidate.winner): return false
+		if tri:
+			if candidate.winner >= 0 and tri_groups(candidate.players[candidate.winner].hand).size() < candidate.tri_goal: return false
+		else:
+			for i in range(candidate.players.size()):
+				if candidate.players[i].hand.is_empty() != (i == candidate.winner): return false
 	if candidate.winner >= 0 and candidate.players[candidate.winner].forfeited: return false
 	if candidate.winner < 0 and candidate.players[candidate.turn].forfeited: return false
 	if not candidate.last_action.is_empty():
@@ -784,6 +884,7 @@ func restore_game(saved: Variant) -> bool:
 	var match_data: Variant = candidate.get("match",{})
 	if not match_data is Dictionary or not match_data.get("totals") is Array or match_data.totals.size() != candidate.players.size() or not match_data.get("results") is Array:
 		return false
+	if tri and (match_data.get("length") != 1 or match_data.get("round") != 1): return false
 	if not _saved_integer(match_data.get("length"),1,5) or not int(match_data.length) in [1,3,5]: return false
 	if not _saved_integer(match_data.get("round"),1,int(match_data.length)): return false
 	var expected := int(match_data.round) - (1 if candidate.winner < 0 else 0)

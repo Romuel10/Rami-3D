@@ -2,6 +2,21 @@
 
 Jeu Android de rami en français : une table et des cartes en 3D, un mode solo contre 1 à 3 ordinateurs, et des parties privées à 2–4 joueurs où chacun utilise son téléphone. Projet réalisé avec Godot 4.6.3, sans publicité, compte ni achat intégré.
 
+## Tri en duel — version 0.5.0
+
+Le **Tri** est maintenant un vrai duel de cartes, contre l’ordinateur ou un ami sur un autre téléphone. Depuis l’accueil, choisir **Jouer au Tri**, puis **6 cartes** (objectif **2 tris**) ou **12 cartes** (objectif **3 tris**).
+
+- Un tri contient exactement trois cartes de même valeur, avec au maximum deux de la même couleur (♣ ♦ ♥ ♠). Exemple : 7♥ + 7♥ + 7♣. Les suites ne comptent pas.
+- Piocher une carte dans la pioche ou sur la défausse, puis défausser une carte. La victoire est vérifiée après cette défausse.
+- Tous les tris restent dans la main jusqu’à la victoire. Une carte physique ne compte que dans un seul tri.
+- À 12 cartes, trois tris suffisent ; les trois cartes restantes ne doivent former aucune combinaison particulière.
+- **Trier ♠** alterne le rangement par couleur et par valeur, y compris pendant le tour adverse. **Mes tris** met les groupes en évidence uniquement sur votre téléphone.
+- Le serveur n’envoie jamais la main adverse. Les seuls tris révélés sont ceux du gagnant, après la victoire.
+
+Cette version utilise deux jeux de 52 cartes, **sans jokers**. Le duel Wi-Fi fonctionne entre téléphones ; le duel Internet nécessite le serveur fourni **mis à jour en 0.5.0** et votre adresse WSS. Les abandons et le délai de reconnexion de 60 secondes s’appliquent aussi au Tri. La reprise solo conserve le mode, les cartes et leur ordre.
+
+L’ancien exercice de classement est désormais nommé **Exercice de rangement** pour le distinguer du Tri. Les sources 0.5.0 sont disponibles ici ; les APK de test sont dans les artefacts du workflow [Android APK](https://github.com/Romuel10/Rami-3D/actions). Une publication avec signature durable attend toujours la [configuration unique de la clé](docs/SIGNING.md).
+
 ## Corrections de la version 0.4.0
 
 - **Abandon en cours de match** : quitter volontairement élimine le joueur. À deux, son adversaire gagne immédiatement ; à trois ou quatre, les joueurs restants continuent. Une coupure de connexion laisse 60 secondes pour revenir avant le forfait. Si le téléphone hôte du Wi-Fi quitte, le salon ferme et les joueurs restants gagnent.
@@ -64,7 +79,7 @@ Les animations réutilisent les cartes visibles et leurs matériaux. Elles s’a
 1. Télécharger `rami-3d.apk` depuis la version ci-dessus sur un téléphone Android 7 ou ultérieur (ARM 32/64 bits).
 2. Ouvrir l’APK et autoriser l’installation depuis l’application utilisée pour ouvrir ce fichier, si Android le demande.
 3. Lancer **Rami Salon 3D**. Le jeu s’affiche en paysage.
-4. Choisir **Jouer contre l’ordinateur** pour une partie immédiate sans connexion, ou **Défi de tri** pour le nouveau jeu de rangement.
+4. Choisir **Jouer contre l’ordinateur** pour une partie immédiate sans connexion, ou **Jouer au Tri** pour le duel à 6 ou 12 cartes.
 
 Les anciennes versions de test utilisaient une clé temporaire différente selon les compilations. Le passage à la première signature durable peut encore nécessiter une réinstallation, qui efface les parties et statistiques locales. Les publications suivantes devront conserver cette signature. [Détails](docs/SIGNING.md).
 
@@ -78,9 +93,9 @@ L’affichage remplit le format de l’écran en paysage. **Plein écran / Fenê
 
 **Musique** ouvre le choix entre *Salon acoustique*, *Piano tranquille* et *Escale chill*. Le volume et l’activation sont réglables et mémorisés. La lecture se met en pause lorsque l’application passe en arrière-plan. Les compositions et sons sont originaux ; leur licence CC0 et leur générateur sont dans [assets/music/README.md](assets/music/README.md).
 
-## Défi de tri séparé
+## Exercice de rangement séparé
 
-Depuis l’accueil, choisir **Défi de tri**. Touchez une carte, puis une autre pour échanger leurs places. Lisez les emplacements de gauche à droite, puis de haut en bas.
+Depuis l’accueil, choisir **Exercice de rangement**. Touchez une carte, puis une autre pour échanger leurs places. Lisez les emplacements de gauche à droite, puis de haut en bas.
 
 1. **8 cartes** à ranger par valeur croissante, as en premier.
 2. **10 cartes** à ranger par couleur, dans l’ordre ♣ ♦ ♥ ♠, puis par valeur.
@@ -157,9 +172,13 @@ godot --headless --path . --script tests/test_session_forfeit.gd
 godot --headless --path . --script tests/test_forfeit_ui.gd
 godot --headless --path . --script tests/test_tutorial_practice.gd
 godot --headless --path . --script tests/test_accessibility.gd
+godot --headless --path . --script tests/test_tri.gd
+godot --headless --path . --script tests/test_tri_ui.gd
+godot --headless --path . --script tests/test_tri_lan.gd
 GODOT_BIN=/chemin/vers/godot python3 tests/test_internet.py
 GODOT_BIN=/chemin/vers/godot python3 tests/test_forfeit_server.py
 GODOT_BIN=/chemin/vers/godot python3 tests/test_server_restart.py
+GODOT_BIN=/chemin/vers/godot python3 tests/test_tri_network.py
 ```
 
 Le moteur est testé pour la validité des poses, les jokers, l’ordre des tours, la conservation des cartes et les parties IA complètes. Les tests réseau vérifient les mains privées, les salons distincts, les codes, les droits du créateur, la pause et la reconnexion. Les tests d’intégration `tests/test_game_ui.gd` et `tests/test_update_ui.gd` couvrent une vraie partie et les nouveautés. Le test rendu `tests/test_hand_view.gd`, à lancer avec un affichage graphique, contrôle les grandes cartes et de véritables événements de sélection en 1440×900 et 2400×1080.

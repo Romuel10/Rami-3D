@@ -1,18 +1,15 @@
-# Rami Salon 3D 0.4.0 — abandons, reprise et apprentissage
+# Rami Salon 3D 0.5.0 — le Tri en duel
 
-- Abandon volontaire : défaite du joueur qui part et victoire de l’adversaire en duel.
-- À trois ou quatre, élimination du joueur qui part et poursuite pour les autres. Le départ de l’hôte Wi-Fi ferme le salon et donne la victoire aux joueurs restants.
-- Coupure réseau : pause et délai de reconnexion de 60 secondes avant le forfait.
-- Places du salon libérées avant le début ; jeton de reprise conservé sur le téléphone après fermeture du jeu.
-- Sauvegarde optionnelle des salons du serveur Internet, avec copie de secours et restauration validée.
-- Suggestions corrigées pour les doubles exemplaires et les jokers.
-- Gagnant du match calculé au cumul des manches ; égalités et éliminations affichées correctement.
-- Premier tour guidé avec pioche, deux suites, ouverture à 33 points et défausse.
-- Réglages Confort : taille des cartes, ordre des commandes pour les gauchers et désactivation des animations.
-- Publication Android avec signature durable protégée dans les secrets GitHub.
+Le Tri est un duel de cartes avec pioche et défausse. Les tris restent cachés dans la main jusqu’à la victoire.
 
-Les grandes cartes en éventail, le plein écran, les douze leçons, les conseils contextuels, les musiques originales, le défi de tri séparé et les animations des versions précédentes sont inclus.
+- 6 cartes : objectif 2 tris. 12 cartes : objectif 3 tris, les trois cartes hors des tris restent libres.
+- Un tri contient exactement 3 cartes de même valeur, au maximum 2 de la même couleur (♣ ♦ ♥ ♠). Deux jeux de 52 cartes sans jokers.
+- Pioche avant défausse ; victoire vérifiée après la défausse. Chaque carte compte dans un seul tri.
+- Bouton Trier pour alterner couleur et valeur, et Mes tris pour repérer ses groupes sans les montrer.
+- Contre l’ordinateur ou un ami sur son téléphone, via Wi-Fi ou le serveur Internet fourni mis à jour.
+- Mains privées, révélation des seuls tris gagnants, sauvegarde/reprise solo et serveur, abandon et forfait inclus.
+- L’ancien défi de classement reste disponible sous le nom Exercice de rangement.
 
-La publication de l’APK 0.4.0 exige une configuration unique de la clé Android : [instructions](SIGNING.md). Sans cette configuration, le workflow propose un APK d’essai dans ses artefacts, puis bloque la publication d’une version signée temporairement. Une ancienne installation signée autrement peut encore nécessiter une réinstallation avec perte des données locales.
+Les suites ajoutées vérifient les règles, les deux formats, la victoire avec cartes encore en main, l’IA, le rangement réel, les salons privés, les forfaits, les reconnexions et les mains rendues en 1440×900 et 2400×1080.
 
-Le serveur Internet fourni nécessite toujours votre hébergement et son adresse WSS. Aucune adresse de serveur public n’est préconfigurée. Les essais réseau et de rendu sont réalisés sous Linux ; l’installation et les performances sur les téléphones Android physiques restent à vérifier.
+L’APK est une version d’essai, non testée sur téléphone physique. La publication avec signature durable exige toujours la configuration de docs/SIGNING.md. Le jeu Internet nécessite votre hébergement et son adresse WSS ; aucun serveur public n’est préconfiguré.

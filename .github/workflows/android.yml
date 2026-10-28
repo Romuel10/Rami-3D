@@ -220,6 +220,10 @@ jobs:
           XDG_DATA_HOME="$RUNNER_TEMP/rami-tutorial-tests" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_tutorial_practice.gd
           XDG_DATA_HOME="$RUNNER_TEMP/rami-comfort-tests" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_accessibility.gd
           timeout 120 python3 tests/test_signing_setup.py
+          XDG_DATA_HOME="$RUNNER_TEMP/tri-rules" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_tri.gd
+          XDG_DATA_HOME="$RUNNER_TEMP/tri-ui" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_tri_ui.gd
+          XDG_DATA_HOME="$RUNNER_TEMP/tri-lan" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_tri_lan.gd
+          timeout 120 python3 tests/test_tri_network.py
           timeout 120 python3 tests/test_internet.py
           timeout 120 python3 tests/test_forfeit_server.py
           timeout 120 python3 tests/test_server_restart.py
@@ -261,6 +265,13 @@ jobs:
           if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/rami-comfort-ui.log"; then
             exit 1
           fi
+
+      - name: Verify rendered Tri hands
+        shell: bash
+        run: |
+          set -euo pipefail
+          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/tri-render" timeout 120 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_tri_ui.gd 2>&1 | tee "$RUNNER_TEMP/tri-render.log"
+          if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/tri-render.log"; then exit 1; fi
 
       - name: Export and verify Android APK
         shell: bash

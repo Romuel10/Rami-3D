@@ -1,6 +1,6 @@
 # Serveur Internet de Rami Salon 3D
 
-Le mode Wi-Fi fonctionne directement entre téléphones. Le mode Internet utilise ce serveur : les joueurs créent un salon, partagent son code à six chiffres et jouent chacun avec leur main privée. Le serveur vérifie chaque action et conserve les cartes cachées. Un salon accueille deux à quatre joueurs.
+Le mode Wi-Fi fonctionne directement entre téléphones. Le mode Internet utilise ce serveur : les joueurs créent un salon, partagent son code à six chiffres et jouent chacun avec leur main privée. Le serveur vérifie chaque action et conserve les cartes cachées. Un salon de rami accueille deux à quatre joueurs ; un salon de Tri accueille exactement deux joueurs. La version 0.5.0 du serveur est requise pour le Tri. Le créateur choisit 6 ou 12 cartes dans le jeu avant de créer son salon, et ce format est imposé à tous les participants.
 
 **Ce dépôt contient le serveur prêt à lancer ; aucun serveur public n’est hébergé automatiquement.** Il faut un ordinateur ou un VPS joignable par les joueurs. Le jeu ne demande aucun compte. Par défaut, les salons restent en mémoire. Une option de sauvegarde permet de reprendre les salons après un redémarrage.
 

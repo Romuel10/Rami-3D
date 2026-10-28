@@ -28,6 +28,8 @@ var game_mode := "menu"
 var sort_suit := true
 var busy := false
 var player_name := "Vous"
+var tri_choice := 6
+var friends_tri_cards := 0
 var bot_count := 1
 var camera: Camera3D
 var ui: Control
@@ -424,9 +426,10 @@ func _show_menu() -> void:
 	if network.has_saved_session():
 		_button("Retrouver mon salon", _resume_network, box)
 	_label("2 à 4 joueurs · un téléphone par personne", 12, MUTED, box)
-	_label("03  ·  POUR LE PLAISIR DE RANGER", 13, GOLD, box)
-	_button("Défi de tri   →", _start_sorting, box)
-	_label("3 manches · grandes cartes · à votre rythme", 12, MUTED, box)
+	_label("03  ·  TRI EN DUEL", 13, GOLD, box)
+	_button("Jouer au Tri   →", _show_tri_setup, box)
+	_label("6 ou 12 cartes · combinaisons cachées", 12, MUTED, box)
+	_button("Exercice de rangement", _start_sorting, box)
 	_button("Je débute : jouer mon premier tour", _start_tutorial, hero)
 	_button("Lire le guide complet", _show_rules, hero)
 	_button("Difficulté, manches et statistiques", _show_solo_settings, hero)
@@ -454,7 +457,7 @@ func _save_profile() -> void:
 	saved_name = player_name
 	_save_preferences()
 
-func _start_solo() -> void:
+func _start_solo(tri_size: int = 0) -> void:
 	turn_token += 1
 	busy = false
 	_save_profile()
@@ -469,7 +472,11 @@ func _start_solo() -> void:
 	hand_order.clear()
 	_winner_key = ""
 	_sound_revision = ""
-	engine.start_game(names, 0, match_length)
+	if tri_size in [6,12]:
+		names = [player_name,"Camille"]
+		bot_count = 1
+		engine.start_tri_game(names,tri_size)
+	else: engine.start_game(names, 0, match_length)
 	game_mode = "solo"
 	_show_game()
 	_refresh_snapshot()
@@ -504,9 +511,12 @@ func _show_game() -> void:
 	_place(action_row, content, Vector2(24,-94), Vector2(-24,-35), Vector2(0,1), Vector2(1,1))
 	_button("Trier ♠", _sort_hand, action_row)
 	play_buttons = []
-	play_buttons.append(_button("Suggestion", _suggest, action_row))
-	play_buttons.append(_button("Poser", _meld_selected, action_row, true))
-	play_buttons.append(_button("Compléter", _extend_selected, action_row))
+	if _is_tri():
+		_button("Mes tris", _suggest, action_row)
+	else:
+		play_buttons.append(_button("Suggestion", _suggest, action_row))
+		play_buttons.append(_button("Poser", _meld_selected, action_row, true))
+		play_buttons.append(_button("Compléter", _extend_selected, action_row))
 	play_buttons.append(_button("Défausser →", _discard_selected, action_row))
 	action_buttons_base = action_row.get_children()
 	_apply_comfort()
@@ -553,8 +563,9 @@ func _render_snapshot() -> void:
 		var l := _label(("●  " if i == turn else "○  ") + name_text, 17, GOLD if i == turn else INK, column)
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		var count := int(p.get("count", p.get("hand_count", 13)))
-		l = _label("Abandon · éliminé" if p.get("forfeited",false) else str(count) + " cartes  ·  " + ("ouvert" if p.get("opened", false) else "à ouvrir : 30 pts"), 12, MUTED, column)
+		l = _label("Abandon · éliminé" if p.get("forfeited",false) else str(count) + " cartes  ·  " + ("main cachée" if _is_tri() else ("ouvert" if p.get("opened", false) else "à ouvrir : 30 pts")), 12, MUTED, column)
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	if _is_tri(): header_status.text = "TRI · %d CARTES · OBJECTIF %d TRIS" % [int(snapshot.tri_hand_size),int(snapshot.tri_goal)]
 	var phase: String = snapshot.get("phase", "draw")
 	var can_act: bool = turn == own and not snapshot.get("paused", false) and int(snapshot.get("winner", -1)) < 0 and own < players.size() and not players[own].get("forfeited",false)
 	for button in draw_buttons:
@@ -573,6 +584,8 @@ func _render_snapshot() -> void:
 		game_status.text = ("Étape 1/3 · prenez une carte" if phase == "draw" else "Étapes 2–3 · posez si possible, puis défaussez") if beginner_enabled else "À vous · " + ("piochez une carte" if phase == "draw" else "posez vos combinaisons, puis défaussez")
 	else:
 		game_status.text = str(players[turn].get("name", "L’adversaire")) + " joue…" if turn < players.size() else "En attente…"
+	if _is_tri() and can_act:
+		game_status.text = "Piochez une carte" if phase == "draw" else "Choisissez une carte à défausser · vos tris restent en main"
 	var hand: Array = snapshot.get("hand", []).duplicate()
 	if hand_order.is_empty():
 		hand.sort_custom(func(a, b): return _sort_key(str(a)) < _sort_key(str(b)))
@@ -713,9 +726,10 @@ func _update_hand_status() -> void:
 		var opening := ""
 		var own := int(snapshot.get("your_index", 0))
 		var players: Array = snapshot.get("players", [])
-		if own < players.size() and not players[own].get("opened", false):
+		if not _is_tri() and own < players.size() and not players[own].get("opened", false):
 			var preview: Dictionary = EngineRules.new().selection_preview(snapshot, selected, suggested)
 			opening = "\nOUVERTURE : %d / 30 POINTS" % int(preview.points)
+		if _is_tri(): opening = "\nVOS TRIS : %d / %d" % [EngineRules.new().tri_groups(snapshot.get("hand",[])).size(),int(snapshot.get("tri_goal",0))]
 		hand_status.text = "VOTRE MAIN · " + str(snapshot.get("hand", []).size()) + " CARTES" + opening
 		if not selected.is_empty():
 			hand_status.text = "VOTRE MAIN · " + str(snapshot.get("hand", []).size()) + " CARTES · " + str(selected.size()) + " CHOISIE(S)" + opening
@@ -761,6 +775,14 @@ func _sort_hand() -> void:
 	_toast("Cartes triées par " + ("couleur." if sort_suit else "valeur."))
 
 func _suggest() -> void:
+	if _is_tri():
+		selected.clear()
+		for group in EngineRules.new().tri_groups(snapshot.get("hand",[])):
+			selected.append_array(group)
+		for card in hand_cards: _set_hand_selection(card,selected.has(card.card_id))
+		_update_hand_status()
+		_toast("Vos tris restent privés. Choisissez ensuite une seule carte à défausser.")
+		return
 	if not _my_turn(): return
 	if snapshot.get("phase", "draw") != "play":
 		_toast("Piochez d’abord une carte.")
@@ -879,6 +901,9 @@ func _winner_result() -> Dictionary:
 		else:
 			title = "Match remporté !" if own in winners else "Match terminé"
 			body = "Vous gagnez le match au total des points." if own in winners else ", ".join(names) + " gagne le match au total des points."
+	if _is_tri() and finished and not forfeit:
+		title = "Tri : victoire !" if own in winners else "Tri : partie terminée"
+		body = ("Vous remportez le duel" if own in winners else ", ".join(names) + " remporte le duel") + " avec %d tris, après la défausse." % int(snapshot.get("tri_goal",2))
 	return {"title":title,"body":body,"winners":winners,"finished":finished,"forfeit":forfeit,"round_winner":round_winner}
 
 func _show_winner() -> void:
@@ -900,7 +925,14 @@ func _show_winner() -> void:
 			sparkle.tween_property(celebration,"modulate:a",0.35,0.32)
 			sparkle.tween_property(celebration,"modulate:a",1.0,0.32)
 	var scores: Dictionary = snapshot.get("match",{})
-	if not scores.is_empty():
+	if _is_tri() and not result.forfeit:
+		for group in snapshot.get("winning_tris",[]):
+			var labels: Array[String] = []
+			for id in group:
+				var info: Dictionary = EngineRules.new().card_info(id)
+				labels.append(str(info.label) + str({"H":"♥","S":"♠","C":"♣","D":"♦"}.get(info.suit,"")))
+			_long_text("  ·  ".join(labels),box)
+	if not scores.is_empty() and not _is_tri():
 		_label("Manche %d / %d · le plus petit total gagne" % [int(scores.get("round",1)),int(scores.get("length",1))],17,INK,box)
 		var ranking: Array = []
 		for index in range(players.size()):
@@ -917,16 +949,17 @@ func _show_winner() -> void:
 	if game_mode == "solo":
 		SoloStore.record_round(engine.state)
 		if not result.finished: _button("Manche suivante",_next_round,box,true)
-		_button("Nouvelle partie",_start_solo,box,true)
+		_button("Nouvelle partie",func(): _start_solo(int(snapshot.get("tri_hand_size",0))),box,true)
 	_button("Retour à l’accueil",_leave_to_menu,box)
 
 func _open_friends() -> void:
+	friends_tri_cards = 0
 	_save_profile()
 	_show_friends(false)
 
 func _show_friends(internet: bool) -> void:
 	online_tab = internet
-	var box := _modal("Une table entre amis", "Chacun joue avec son téléphone et garde sa main privée.")
+	var box := _modal("Tri en duel" if friends_tri_cards > 0 else "Une table entre amis", "Chacun joue avec son téléphone et garde sa main privée.")
 	var tabs := HBoxContainer.new()
 	tabs.add_theme_constant_override("separation", 12)
 	box.add_child(tabs)
@@ -965,10 +998,10 @@ func _create_room() -> void:
 			return
 		saved_address = address
 		_save_preferences()
-		network.create_remote_room(address, player_name)
+		network.create_remote_room(address, player_name, friends_tri_cards)
 		_toast("Connexion au serveur…")
 	else:
-		network.host_room(player_name)
+		network.host_room(player_name,network.PORT,friends_tri_cards)
 
 func _join_room() -> void:
 	var address := address_input.text.strip_edges()
@@ -984,6 +1017,7 @@ func _join_room() -> void:
 
 func _lobby_updated(data: Dictionary) -> void:
 	current_lobby = data
+	friends_tri_cards = int(data.get("tri_cards",0))
 	if game_mode == "online" and not snapshot.is_empty():
 		return
 	game_mode = "lobby"
@@ -1010,9 +1044,9 @@ func _lobby_updated(data: Dictionary) -> void:
 	for i in range(players.size()):
 		var p: Dictionary = players[i]
 		_label(("●  " if p.get("connected",true) else "○  ") + str(p.get("name","Joueur")) + (" · hôte" if i == 0 else ""), 21, INK, lobby_box)
-	if players.size() < 4:
+	if players.size() < (2 if friends_tri_cards > 0 else 4):
 		_label("+  En attente d’un ami…", 18, MUTED, lobby_box)
-	_label("2 à 4 joueurs · la partie commence quand l’hôte est prêt.", 14, MUTED, lobby_box)
+	_label(("Tri · %d cartes · duel" % friends_tri_cards) if friends_tri_cards > 0 else "2 à 4 joueurs · la partie commence quand l’hôte est prêt.", 14, MUTED, lobby_box)
 	if network.is_host:
 		lobby_start = _button("Commencer la partie   →", func(): network.start_match(), lobby_box, true)
 		lobby_start.disabled = players.size() < 2
@@ -1024,10 +1058,11 @@ func _network_game_updated(data: Dictionary) -> void:
 	if network.local_player < 0: return
 	if overlay_kind == "connection" or game_mode != "online":
 		_close_overlay()
-	if game_mode != "online":
+	var entering := game_mode != "online"
+	snapshot = data
+	if entering:
 		game_mode = "online"
 		_show_game()
-	snapshot = data
 	snapshot["your_index"] = network.local_player
 	_render_snapshot()
 
@@ -1080,6 +1115,9 @@ func _close_overlay() -> void:
 		node.queue_free()
 
 func _show_rules() -> void:
+	if _is_tri():
+		_show_tri_rules()
+		return
 	_show_lessons(-1)
 
 func _show_lessons(chapter: int = -1) -> void:
@@ -1123,6 +1161,9 @@ func _long_text(text: String, parent: Node) -> Label:
 	return label
 
 func _show_coach() -> void:
+	if _is_tri():
+		_show_tri_rules()
+		return
 	var advice: Dictionary = coach.advice(snapshot, selected)
 	var box := _modal(str(advice.get("title", "Votre prochain tour")), str(advice.get("body", "")))
 	overlay_kind = "coach"
@@ -1146,7 +1187,7 @@ func _start_sorting() -> void:
 	_close_overlay()
 	snapshot = {}
 	_clear_content()
-	header_status.text = "DÉFI DE TRI · 3 MANCHES"
+	header_status.text = "EXERCICE DE RANGEMENT · 3 MANCHES"
 	var challenge := SortingChallenge.new()
 	_place(challenge, content, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ONE)
 	challenge.exit_requested.connect(_leave_to_menu)
@@ -1662,3 +1703,30 @@ func _resume_network() -> void:
 		_toast("Reconnexion à votre salon…")
 	else:
 		_toast("Aucun salon ne peut être repris. Rejoignez un nouveau salon.")
+
+func _is_tri() -> bool:
+	if game_mode == "solo" and engine != null: return engine.state.get("variant","rami") == "tri"
+	return game_mode == "online" and snapshot.get("variant","rami") == "tri"
+
+func _show_tri_setup() -> void:
+	_save_profile()
+	var box := _modal("Tri en duel","Contre l’ordinateur ou un ami, chacun avec sa main privée.")
+	var choice := OptionButton.new()
+	choice.add_item("6 cartes · objectif 2 tris",6)
+	choice.add_item("12 cartes · objectif 3 tris",12)
+	choice.selected = 0 if tri_choice == 6 else 1
+	choice.custom_minimum_size.y = 52
+	choice.item_selected.connect(func(index: int): tri_choice = [6,12][index])
+	box.add_child(choice)
+	_long_text("Un tri : trois cartes de même valeur, au maximum deux de la même couleur (♣ ♦ ♥ ♠). Les tris restent dans la main. Piochez puis défaussez ; la victoire est vérifiée après la défausse. À 12 cartes, trois tris suffisent, les trois autres cartes restent libres.",box)
+	_button("Tri contre l’ordinateur",func(): _start_solo(tri_choice),box,true)
+	_button("Tri avec un ami",func(): friends_tri_cards = tri_choice; _show_friends(false),box)
+	_button("Retour",_close_overlay,box)
+
+func _show_tri_rules() -> void:
+	var box := _modal("Les règles du Tri","Vos combinaisons restent cachées jusqu’à votre victoire.")
+	overlay_kind = "tri_rules"
+	_long_text("Objectif : 2 tris avec 6 cartes, ou 3 tris avec 12 cartes. Un tri réunit exactement trois cartes de même valeur : 7♥ + 7♥ + 7♣ est valable. Les suites ne comptent pas. Au maximum deux cartes de la même couleur (♣ ♦ ♥ ♠) dans un tri.",box)
+	_long_text("1. Piochez une carte dans la pioche ou sur la défausse.\n2. Gardez vos tris dans votre main.\n3. Touchez une seule carte puis Défausser. Le jeu vérifie alors si vous avez assez de tris distincts. Chaque carte ne compte que dans un tri. Avec 12 cartes, les trois cartes hors des tris restent libres.",box)
+	_long_text("Trier alterne le rangement par couleur et par valeur, même pendant le tour adverse. Mes tris met vos groupes en évidence uniquement sur votre téléphone ; ce bouton ne pose aucune carte. Cette version utilise deux jeux sans jokers.",box)
+	_button("Revenir à ma main",_close_overlay,box,true)

@@ -213,7 +213,7 @@ func _build_interface() -> void:
 	margin.add_child(box)
 	var heading := HBoxContainer.new()
 	box.add_child(heading)
-	_title = _label("Le défi du tri", 31, INK, heading)
+	_title = _label("Exercice de rangement", 31, INK, heading)
 	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_progress = _label("", 16, GOLD, heading)
 	_progress.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -253,7 +253,7 @@ func _build_interface() -> void:
 func _render_round() -> void:
 	if not _built:
 		return
-	_title.text = "Le défi du tri"
+	_title.text = "Exercice de rangement"
 	_progress.text = "MANCHE %d / 3  ·  %d CARTES  ·  %d PTS" % [current_round + 1, cards.size(), score]
 	_instruction.text = "Touchez deux cartes pour les échanger. Lisez de gauche à droite, puis de haut en bas."
 	_criterion.text = "Par couleur, puis par valeur : ♣ TRÈFLES → ♦ CARREAUX → ♥ CŒURS → ♠ PIQUES · as vers roi" if current_round == 1 else "Par valeur croissante : AS → 2 → 3 → … → 10 → VALET → DAME → ROI · couleurs libres"

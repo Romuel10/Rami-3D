@@ -19,6 +19,7 @@ const SESSION_FILE := "user://network-session.save"
 const LEAVE_FLUSH_MS := 250
 const EngineScript = preload("res://scripts/rami_engine.gd")
 
+var tri_cards: int = 0
 var room_code: String = ""
 var local_player: int = -1
 var is_host: bool = false
@@ -53,8 +54,9 @@ var _known_lobby: Dictionary = {}
 func _ready() -> void:
 	set_process(true)
 
-func host_room(player_name: String, port: int = PORT) -> bool:
+func host_room(player_name: String, port: int = PORT, hand_size: int = 0) -> bool:
 	leave_room()
+	tri_cards = hand_size if hand_size in [6,12] else 0
 	if port < 1024 or port > 65535:
 		notice.emit("Choisissez un port compris entre 1024 et 65535.")
 		return false
@@ -92,8 +94,9 @@ func join_room(address: String, player_name: String, code: String = "") -> bool:
 	local_address = address.strip_edges()
 	return _connect_client()
 
-func create_remote_room(address: String, player_name: String) -> bool:
+func create_remote_room(address: String, player_name: String, hand_size: int = 0) -> bool:
 	leave_room()
+	tri_cards = hand_size if hand_size in [6,12] else 0
 	var url := _normalise_address(address)
 	if url.is_empty():
 		notice.emit("Indiquez l’adresse du serveur Internet.")
@@ -127,7 +130,8 @@ func start_match() -> bool:
 	var names: Array = []
 	for player: Dictionary in _players:
 		names.append(player.name)
-	_engine.start_game(names)
+	if tri_cards > 0: _engine.start_tri_game(names, tri_cards)
+	else: _engine.start_game(names)
 	match_started = true
 	_broadcast_lobby()
 	_broadcast_game()
@@ -272,6 +276,7 @@ func _clear_current(emit_change: bool) -> void:
 	room_code = ""
 	local_address = ""
 	match_started = false
+	tri_cards = 0
 	_match_finished = false
 	_engine = null
 	_players.clear()
@@ -439,7 +444,7 @@ func _accept_join(peer_id: int, message: Dictionary) -> void:
 		if match_started:
 			_reject(peer, "La partie a commencé. Seuls les joueurs de cette partie peuvent se reconnecter.")
 			return
-		if _players.size() >= MAX_PLAYERS:
+		if _players.size() >= (2 if tri_cards > 0 else MAX_PLAYERS):
 			_reject(peer, "Ce salon est complet (quatre joueurs maximum).")
 			return
 		seat = _players.size()
@@ -535,7 +540,7 @@ func _broadcast_lobby() -> void:
 	var players: Array = []
 	for player: Dictionary in _players:
 		players.append({"name": player.name, "connected": player.connected, "forfeited": player.get("forfeited", false)})
-	var lobby := {"code": room_code, "players": players, "address": local_address, "port": server_port, "started": match_started, "host": true, "your_index": 0}
+	var lobby := {"code": room_code, "players": players, "address": local_address, "port": server_port, "started": match_started, "tri_cards": tri_cards, "host": true, "your_index": 0}
 	_known_lobby = lobby
 	lobby_updated.emit(lobby)
 	for entry: Dictionary in _peers.values():
@@ -601,7 +606,7 @@ func _poll_client() -> void:
 	if state == WebSocketPeer.STATE_OPEN:
 		if not _auth_sent:
 			if _client_mode == "create":
-				_send(_client, {"type": "create", "name": _client_name})
+				_send(_client, {"type": "create", "name": _client_name, "tri_cards":tri_cards})
 			else:
 				_send(_client, {"type": "join", "name": _client_name, "code": room_code, "token": _session_token})
 			_auth_sent = true
@@ -641,6 +646,11 @@ func _client_message(message: Dictionary) -> void:
 		"lobby":
 			var data: Variant = message.get("data")
 			if data is Dictionary:
+				if tri_cards > 0 and int(data.get("tri_cards",0)) != tri_cards:
+					leave_room()
+					notice.emit("Ce serveur ne prend pas en charge le Tri choisi. Mettez le serveur à jour.")
+					return
+				tri_cards = int(data.get("tri_cards",0))
 				_known_lobby = data
 				is_host = bool(data.get("host", is_host))
 				match_started = bool(data.get("started", false))

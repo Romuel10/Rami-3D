@@ -1,3 +1,26 @@
+Rami Salon 3D — Tri en duel 0.5.0
+
+Nouvelles vérifications locales sous Linux/Godot 4.6.3 :
+- test_tri.gd : 541 contrôles, règles 6/12 cartes, 104 cartes conservées,
+  victoire après défausse, copies physiques, tris cachés, sauvegardes
+  JSON en cours et terminées, forfait et huit duels IA terminés.
+- test_tri_ui.gd : 32 contrôles sans rendu et 112 avec rendu : boutons
+  réels de tri, groupes privés, victoire, nouvelle partie, sauvegarde,
+  reprise et cartes contenues dans les écrans 1440×900 et 2400×1080.
+- test_tri_lan.gd : 26 contrôles sur de vraies connexions Wi-Fi locales.
+- test_tri_network.py : deux formats, mains privées, refus du troisième
+  joueur, tour validé, redémarrage réel du serveur et abandon.
+- Régressions rami : 524 contrôles moteur/ 5 parties IA, 308 solveur/forfait,
+  135 sauvegarde/difficultés/scores, 59 interface, 79 nouveautés ; suites de
+  redémarrage serveur et forfaits dédiés réussies.
+- Les nouvelles suites sont incluses dans le workflow Android.
+
+Les rapports de compilation et empreintes sont dans android-build-info.txt
+et SHA256SUMS. Aucune vérification sur téléphone physique ici.
+La signature durable et l’adresse du serveur Internet restent à configurer.
+
+--- Vérifications de la livraison précédente 0.4.0 ---
+
 Rami Salon 3D — corrections 0.4.0
 
 Vérifications sous Linux/Godot 4.6.3 :

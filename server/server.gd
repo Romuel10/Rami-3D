@@ -123,7 +123,8 @@ func _message(peer_id: int, message: Dictionary) -> void:
 			for player: Dictionary in room.players:
 				names.append(player.name)
 			room.engine = EngineScript.new()
-			room.engine.start_game(names)
+			if int(room.get("tri_cards",0)) > 0: room.engine.start_tri_game(names,int(room.tri_cards))
+			else: room.engine.start_game(names)
 			room.started = true
 			_persist_rooms()
 			_broadcast_lobby(code)
@@ -157,6 +158,10 @@ func _message(peer_id: int, message: Dictionary) -> void:
 		_error(peer_id, "Message inconnu.")
 
 func _create_room(peer_id: int, message: Dictionary) -> void:
+	var tri_value: Variant = message.get("tri_cards",0)
+	if not EngineScript.new()._saved_integer(tri_value,0,12) or not int(tri_value) in [0,6,12]:
+		_error(peer_id,"Choisissez 6 ou 12 cartes pour le Tri.",true)
+		return
 	if rooms.size() >= MAX_ROOMS:
 		_error(peer_id, "Le serveur est complet. Réessayez plus tard.", true)
 		return
@@ -165,7 +170,7 @@ func _create_room(peer_id: int, message: Dictionary) -> void:
 		code = "%06d" % randi_range(0, 999999)
 	var token := _new_token()
 	var now := Time.get_ticks_msec()
-	rooms[code] = {"players": [{"name": _clean_name(message.get("name", "Joueur")),
+	rooms[code] = {"tri_cards":int(tri_value), "players": [{"name": _clean_name(message.get("name", "Joueur")),
 		"token": token, "peer": peer_id, "reconnect_at": 0}], "started": false, "engine": null,
 		"created": now, "activity": now, "activity_unix": int(Time.get_unix_time_from_system()), "empty_since": 0}
 	peers[peer_id].room = code
@@ -206,7 +211,7 @@ func _join_room(peer_id: int, message: Dictionary) -> void:
 		if bool(room.started):
 			_error(peer_id, "Cette partie a déjà commencé.", true)
 			return
-		if room.players.size() >= 4:
+		if room.players.size() >= (2 if int(room.get("tri_cards",0)) > 0 else 4):
 			_error(peer_id, "Le salon est complet.", true)
 			return
 		seat = room.players.size()
@@ -246,7 +251,7 @@ func _broadcast_lobby(code: String) -> void:
 		var id := int(room.players[seat].peer)
 		if id >= 0:
 			_send(id, {"type": "lobby", "data": {"code": code,
-				"players": summaries, "port": port, "started": room.started,
+				"players": summaries, "port": port, "started": room.started, "tri_cards":int(room.get("tri_cards",0)),
 				"host": seat == _owner(room), "your_index": seat}})
 
 func _broadcast_state(code: String) -> void:
@@ -480,7 +485,7 @@ func _restore_rooms() -> void:
 				valid = false
 				break
 			if wall_now - activity_unix > ROOM_TTL_MS / 1000: continue
-			restored[item.code] = {"players": players, "started": true, "engine": engine, "created": now, "activity": now, "activity_unix": activity_unix, "empty_since": now}
+			restored[item.code] = {"tri_cards":int(engine.state.get("tri_hand_size",0)), "players": players, "started": true, "engine": engine, "created": now, "activity": now, "activity_unix": activity_unix, "empty_since": now}
 		if valid:
 			rooms = restored
 			_replace_invalid_primary = path != state_file

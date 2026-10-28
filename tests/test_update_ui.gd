@@ -141,7 +141,7 @@ func _run() -> void:
 	_press("Accueil")
 	_press("Abandonner la partie")
 
-	_press("Défi de tri   →")
+	_press("Exercice de rangement")
 	var challenge = _find_sorting()
 	_check(app.game_mode == "sorting" and challenge != null and challenge.cards.size() == 8, "menu launches first sorting round")
 	_check(app.snapshot.is_empty() and app.hand_cards.is_empty() and app.card_nodes.is_empty(), "sorting mode clears the rummy table")
@@ -158,7 +158,7 @@ func _run() -> void:
 	_check(app.busy, "opponent thinking delay is pending")
 	_press("Accueil")
 	_press("Abandonner la partie")
-	_press("Défi de tri   →")
+	_press("Exercice de rangement")
 	challenge = _find_sorting()
 	var sorting_hand: Array = challenge.cards.duplicate()
 	await create_timer(1.15).timeout
