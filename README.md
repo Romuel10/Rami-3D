@@ -52,6 +52,7 @@ Les animations réutilisent les cartes visibles et leurs matériaux. Elles s’a
 
 ## Télécharger
 
+- [APK 0.4.0 corrigé — artefact de test](https://github.com/Romuel10/Rami-3D/actions/runs/40719725211/artifacts/12830675581) : télécharger l’archive de compilation puis extraire `rami-3d.apk` (connexion GitHub nécessaire). La publication d’une version à signature durable attend la [configuration unique de la clé](docs/SIGNING.md).
 - [Installer l’APK Android v0.3.0 — version de test](https://github.com/Romuel10/Rami-3D/releases/download/v0.3.0/rami-3d.apk)
 - [Version et fichiers téléchargeables](https://github.com/Romuel10/Rami-3D/releases/tag/v0.3.0)
 - [Rapport de vérification](docs/MOBILE-GAMEPLAY.md)

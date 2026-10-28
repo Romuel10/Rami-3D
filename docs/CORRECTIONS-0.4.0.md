@@ -42,6 +42,8 @@ Les suites ajoutées couvrent les cas suivants :
 
 Le workflow conserve aussi les suites des versions précédentes : règles, parties IA complètes, musique, tri, guide, animations, gestes et rendu de la main. Chaque suite utilisateur doit être lancée avec un répertoire `XDG_DATA_HOME` isolé, comme indiqué dans le workflow.
 
+La [compilation GitHub 40719725211](https://github.com/Romuel10/Rami-3D/actions/runs/40719725211) a réussi toutes les étapes de tests, de rendu, d’export et de vérification de l’APK. L’[artefact de test 0.4.0](https://github.com/Romuel10/Rami-3D/actions/runs/40719725211/artifacts/12830675581) est téléchargeable après connexion GitHub. Le statut global est en échec uniquement à l’étape de publication, car les quatre secrets de signature durable ne sont pas encore configurés.
+
 Le rapport [VERIFICATION.txt](VERIFICATION.txt) indique les résultats. [android-build-info.txt](android-build-info.txt) et [SHA256SUMS](SHA256SUMS) identifient la compilation locale ; les artefacts Actions contiennent leur propre rapport et leurs propres empreintes.
 
 ## Livraison Android et serveur
