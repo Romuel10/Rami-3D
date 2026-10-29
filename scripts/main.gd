@@ -7,6 +7,9 @@ const NetworkRoom = preload("res://scripts/network_manager.gd")
 const MusicPlayer = preload("res://scripts/music_manager.gd")
 const Coach = preload("res://scripts/beginner_coach.gd")
 const SortingChallenge = preload("res://scripts/sorting_challenge.gd")
+const TriPractice = preload("res://scripts/tri_tutorial.gd")
+const HandGroups = preload("res://scripts/hand_groups.gd")
+const ServerProfile = preload("res://scripts/server_profile.gd")
 const Practice = preload("res://scripts/tutorial_practice.gd")
 const SoloStore = preload("res://scripts/solo_store.gd")
 const SoundEffects = preload("res://scripts/sound_effects.gd")
@@ -29,6 +32,11 @@ var game_mode := "menu"
 var sort_suit := true
 var busy := false
 var player_name := "Vous"
+var tri_grouping_enabled := false
+var economy_mode := false
+var _tri_boundaries: Array = []
+var _group_button: Button
+var _key_light: DirectionalLight3D
 var tri_choice := 6
 var friends_tri_cards := 0
 var bot_count := 1
@@ -102,6 +110,7 @@ func _ready() -> void:
 	_load_preferences()
 	_make_world()
 	_make_interface()
+	_apply_performance()
 	effects = SoundEffects.new()
 	effects.volume = effects_volume
 	effects.enabled = effects_enabled
@@ -137,6 +146,8 @@ func _notification(what: int) -> void:
 	if what in [NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_WM_CLOSE_REQUEST, NOTIFICATION_APPLICATION_FOCUS_OUT]:
 		_autosave()
 		_cancel_drag()
+	if what == NOTIFICATION_APPLICATION_PAUSED: Engine.max_fps = 5
+	if what == NOTIFICATION_APPLICATION_RESUMED: _apply_performance()
 	if what == NOTIFICATION_APPLICATION_RESUMED and OS.has_feature("android") and fullscreen_enabled:
 		_set_fullscreen(true, false)
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
@@ -170,6 +181,7 @@ func _make_world() -> void:
 	hand_root.name = "VotreMain"
 	camera.add_child(hand_root)
 	var key := DirectionalLight3D.new()
+	_key_light = key
 	key.rotation_degrees = Vector3(-62, -22, 0)
 	key.light_color = Color("fff1d4")
 	key.light_energy = 0.53
@@ -485,6 +497,7 @@ func _show_game() -> void:
 	play_buttons = []
 	if _is_tri():
 		_button("Mes tris", _suggest, action_row)
+		_group_button = _button("Regrouper mes tris", _toggle_tri_groups, action_row)
 	else:
 		play_buttons.append(_button("Suggestion", _suggest, action_row))
 		play_buttons.append(_button("Poser", _meld_selected, action_row, true))
@@ -507,7 +520,6 @@ func _render_snapshot() -> void:
 		return
 	_cancel_drag(false)
 	var initial_deal := _view_cards.is_empty()
-	_play_snapshot_sound(initial_deal)
 	_previous_cards = _view_cards.duplicate()
 	_view_cards.clear()
 	card_nodes.clear()
@@ -568,6 +580,12 @@ func _render_snapshot() -> void:
 		for id in hand:
 			if not id in ordered: ordered.append(id)
 		hand = ordered
+	_tri_boundaries.clear()
+	if _is_tri() and tri_grouping_enabled:
+		var grouped: Dictionary = HandGroups.arrange(hand,true)
+		hand = grouped.cards
+		_tri_boundaries = grouped.boundaries
+	if is_instance_valid(_group_button): _group_button.text = "Groupes ✓" if tri_grouping_enabled else "Regrouper mes tris"
 	hand_order = hand.duplicate()
 	var revealed_discard := false
 	for id in hand:
@@ -603,6 +621,7 @@ func _render_snapshot() -> void:
 			card.set_meta("meld_index", i)
 			_place_table_card(card, Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * 0.70), position_card), initial_deal, j * 0.035)
 	_render_opponents(initial_deal)
+	_play_snapshot_sound(initial_deal)
 	_update_hand_status()
 	# Cards no longer present in the visible snapshot cannot retain callbacks
 	# or keep an animation alive after leaving this table.
@@ -740,10 +759,13 @@ func _act(action: Dictionary) -> void:
 		network.send_action(action)
 
 func _sort_hand() -> void:
+	tri_grouping_enabled = false
+	if effects != null: effects.play_slide()
 	sort_suit = not sort_suit
 	hand_order.clear()
 	_render_snapshot()
 	_autosave()
+	_save_preferences()
 	_toast("Cartes triées par " + ("couleur." if sort_suit else "valeur."))
 
 func _suggest() -> void:
@@ -938,10 +960,16 @@ func _show_friends(internet: bool) -> void:
 	_button("Même Wi-Fi", func(): _show_friends(false), tabs, not internet)
 	_button("Internet", func(): _show_friends(true), tabs, internet)
 	if internet:
-		_label("ADRESSE DU SERVEUR", 13, GOLD, box)
-		address_input = _field("wss://votre-serveur.fr", saved_address, box)
-		var info := _label("Un serveur Internet doit être disponible pour héberger le salon.", 14, MUTED, box)
-		info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var endpoint := ServerProfile.normalise(saved_address)
+		if endpoint.is_empty(): endpoint = ServerProfile.configured_url()
+		address_input = _field("https://votre-jeu.vercel.app", endpoint, box)
+		address_input.visible = endpoint.is_empty()
+		if endpoint.is_empty():
+			_long_text("Configurez une fois l’adresse de votre jeu hébergé sur Vercel. Vous pourrez ensuite rejoindre vos amis avec leur code.",box)
+			_button("Guide d’hébergement Vercel",func(): OS.shell_open("https://github.com/Romuel10/Rami-3D/blob/main/vercel/README.md"),box)
+		else:
+			_label("Serveur mémorisé · saisissez seulement le code du salon",14,MUTED,box)
+			_button("Changer de serveur",func(): address_input.show(); address_input.grab_focus(),box)
 	else:
 		var info := _label("Connectez tous les téléphones au même Wi-Fi.\nL’un crée le salon ; les autres le rejoignent.", 16, MUTED, box)
 		info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -964,9 +992,9 @@ func _show_friends(internet: bool) -> void:
 
 func _create_room() -> void:
 	if online_tab:
-		var address := address_input.text.strip_edges()
+		var address := ServerProfile.normalise(address_input.text)
 		if address.is_empty():
-			_toast("Saisissez l’adresse de votre serveur Internet.")
+			_toast("Saisissez l’adresse HTTPS de votre jeu Vercel ou une adresse WSS valide.")
 			return
 		saved_address = address
 		_save_preferences()
@@ -977,6 +1005,7 @@ func _create_room() -> void:
 
 func _join_room() -> void:
 	var address := address_input.text.strip_edges()
+	if online_tab: address = ServerProfile.normalise(address)
 	var code := code_input.text.strip_edges()
 	if address.is_empty() or code.length() != 6 or not code.is_valid_int():
 		_toast("Renseignez l’adresse de l’hôte et le code à 6 chiffres.")
@@ -1247,14 +1276,21 @@ func _layout_hand(animate: bool = true, deal: bool = false) -> void:
 	var ratio := size.x / maxf(1, size.y)
 	var scale_value := HAND_SCALE * hand_scale_factor
 	var available := camera.size * ratio * 0.90
-	var gap := minf(1.60, (available - 1.05*scale_value) / maxf(1, hand_cards.size()-1))
+	var separation := 0.32 * scale_value if _is_tri() and tri_grouping_enabled else 0.0
+	var extras: float = separation * _tri_boundaries.size()
+	var gap := minf(1.60, (available - 1.05*scale_value - extras) / maxf(1, hand_cards.size()-1))
+	var span: float = (hand_cards.size()-1)*gap + extras
 	var center_y := -camera.size/2.0 + 1.95 + 1.52*scale_value/2.0
 	for i in range(hand_cards.size()):
 		var card = hand_cards[i]
-		var norm: float = (i - (hand_cards.size()-1)/2.0) / maxf(1, (hand_cards.size()-1)/2.0)
+		var offset := 0.0
+		for boundary in _tri_boundaries:
+			if i >= int(boundary): offset += separation
+		var x: float = i*gap+offset-span*.5
+		var norm: float = x/maxf(1,span*.5)
 		var y: float = center_y + 0.28*(1.0-norm*norm)
 		card.set_meta("rest_y", y)
-		var pos := Vector3((i-(hand_cards.size()-1)/2.0)*gap, y + (0.32 if selected.has(card.card_id) else 0.0), -10.0+i*0.018)
+		var pos := Vector3(x, y + (0.32 if selected.has(card.card_id) else 0.0), -10.0+i*0.018)
 		var basis := (Basis(Vector3.BACK, -norm*0.25) * Basis(Vector3.RIGHT, PI/2.0)).scaled(Vector3.ONE*scale_value)
 		var arriving: bool = card.get_meta("arriving", false)
 		card.move_to(Transform3D(basis, pos), (0.42 if arriving else 0.28) if animate and animations_enabled else 0.0, i * 0.045 if deal else 0.0, 0.35 if arriving else 0.08)
@@ -1329,6 +1365,8 @@ func _load_preferences() -> void:
 		animations_enabled = bool(cfg.get_value("comfort","animations",true))
 		hand_scale_factor = clampf(float(cfg.get_value("comfort","hand_scale",1.0)),0.85,1.05)
 		left_handed = bool(cfg.get_value("comfort","left_handed",false))
+		economy_mode = bool(cfg.get_value("comfort","economy",false))
+		tri_grouping_enabled = bool(cfg.get_value("comfort","tri_groups",false))
 		var saved_music: Variant = cfg.get_value("music", "settings", music_settings)
 		if saved_music is Dictionary:
 			music_settings = saved_music
@@ -1347,6 +1385,8 @@ func _save_preferences() -> void:
 	cfg.set_value("comfort","animations",animations_enabled)
 	cfg.set_value("comfort","hand_scale",hand_scale_factor)
 	cfg.set_value("comfort","left_handed",left_handed)
+	cfg.set_value("comfort","economy",economy_mode)
+	cfg.set_value("comfort","tri_groups",tri_grouping_enabled)
 	cfg.save("user://preferences.cfg")
 
 func _autosave() -> void:
@@ -1416,10 +1456,14 @@ func _next_round() -> void:
 	_refresh_snapshot()
 
 func _play_snapshot_sound(initial: bool) -> void:
-	if effects == null: return
 	var key := "%s:%s:%s" % [snapshot.get("session_id",""),snapshot.get("match",{}).get("round",1),snapshot.get("revision",0)]
 	if key == _sound_revision: return
 	_sound_revision = key
+	var action: Dictionary = snapshot.get("last_action",{})
+	var actor := int(action.get("player",-1))
+	if not initial and actor != int(snapshot.get("your_index",0)):
+		table_scene.animate_action(actor,str(action.get("type","")),str(action.get("source","deck")))
+	if effects == null: return
 	if int(snapshot.get("winner",-1)) >= 0:
 		effects.play("win")
 	elif initial:
@@ -1441,6 +1485,7 @@ func _opponent_position(player: int) -> Vector3:
 func _render_opponents(initial: bool) -> void:
 	var players: Array = snapshot.get("players",[])
 	var own := int(snapshot.get("your_index",0))
+	table_scene.set_motion_enabled(animations_enabled)
 	table_scene.set_players(players,own,int(snapshot.get("turn",-1)))
 	var opponents := _opponent_indices()
 	for i in opponents:
@@ -1475,6 +1520,9 @@ func _join_invitation() -> void:
 	if invite.is_empty():
 		_toast("Invitation invalide. Collez le texte complet commençant par rami3d://join?.")
 		return
+	if invite.server.begins_with("wss://"):
+		saved_address = invite.server
+		_save_preferences()
 	network.join_room(invite.server,player_name,invite.code)
 
 # Hand gestures are captured before 3D picking, but after GUI buttons.
@@ -1537,6 +1585,7 @@ func _input(event: InputEvent) -> void:
 		return
 	if not _drag_active and position_screen.distance_to(_drag_start) > 16:
 		_drag_active = true
+		if effects != null: effects.play_slide()
 		_drag_card.cancel_motion()
 		if not _drag_card.card_id in selected:
 			selected = [_drag_card.card_id]
@@ -1583,6 +1632,8 @@ func _drop_card(card: Node3D, point: Vector2) -> void:
 				index = i
 				break
 		hand_order.insert(index,id)
+		tri_grouping_enabled = false
+		_save_preferences()
 		_render_snapshot()
 		_autosave()
 		return
@@ -1640,9 +1691,16 @@ func _show_comfort_settings() -> void:
 	slider.value_changed.connect(func(value: float): hand_scale_factor = value/100.0; size_label.text = "Taille de votre main · " + str(roundi(value)) + " %"; _apply_comfort(); _save_preferences())
 	box.add_child(slider)
 	_long_text("Le mode gaucher inverse l’ordre des boutons sous la main. Désactivez les animations pour des déplacements instantanés et moins de mouvement.",box)
+	var economy := CheckButton.new()
+	economy.text = "Économie de batterie · 30 images/s, sans ombres"
+	economy.custom_minimum_size.y = 52
+	economy.button_pressed = economy_mode
+	economy.toggled.connect(func(value: bool): economy_mode = value; _apply_performance(); _save_preferences())
+	box.add_child(economy)
 	_button("Terminé",_close_overlay,box,true)
 
 func _apply_comfort() -> void:
+	if is_instance_valid(table_scene): table_scene.set_motion_enabled(animations_enabled)
 	hand_scale_factor = clampf(hand_scale_factor,0.85,1.05)
 	for card in card_nodes:
 		if not is_instance_valid(card): continue
@@ -1700,6 +1758,7 @@ func _show_tri_setup() -> void:
 	choice.item_selected.connect(func(index: int): tri_choice = [6,12][index])
 	box.add_child(choice)
 	_long_text("Un tri : trois cartes de même valeur, au maximum deux de la même couleur (♣ ♦ ♥ ♠). Les tris restent dans la main. Piochez puis défaussez ; la victoire est vérifiée après la défausse. À 12 cartes, trois tris suffisent, les trois autres cartes restent libres.",box)
+	_button("Apprendre le Tri pas à pas",_start_tri_tutorial,box)
 	_button("Tri contre l’ordinateur",func(): _start_solo(tri_choice),box,true)
 	_button("Tri avec un ami",func(): friends_tri_cards = tri_choice; _show_friends(false),box)
 	_button("Retour",_close_overlay,box)
@@ -1711,3 +1770,34 @@ func _show_tri_rules() -> void:
 	_long_text("1. Piochez une carte dans la pioche ou sur la défausse.\n2. Gardez vos tris dans votre main.\n3. Touchez une seule carte puis Défausser. Le jeu vérifie alors si vous avez assez de tris distincts. Chaque carte ne compte que dans un tri. Avec 12 cartes, les trois cartes hors des tris restent libres.",box)
 	_long_text("Trier alterne le rangement par couleur et par valeur, même pendant le tour adverse. Mes tris met vos groupes en évidence uniquement sur votre téléphone ; ce bouton ne pose aucune carte. Cette version utilise deux jeux sans jokers.",box)
 	_button("Revenir à ma main",_close_overlay,box,true)
+
+func _toggle_tri_groups() -> void:
+	if not _is_tri(): return
+	tri_grouping_enabled = not tri_grouping_enabled
+	if effects != null: effects.play_slide()
+	_render_snapshot()
+	_autosave()
+	_save_preferences()
+	_toast("Tris séparés dans votre main privée." if tri_grouping_enabled else "Rangement libre de votre main.")
+
+func _apply_performance() -> void:
+	Engine.max_fps = 30 if economy_mode else 60
+	if is_instance_valid(_key_light): _key_light.shadow_enabled = not economy_mode
+
+func _start_tri_tutorial() -> void:
+	if game_mode == "online" and int(snapshot.get("winner",-1)) < 0:
+		_toast("Terminez votre partie ou abandonnez-la avant de lancer l’entraînement.")
+		return
+	_autosave()
+	turn_token += 1
+	busy = false
+	game_mode = "tutorial"
+	network.leave_room()
+	_close_overlay()
+	_clear_content()
+	header_status.text = "MON PREMIER TRI · %d CARTES" % tri_choice
+	var practice := TriPractice.new()
+	_place(practice,content,Vector2.ZERO,Vector2.ZERO,Vector2.ZERO,Vector2.ONE)
+	practice.exit_requested.connect(_leave_to_menu)
+	practice.completed.connect(func(): _toast("Premier Tri réussi ! Vous pouvez jouer un duel."))
+	practice.start_lesson(tri_choice)

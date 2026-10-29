@@ -4,6 +4,11 @@ static var _materials: Dictionary = {}
 var _seats: Dictionary = {}
 var _seat_layout := ""
 var seating: Node3D
+var motion_enabled := true
+var _gestures: Dictionary = {}
+var _gesture_serials: Dictionary = {}
+var _gesture_kinds: Dictionary = {}
+var _active_player := -2
 
 func _ready() -> void:
 	name = "TableScene"
@@ -138,9 +143,14 @@ static func seat_yaw(index: int, count: int) -> float:
 	return .58 if index==0 else -.58
 
 func clear_seats() -> void:
-	for seat in _seats.values(): seat.queue_free()
+	_stop_all_gestures()
+	for seat in _seats.values():
+		if is_instance_valid(seat):
+			if seat.get_parent() != null: seat.get_parent().remove_child(seat)
+			seat.queue_free()
 	_seats.clear()
 	_seat_layout = ""
+	_active_player = -2
 
 func set_players(players: Array, own: int, active: int) -> void:
 	var opponents: Array = []
@@ -166,7 +176,13 @@ func set_players(players: Array, own: int, active: int) -> void:
 		var player: Dictionary = players[index]
 		tag.text = str(player.get("name","Joueur")) + "   ·   " + ("abandon" if player.get("forfeited",false) else str(int(player.get("count",13))) + " cartes")
 		tag.modulate = Color("edce8f") if index==active else Color("bdc9bb")
-		seat.get_node("Sleeves").visible = not player.get("forfeited",false)
+		var present: bool = not player.get("forfeited",false)
+		seat.get_node("Sleeves").visible = present
+		if not present: _stop_gesture(index)
+	if active != _active_player:
+		_active_player = active
+		if _seats.has(active) and not players[active].get("forfeited",false):
+			animate_action(active,"think")
 
 func _ellipsoid(parent: Node3D, label: String, position_value: Vector3, scale_value: Vector3, material: Material) -> MeshInstance3D:
 	var mesh := SphereMesh.new()
@@ -200,10 +216,16 @@ func _build_player(seat: Node3D, style: int) -> void:
 		var elbow := Vector3(side*1.12,-.18,-1.25)
 		var wrist := Vector3(side*1.28,-.24,-.02)
 		_limb(sleeves,"UpperSleeve",Vector3(side*.82,-.19,-3.4),elbow,.27,cloth)
-		_limb(sleeves,"Forearm",elbow,wrist,.20,cloth)
-		_limb(sleeves,"Cuff",wrist-Vector3(0,0,.11),wrist+Vector3(0,0,.06),.205,_plain(clothing[style%3].lightened(.10)))
-		_ellipsoid(sleeves,"Palm",wrist+Vector3(0,-.02,.21),Vector3(.22,.105,.32),skin)
-		_limb(sleeves,"Thumb",wrist+Vector3(side*.17,.06,.15),wrist+Vector3(side*.23,.10,.34),.066,skin)
+		var arm := Node3D.new()
+		arm.name = "LeftArm" if side < 0 else "RightArm"
+		arm.position = elbow
+		arm.set_meta("rest_transform",arm.transform)
+		sleeves.add_child(arm)
+		var hand: Vector3 = wrist-elbow
+		_limb(arm,"Forearm",Vector3.ZERO,hand,.20,cloth)
+		_limb(arm,"Cuff",hand-Vector3(0,0,.11),hand+Vector3(0,0,.06),.205,_plain(clothing[style%3].lightened(.10)))
+		_ellipsoid(arm,"Palm",hand+Vector3(0,-.02,.21),Vector3(.22,.105,.32),skin)
+		_limb(arm,"Thumb",hand+Vector3(side*.17,.06,.15),hand+Vector3(side*.23,.10,.34),.066,skin)
 	var label := Label3D.new()
 	label.name = "Nameplate"
 	label.font = load("res://assets/sans.ttf")
@@ -214,3 +236,85 @@ func _build_player(seat: Node3D, style: int) -> void:
 	label.position = Vector3(0,-.43,1.05)
 	label.rotation_degrees.x = -70
 	seat.add_child(label)
+
+
+func set_motion_enabled(value: bool) -> void:
+	motion_enabled = value
+	if not value: _stop_all_gestures()
+
+func is_gesturing(player: int) -> bool:
+	var tween: Tween = _gestures.get(player)
+	return tween != null and tween.is_valid()
+
+func animate_action(player: int, kind: String, source: String = "deck") -> void:
+	# These gestures use only a public action, never card values or bot plans.
+	if not motion_enabled or not is_inside_tree() or not _seats.has(player): return
+	if not kind in ["think","draw","discard","meld","extend"]: return
+	var seat: Node3D = _seats[player]
+	if not is_instance_valid(seat) or not seat.get_node("Sleeves").visible: return
+	var key := kind+":"+source
+	if is_gesturing(player) and _gesture_kinds.get(player,"") == key: return
+	# A new public action can arrive before the return stroke completes. Keep
+	# that visible pose so the next reach continues without a snap to rest.
+	_stop_gesture(player,false)
+	var target := Vector3(0,.26,-1.9)
+	if kind=="draw": target = Vector3(.85,.19,-.8) if source=="discard" else Vector3(-.8,.28,-.8)
+	elif kind=="discard": target = Vector3(.85,.19,-.8)
+	var local: Vector3 = seat.to_local(target)
+	var primary: Node3D = seat.get_node("Sleeves/LeftArm" if local.x<0 else "Sleeves/RightArm")
+	var support: Node3D = seat.get_node("Sleeves/RightArm" if local.x<0 else "Sleeves/LeftArm")
+	var direction: Vector3 = local-primary.position
+	var yaw := clampf(atan2(direction.x,direction.z),-.32,.32)
+	var pitch := .16 if kind=="draw" else .11
+	var roll := -.035 if local.x<0 else .035
+	var outward := .23
+	var pause := .08
+	var returning := .33
+	if kind=="think":
+		yaw = -.055 if local.x<0 else .055
+		pitch = -.065
+		roll *= .6
+		outward = .24
+		pause = .10
+		returning = .30
+	elif kind in ["meld","extend"]:
+		yaw *= .55
+		pitch = .085
+	var serial: int = int(_gesture_serials.get(player,0))+1
+	_gesture_serials[player] = serial
+	_gesture_kinds[player] = key
+	var tween := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_gestures[player] = tween
+	tween.set_parallel(true)
+	tween.tween_property(primary,"rotation",Vector3(pitch,yaw,roll),outward)
+	tween.tween_property(support,"rotation",Vector3(-.018,-yaw*.16,-roll*.35),outward)
+	tween.chain().tween_interval(pause)
+	tween.chain().tween_property(primary,"rotation",Vector3.ZERO,returning)
+	tween.parallel().tween_property(support,"rotation",Vector3.ZERO,returning)
+	tween.chain().tween_callback(_finish_gesture.bind(player,serial))
+
+func _finish_gesture(player: int, serial: int) -> void:
+	if int(_gesture_serials.get(player,-1)) != serial: return
+	_gestures.erase(player)
+	_gesture_kinds.erase(player)
+	_restore_pose(player)
+
+func _restore_pose(player: int) -> void:
+	var seat: Node3D = _seats.get(player)
+	if not is_instance_valid(seat): return
+	for name_value in ["LeftArm","RightArm"]:
+		var arm: Node3D = seat.get_node_or_null("Sleeves/"+name_value)
+		if is_instance_valid(arm): arm.transform = arm.get_meta("rest_transform",Transform3D.IDENTITY)
+
+func _stop_gesture(player: int, restore: bool = true) -> void:
+	var tween: Tween = _gestures.get(player)
+	if tween != null and tween.is_valid(): tween.kill()
+	_gestures.erase(player)
+	_gesture_kinds.erase(player)
+	if restore: _restore_pose(player)
+
+func _stop_all_gestures() -> void:
+	for player in _gestures.keys(): _stop_gesture(int(player))
+
+func _exit_tree() -> void:
+	_stop_all_gestures()

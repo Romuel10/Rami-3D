@@ -2,6 +2,18 @@
 
 Jeu Android de rami en français : une table et des cartes en 3D, un mode solo contre 1 à 3 ordinateurs, et des parties privées à 2–4 joueurs où chacun utilise son téléphone. Projet réalisé avec Godot 4.6.3, sans publicité, compte ni achat intégré.
 
+## Améliorations de la version 0.7.0
+
+- **Tutoriel jouable du Tri** à 6 ou 12 cartes : piocher, repérer ses tris, trier sa main et choisir une défausse gagnante avec le vrai moteur.
+- **Regrouper mes tris** : sépare visuellement les groupes dans la main privée. **Trier** et le déplacement manuel reviennent au rangement libre. Aucune carte n’est posée ni révélée.
+- **Gestes des adversaires** pour la réflexion, la pioche, la pose et la défausse. Les mouvements sont bornés, s’annulent lors d’un départ et respectent le réglage d’animations.
+- **Sons de cartes** : frottement du papier, glissement sur le feutre et petits impacts, avec variations légères et arrêt en arrière-plan.
+- **Économie de batterie** dans Confort : limite à 30 images/s et désactive les ombres. Le mode normal est limité à 60 images/s.
+- **Internet sur Vercel** : nouveau serveur Node/WebSocket avec stockage Redis partagé. Une adresse HTTPS Vercel est convertie automatiquement et mémorisée ; ensuite, seul le code du salon est demandé. [Déploiement Vercel](vercel/README.md).
+- **Essais Android et signature** : un outil vérifie l’APK puis permet un essai sur un téléphone explicitement choisi, sans effacer ses données. Le script de signature propose aussi une vérification des noms des secrets. [Guide appareils](docs/ANDROID-DEVICE-TESTS.md) · [Signature durable](docs/SIGNING.md).
+
+**Le serveur Vercel n’est pas encore déployé : aucun compte Vercel ni stockage Redis de production n’est connecté ici.** Le jeu solo et le Wi-Fi fonctionnent sans cet hébergement. Aucun téléphone physique n’est connecté à l’environnement de test ; les essais Android réels restent à effectuer. La signature durable des publications GitHub nécessite toujours sa configuration unique.
+
 ## Table et cartes plus réalistes — version 0.6.0
 
 - **Table physique** : feutre texturé, plateau en bois, rebord rembourré, coutures et ombres.
@@ -129,11 +141,11 @@ L’hôte garde le jeu ouvert pendant la partie. Les adresses et codes figurant 
 
 ## Avec des amis par Internet
 
-Le client Android et le serveur Internet sont implémentés et testés ensemble. **Aucun serveur public n’est actuellement hébergé : il faut d’abord installer le serveur fourni sur un ordinateur/VPS accessible par Internet.** Le guide [server/README.md](server/README.md) donne la commande de lancement et la configuration WSS.
+Le client Android et le serveur Internet sont implémentés et testés ensemble. **Aucun serveur public n’est actuellement hébergé.** L’hébergement choisi est **Vercel** : [vercel/README.md](vercel/README.md) décrit le déploiement et le stockage Redis nécessaire. Le serveur Godot autonome reste disponible en alternative dans [server/README.md](server/README.md).
 
 Une fois le serveur accessible :
 
-1. Tous les joueurs choisissent **Internet** et saisissent la même adresse `wss://…`.
+1. Tous les joueurs choisissent **Internet**. À la première utilisation, saisir l’adresse HTTPS du déploiement Vercel (ou coller une invitation) ; elle est mémorisée. Une adresse publique peut aussi être préconfigurée dans `network/default_server_url` avant compilation.
 2. Le premier crée un salon et partage son code.
 3. Les autres saisissent le code et rejoignent le salon.
 4. Le créateur commence la partie.
@@ -188,6 +200,10 @@ godot --headless --path . --script tests/test_accessibility.gd
 godot --headless --path . --script tests/test_tri.gd
 godot --headless --path . --script tests/test_tri_ui.gd
 godot --headless --path . --script tests/test_tri_lan.gd
+godot --headless --path . --script tests/test_tri_tutorial.gd
+godot --headless --path . --script tests/test_upgrade_v7.gd
+godot --headless --path . --script tests/test_opponent_gestures.gd
+godot --headless --path . --script tests/test_sound_effects.gd
 GODOT_BIN=/chemin/vers/godot python3 tests/test_internet.py
 GODOT_BIN=/chemin/vers/godot python3 tests/test_forfeit_server.py
 GODOT_BIN=/chemin/vers/godot python3 tests/test_server_restart.py

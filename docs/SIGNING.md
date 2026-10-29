@@ -45,6 +45,16 @@ Le script configure ces valeurs sans devoir les copier dans le chat. Si le compt
 
 Une configuration partielle est rejetée. Une clé ou un mot de passe incorrect arrête aussi le workflow avant publication. Les secrets ne sont accessibles à l’étape de signature que pour la branche `main`, hors demandes de fusion. Les fichiers temporaires de signature sont supprimés à la fin du travail.
 
+## Contrôler la présence des secrets sans modifier la clé
+
+Avec GitHub CLI connecté au compte qui peut lire les noms des secrets du dépôt :
+
+```sh
+python3 scripts/setup-signing.py --check-secrets --repository Romuel10/Rami-3D
+```
+
+Cette commande ne demande pas de mot de passe, n’ouvre pas de clé privée et ne modifie aucun secret. Elle lit uniquement les noms des quatre secrets attendus et signale les noms manquants. Leur présence ne prouve pas que leurs valeurs sont correctes : le workflow valide réellement la clé avant publication.
+
 ## Après la configuration
 
 Dans l’onglet **Actions**, ouvrir **Android APK → Run workflow → main**. Les tests, l’APK, sa signature, son intégrité et son alignement sont vérifiés avant publication. `CI-BUILD-INFO.txt` indique `Signing mode: durable` et `android-signature.txt` permet d’inspecter le certificat public.
@@ -58,3 +68,8 @@ Dans **Actions → Android APK**, ouvrir une compilation réussie : son résumé
 En cas de message « Application non installée », « Package en conflit » ou d’échec d’une mise à jour, comparer d’abord les certificats de l’APK et de l’application installée. Les APK de test temporaires de deux compilations peuvent être signés avec des clés différentes. Ne pas désinstaller une ancienne version sans savoir que cette action efface les sauvegardes et statistiques locales. La configuration d’une clé durable évite ces changements pour les publications suivantes ; elle ne récupère pas les clés de test passées.
 
 Ces points n’expliquent pas tous les plantages Android. Pour diagnostiquer un arrêt au lancement ou en partie, relever le message exact, la version Android, le modèle du téléphone et, si possible, le journal `adb logcat` de ce lancement.
+
+
+## Vérifier une mise à jour sur appareil
+
+Le [guide d’essai Android](ANDROID-DEVICE-TESTS.md) fournit une commande reproductible pour vérifier un APK, choisir un téléphone explicitement, comparer les certificats de l’application installée et utiliser seulement `adb install -r`. Le vérificateur refuse une signature incompatible et ne propose jamais de désinstaller le jeu pour contourner le contrôle.

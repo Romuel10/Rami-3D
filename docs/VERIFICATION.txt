@@ -1,3 +1,29 @@
+Rami Salon 3D — améliorations 0.7.0
+
+Vérifications locales sous Godot 4.6.3 :
+- Tutoriel Tri : 130 contrôles sans rendu, 666 contrôles rendus.
+- Intégration/regroupement/économie/serveur mémorisé : 30 sans rendu,
+  222 avec rendu en 1440×900 et 2400×1080.
+- Sons : 79 contrôles ; gestes adverses : 49 sans rendu et 49 avec rendu.
+- Régressions : 59 interface, 79 nouveautés, 359 animations, 135 sauvegardes,
+  32 Tri UI et 67 confort sans rendu réussis.
+- Outil appareils Android : 23 tests standard-library ; aucun appareil
+  connecté, rapport physique explicitement non exécuté.
+- APK 0.7.0/code8 : signature v2/v3, CRC ZIP, alignement 16Ko, manifeste,
+  réglages project.binary et 53 empreintes sources concordantes.
+- Serveur Vercel : 25 suites Node réussies avec Redis réel local,
+  deux instances, concurrence, démarrage à froid et client Godot réel
+  (rami + Tri6/12), sans aucun test ignoré.
+- Moteur serveur Node : parité avec Godot sur 2230 combinaisons et
+  8 scénarios complets ; règles et vues privées comparées à chaque action.
+
+Les tests d’intégration du serveur utilisent Redis local et plusieurs
+instances WebSocket ; ils ne remplacent pas un déploiement Vercel public.
+Le compte Vercel, Redis de production, les essais physiques et la clé de
+signature durable restent à configurer. Aucun mot de passe dans l’APK.
+
+--- Historique des versions précédentes ---
+
 Rami Salon 3D — table et livraison Android 0.6.0
 
 GitHub Actions 40736372281 : SUCCESS. Tous les tests/rendus, export et

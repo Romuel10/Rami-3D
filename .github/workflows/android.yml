@@ -30,6 +30,13 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      - name: Set up Node.js 24 for Vercel server tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: vercel/package-lock.json
+
       - name: Read application version
         id: version
         shell: bash
@@ -220,6 +227,11 @@ jobs:
           XDG_DATA_HOME="$RUNNER_TEMP/rami-tutorial-tests" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_tutorial_practice.gd
           XDG_DATA_HOME="$RUNNER_TEMP/rami-comfort-tests" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_accessibility.gd
           timeout 120 python3 tests/test_signing_setup.py
+          timeout 120 python3 tests/test_android_device_setup.py
+          XDG_DATA_HOME="$RUNNER_TEMP/tri-tutorial" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_tri_tutorial.gd
+          XDG_DATA_HOME="$RUNNER_TEMP/opponent-gestures" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_opponent_gestures.gd
+          XDG_DATA_HOME="$RUNNER_TEMP/card-foley" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_sound_effects.gd
+          XDG_DATA_HOME="$RUNNER_TEMP/upgrade-ui" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_upgrade_v7.gd
           XDG_DATA_HOME="$RUNNER_TEMP/tri-rules" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_tri.gd
           XDG_DATA_HOME="$RUNNER_TEMP/tri-ui" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_tri_ui.gd
           XDG_DATA_HOME="$RUNNER_TEMP/tri-lan" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_tri_lan.gd
@@ -227,6 +239,16 @@ jobs:
           timeout 120 python3 tests/test_internet.py
           timeout 120 python3 tests/test_forfeit_server.py
           timeout 120 python3 tests/test_server_restart.py
+
+      - name: Verify Vercel multiplayer and Godot rules parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y redis-server
+          npm ci --prefix vercel
+          "$GODOT_BIN" --headless --path . --script vercel/tests/export_godot_parity.gd -- --out="$RUNNER_TEMP/godot-parity.json"
+          GODOT_PARITY_FILE="$RUNNER_TEMP/godot-parity.json" timeout 240 npm test --prefix vercel
 
       - name: Verify rendered hand and touch picking
         shell: bash
@@ -280,6 +302,14 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/table-realism" timeout 120 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_table_realism.gd 2>&1 | tee "$RUNNER_TEMP/table-realism.log"
           if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/table-realism.log"; then exit 1; fi
 
+      - name: Verify Tri tutorial and grouped private hands
+        shell: bash
+        run: |
+          set -euo pipefail
+          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/tri-lesson-render" timeout 120 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_tri_tutorial.gd 2>&1 | tee "$RUNNER_TEMP/tri-lesson-render.log"
+          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/upgrade-render" timeout 120 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_upgrade_v7.gd 2>&1 | tee "$RUNNER_TEMP/upgrade-render.log"
+          if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/tri-lesson-render.log" "$RUNNER_TEMP/upgrade-render.log"; then exit 1; fi
+
       - name: Export and verify Android APK
         shell: bash
         run: |
@@ -293,6 +323,7 @@ jobs:
           "$RAMI_ANDROID_SDK/build-tools/36.0.0/zipalign" -c -P 16 4 builds/rami-3d.apk
           unzip -t builds/rami-3d.apk > "$RUNNER_TEMP/rami-integrity.log"
           "$RAMI_ANDROID_SDK/build-tools/36.0.0/aapt" dump badging builds/rami-3d.apk > builds/android-package.txt
+          python3 scripts/test-android-device.py --sdk "$RAMI_ANDROID_SDK" --apk builds/rami-3d.apk --report builds/android-device-report.json
           git archive --format=zip --prefix=rami-3d/ HEAD --output=builds/rami-salon-3d-sources.zip
           python3 - <<'PY'
           import hashlib, os
@@ -328,6 +359,7 @@ jobs:
             builds/CI-BUILD-INFO.txt
             builds/android-signature.txt
             builds/android-package.txt
+            builds/android-device-report.json
 
       - name: Explain test-only APK availability
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && steps.signing.outputs.publishable != 'true'

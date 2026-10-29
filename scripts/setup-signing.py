@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import base64
 import getpass
+import json
 import os
 from pathlib import Path
 import re
@@ -42,18 +43,48 @@ def is_inside(path: Path, directory: Path) -> bool:
         return False
 
 
+def check_secret_names(repository: str) -> int:
+    """Read names only; the GitHub API never returns secret values."""
+    result = subprocess.run(["gh", "secret", "list", "--repo", repository, "--json", "name"],
+                            capture_output=True, text=True)
+    if result.returncode:
+        raise RuntimeError("La liste des secrets GitHub est inaccessible. Vérifiez le compte gh et les droits du dépôt.")
+    try:
+        entries = json.loads(result.stdout)
+    except (ValueError, TypeError) as error:
+        raise RuntimeError("Réponse GitHub invalide ; aucun secret n’a été modifié.") from error
+    if not isinstance(entries, list) or not all(isinstance(entry, dict) and isinstance(entry.get("name"), str) for entry in entries):
+        raise RuntimeError("Réponse GitHub invalide ; aucun secret n’a été modifié.")
+    names = {entry["name"] for entry in entries}
+    missing = [name for name in SECRET_NAMES if name not in names]
+    if missing:
+        print("Signature durable incomplète. Secrets manquants : " + ", ".join(missing))
+        print("Aucune clé ni aucun secret n’a été créé ou modifié.")
+        return 1
+    print("Les quatre noms de secrets de signature sont présents dans le dépôt.")
+    print("Les valeurs restent privées et ne sont pas vérifiées ici. Le workflow doit valider la clé avant publication.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     default_data = Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local/share")))
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repository", default="Romuel10/Rami-3D", metavar="OWNER/REPO")
     parser.add_argument("--keystore", type=Path, default=default_data / "rami-signing/rami-salon.jks")
     parser.add_argument("--alias", default="ramisalon")
+    parser.add_argument("--check-secrets", action="store_true", help="Read only the expected GitHub secret names; no password or key needed.")
     parser.add_argument("--create", action="store_true", help="Create a new key; refuses to replace an existing file.")
     parser.add_argument("--prepare-only", action="store_true", help="Create/validate locally without changing GitHub secrets.")
     parser.add_argument("--password-env", metavar="VARIABLE", help="Read the password from this variable instead of prompting.")
     arguments = parser.parse_args(argv)
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", arguments.repository):
         parser.error("Expected a repository in OWNER/REPO form.")
+    if arguments.check_secrets:
+        if arguments.create or arguments.prepare_only or arguments.password_env:
+            parser.error("--check-secrets ne peut pas créer, valider ou envoyer une clé.")
+        if not shutil.which("gh"):
+            parser.error("GitHub CLI (gh) est nécessaire pour lire les noms des secrets.")
+        return check_secret_names(arguments.repository)
     if not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", arguments.alias):
         parser.error("Use a simple Android key alias (letters, numbers, dots, hyphens or underscores).")
     project = Path(__file__).resolve().parents[1]

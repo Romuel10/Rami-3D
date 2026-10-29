@@ -9,3 +9,9 @@ __pycache__/
 *.jks
 local.properties
 docs/screenshots/*.import
+
+node_modules/
+.vercel/
+.env
+.env.*
+!.env.example

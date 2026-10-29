@@ -1,0 +1,17 @@
+{
+  "name": "rami-salon-vercel",
+  "version": "0.7.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "start": "node local.mjs",
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs"
+  },
+  "dependencies": {
+    "ioredis": "5.8.2",
+    "ws": "8.22.0"
+  }
+}
