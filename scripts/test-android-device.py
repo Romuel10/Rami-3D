@@ -34,13 +34,17 @@ def run(command: list[str], *, allow_failure: bool = False, timeout: int = 40, i
     return (result.stdout + ("\n" + result.stderr if include_stderr else "")).strip()
 
 
-def find_tools(sdk: Path | None) -> dict[str, str]:
+def find_tools(sdk: Path | None, version: str | None = None) -> dict[str, str]:
     if sdk is None:
         configured = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT")
         sdk = Path(configured).expanduser() if configured else None
     if sdk is None or not sdk.is_dir():
         raise CheckError("Indiquez le SDK Android avec --sdk ou ANDROID_HOME.")
     folders = [p for p in (sdk / "build-tools").glob("*") if re.fullmatch(r"\d+(?:\.\d+)+", p.name)]
+    if version is not None:
+        if not re.fullmatch(r"\d+(?:\.\d+)+", version):
+            raise CheckError("Version build-tools invalide.")
+        folders = [p for p in folders if p.name == version]
     folders.sort(key=lambda p: tuple(int(v) for v in p.name.split(".")), reverse=True)
     folder = next((p for p in folders if all((p / name).is_file() for name in ("aapt", "apksigner", "zipalign"))), None)
     adb = sdk / "platform-tools" / "adb"
@@ -210,6 +214,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apk", required=True, type=Path)
     parser.add_argument("--sdk", type=Path)
+    parser.add_argument("--build-tools-version", help="Use exactly this installed stable build-tools version.")
     parser.add_argument("--serial", help="Exact adb serial; never written to the report.")
     parser.add_argument("--install", action="store_true", help="Install/update with -r only, after certificate checks.")
     parser.add_argument("--launch", action="store_true", help="Open the game and observe its process/log for a short smoke test.")
@@ -225,7 +230,8 @@ def main(argv: list[str] | None = None) -> int:
               "manual_checks": "pending: gameplay, frame rate, heat, audio, backgrounding, touchscreen"}
     code = 0
     try:
-        tools = find_tools(arguments.sdk)
+        tools = find_tools(arguments.sdk, arguments.build_tools_version)
+        report["build_tools_version"] = Path(tools["apksigner"]).parent.name
         report["apk"] = inspect_apk(arguments.apk, tools)
         check_device(arguments, tools, report["apk"], report)
         if report.get("device_test") == "launch_smoke_passed":

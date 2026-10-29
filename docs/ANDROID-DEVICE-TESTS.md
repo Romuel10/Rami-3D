@@ -66,3 +66,5 @@ python3 tests/test_android_device_setup.py
 ```
 
 Les appareils sont simulés dans cette suite : elle vérifie les refus de signature/downgrade/API/architecture incompatibles, l’obligation d’une série explicite, la conservation des données, la détection d’un arrêt ou redémarrage du processus et l’absence de fausse validation d’une autre version installée. Les essais physiques restent à réaliser avec un appareil connecté.
+
+Le workflow utilise `--build-tools-version 36.0.0` pour conserver la même chaîne que l’export. Sans cette option, l’outil local choisit la version stable la plus récente installée. Le rapport indique la version choisie. En CI sans téléphone, ce rapport est un diagnostic complémentaire ; les contrôles de signature, d’intégrité ZIP et d’alignement de l’APK restent obligatoires avant l’upload. Une erreur du rapport reste visible dans son champ `status` et ne devient jamais un succès d’essai physique.

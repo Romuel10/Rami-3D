@@ -7,7 +7,7 @@ Vérifications locales sous Godot 4.6.3 :
 - Sons : 79 contrôles ; gestes adverses : 49 sans rendu et 49 avec rendu.
 - Régressions : 59 interface, 79 nouveautés, 359 animations, 135 sauvegardes,
   32 Tri UI et 67 confort sans rendu réussis.
-- Outil appareils Android : 26 tests standard-library ; aucun appareil
+- Outil appareils Android : 28 tests standard-library ; aucun appareil
   connecté, rapport physique explicitement non exécuté.
 - APK 0.7.0/code8 : signature v2/v3, CRC ZIP, alignement 16Ko, manifeste,
   réglages project.binary et 53 empreintes sources concordantes.

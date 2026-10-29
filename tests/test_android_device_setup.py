@@ -129,6 +129,22 @@ class DeviceSafetyTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.h = Harness(self.temp.name)
 
+    def test_build_tools_can_be_pinned_to_the_export_toolchain(self):
+        for tool in ("aapt", "apksigner", "zipalign"):
+            newer = self.h.sdk / "build-tools/37.0.0" / tool
+            newer.parent.mkdir(parents=True, exist_ok=True)
+            newer.touch()
+        self.assertIn("37.0.0", runner.find_tools(self.h.sdk)["apksigner"])
+        self.assertIn("36.0.0", runner.find_tools(self.h.sdk, "36.0.0")["apksigner"])
+        code, report = self.h.invoke("--build-tools-version", "36.0.0")
+        self.assertEqual(code, 0)
+        self.assertEqual(report["build_tools_version"], "36.0.0")
+
+    def test_missing_or_invalid_pinned_tools_do_not_fall_back(self):
+        for version in ("99.0.0", "../36.0.0"):
+            with self.assertRaises(runner.CheckError):
+                runner.find_tools(self.h.sdk, version)
+
     def test_readonly_reports_phone_test_pending_even_when_device_is_available(self):
         code, report = self.h.invoke()
         self.assertEqual(code, 0)
