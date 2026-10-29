@@ -25,6 +25,10 @@ func _run() -> void:
 	_check(last.is_moving() and not last.transform.is_equal_approx(last.motion_target), "deal begins at deck rather than final fan")
 	_check(last.has_node("Paper/PrintedBack"), "turnover has artwork on the underside")
 	await create_timer(0.15).timeout
+	# Timers can resume before this frame's tween update, especially with the
+	# new frame-rate limit. Observe a processed frame before measuring motion.
+	await process_frame
+	await process_frame
 	_check(last.transform.is_equal_approx(last_start), "later deal cards wait their turn")
 	_check(not app.hand_cards[0].transform.is_equal_approx(last_start), "first card moves while later cards wait")
 	await _settled()
