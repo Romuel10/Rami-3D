@@ -25,13 +25,13 @@ class CheckError(RuntimeError):
     pass
 
 
-def run(command: list[str], *, allow_failure: bool = False, timeout: int = 40) -> str:
+def run(command: list[str], *, allow_failure: bool = False, timeout: int = 40, include_stderr: bool = False) -> str:
     result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
     if result.returncode and not allow_failure:
         # Keep third-party logs out of the console; known install codes are safe.
         code = re.search(r"INSTALL_FAILED_[A-Z_]+", result.stdout + result.stderr)
         raise CheckError(f"Échec de {Path(command[0]).name}" + (": " + code[0] if code else "."))
-    return result.stdout.strip()
+    return (result.stdout + ("\n" + result.stderr if include_stderr else "")).strip()
 
 
 def find_tools(sdk: Path | None) -> dict[str, str]:
@@ -68,6 +68,13 @@ def launcher_from_xmltree(text: str) -> str:
     return ""
 
 
+def certificate_digests(output: str) -> list[str]:
+    # New build-tools may prefix signers with SDK ranges instead of '#1'.
+    # Restrict matching to signer certificates, never public-key/stamp digests.
+    matches = re.findall(r"^\s*Signer[^\r\n]*?\bcertificate SHA-256 digest:\s*([a-fA-F0-9:]+)\s*$", output, re.M)
+    return sorted({value.replace(":", "").lower() for value in matches if len(value.replace(":", "")) == 64})
+
+
 def inspect_apk(apk: Path, tools: dict[str, str]) -> dict:
     if not apk.is_file():
         raise CheckError("Fichier APK introuvable.")
@@ -77,8 +84,8 @@ def inspect_apk(apk: Path, tools: dict[str, str]) -> dict:
                 raise CheckError("APK incomplet ou corrompu.")
     except zipfile.BadZipFile as error:
         raise CheckError("Le fichier n’est pas un APK/ZIP valide ; décompressez d’abord l’artefact GitHub.") from error
-    signature = run([tools["apksigner"], "verify", "--verbose", "--print-certs", str(apk)])
-    certificates = re.findall(r"Signer #\d+ certificate SHA-256 digest:\s*([a-fA-F0-9]+)", signature)
+    signature = run([tools["apksigner"], "verify", "--verbose", "--print-certs", str(apk)], include_stderr=True)
+    certificates = certificate_digests(signature)
     if not certificates:
         raise CheckError("Certificat public de l’APK introuvable.")
     run([tools["zipalign"], "-c", "-P", "16", "4", str(apk)])
@@ -116,10 +123,10 @@ def ensure_update_compatible(apk: dict, installed: dict) -> None:
 
 def inspect_installed(apk_path: Path, tools: dict[str, str]) -> dict:
     """Inspect public signing metadata without assuming split alignment."""
-    signature = run([tools["apksigner"], "verify", "--print-certs", str(apk_path)])
+    signature = run([tools["apksigner"], "verify", "--print-certs", str(apk_path)], include_stderr=True)
     manifest = run([tools["aapt"], "dump", "badging", str(apk_path)])
     code = re.search(r"versionCode='(\d+)'", manifest)
-    certs = re.findall(r"Signer #\d+ certificate SHA-256 digest:\s*([a-fA-F0-9]+)", signature)
+    certs = certificate_digests(signature)
     if not code or not certs:
         raise CheckError("La signature de l’application existante ne peut pas être vérifiée ; aucune modification.")
     return {"version_code": int(code[1]), "certificate_sha256": sorted(v.lower() for v in certs),

@@ -104,6 +104,25 @@ class Harness:
         return [call for call in self.calls if any(part in ("install", "uninstall", "clear", "start") for part in call)]
 
 
+class CertificateOutputTests(unittest.TestCase):
+    def test_build_tools_signer_formats_are_equivalent(self):
+        legacy = "Signer #1 certificate SHA-256 digest: " + CERT
+        ranged = "Signer (minSdkVersion=24, maxSdkVersion=2147483647) certificate SHA-256 digest: " + CERT
+        sourced = "Signer #1 (certificateSource=APK Signature Scheme v3) certificate SHA-256 digest: " + CERT
+        self.assertEqual(runner.certificate_digests(legacy), [CERT])
+        self.assertEqual(runner.certificate_digests(ranged + "\n" + sourced), [CERT])
+
+    def test_unrelated_hashes_and_truncated_digests_are_not_certificates(self):
+        self.assertEqual(runner.certificate_digests("Signer #1 public key SHA-256 digest: " + CERT), [])
+        self.assertEqual(runner.certificate_digests("Source Stamp Signer certificate SHA-256 digest: " + CERT), [])
+        self.assertEqual(runner.certificate_digests("Signer #1 certificate SHA-256 digest: deadbeef"), [])
+
+    def test_verifier_metadata_can_be_read_from_stderr_without_logging_it(self):
+        completed = subprocess.CompletedProcess(["apksigner"], 0, "Verifies", "Signer certificate SHA-256 digest: " + CERT)
+        with patch.object(runner.subprocess, "run", return_value=completed):
+            self.assertEqual(runner.certificate_digests(runner.run(["apksigner"], include_stderr=True)), [CERT])
+
+
 class DeviceSafetyTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="rami-device-test-")

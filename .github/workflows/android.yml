@@ -319,7 +319,7 @@ jobs:
           if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/rami-export.log"; then
             exit 1
           fi
-          "$RAMI_ANDROID_SDK/build-tools/36.0.0/apksigner" verify --verbose builds/rami-3d.apk | tee builds/android-signature.txt
+          "$RAMI_ANDROID_SDK/build-tools/36.0.0/apksigner" verify --verbose --print-certs builds/rami-3d.apk | tee builds/android-signature.txt
           "$RAMI_ANDROID_SDK/build-tools/36.0.0/zipalign" -c -P 16 4 builds/rami-3d.apk
           unzip -t builds/rami-3d.apk > "$RUNNER_TEMP/rami-integrity.log"
           "$RAMI_ANDROID_SDK/build-tools/36.0.0/aapt" dump badging builds/rami-3d.apk > builds/android-package.txt
