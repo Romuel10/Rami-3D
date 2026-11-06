@@ -1,0 +1,9 @@
+project_id = "mppunkypxdqyazoojksv"
+
+[functions.rami-online]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/rami-online/index.mjs"
+
+[edge_runtime]
+policy = "per_worker"

@@ -2,6 +2,16 @@
 
 Jeu Android de rami en français : une table et des cartes en 3D, un mode solo contre 1 à 3 ordinateurs, et des parties privées à 2–4 joueurs où chacun utilise son téléphone. Projet réalisé avec Godot 4.6.3, sans publicité, compte ni achat intégré.
 
+## Mode entre amis hébergé — version 0.8.0
+
+- **Supabase est le serveur Internet du projet** : salons persistants, Rami à 2–4 joueurs et Tri en duel à 6/12 cartes.
+- **Adresse déjà configurée** : choisir **Jouer avec des amis → Internet**, créer un salon et transmettre son code à six chiffres.
+- Chaque téléphone reçoit uniquement ses cartes. Le serveur vérifie les tours et les actions ; la même place est récupérée après une coupure, pendant 60 secondes.
+- Le salon d’attente conserve aussi les places pendant une brève interruption. Un départ volontaire libère la place avant la partie ou compte comme abandon pendant la partie.
+- [État du serveur](https://mppunkypxdqyazoojksv.supabase.co/functions/v1/rami-online/health) · [Configuration Supabase](supabase/README.md).
+
+Les essais sur téléphone Android physique restent à effectuer. Les mises à jour publiées dans GitHub Releases nécessitent une signature Android durable ; les APK de test sont disponibles dans les artefacts des compilations.
+
 ## Améliorations de la version 0.7.0
 
 - **Tutoriel jouable du Tri** à 6 ou 12 cartes : piocher, repérer ses tris, trier sa main et choisir une défausse gagnante avec le vrai moteur.
@@ -12,7 +22,7 @@ Jeu Android de rami en français : une table et des cartes en 3D, un mode solo c
 - **Internet sur Vercel** : nouveau serveur Node/WebSocket avec stockage Redis partagé. Une adresse HTTPS Vercel est convertie automatiquement et mémorisée ; ensuite, seul le code du salon est demandé. [Déploiement Vercel](vercel/README.md).
 - **Essais Android et signature** : un outil vérifie l’APK puis permet un essai sur un téléphone explicitement choisi, sans effacer ses données. Le script de signature propose aussi une vérification des noms des secrets. [Guide appareils](docs/ANDROID-DEVICE-TESTS.md) · [Signature durable](docs/SIGNING.md).
 
-**Le serveur Vercel n’est pas encore déployé : aucun compte Vercel ni stockage Redis de production n’est connecté ici.** Le jeu solo et le Wi-Fi fonctionnent sans cet hébergement. Aucun téléphone physique n’est connecté à l’environnement de test ; les essais Android réels restent à effectuer. La signature durable des publications GitHub nécessite toujours sa configuration unique.
+Le serveur Vercel/Redis reste une possibilité d’hébergement indépendante. Le serveur utilisé par défaut depuis la version 0.8.0 est Supabase. Le solo et le Wi-Fi fonctionnent sans connexion à Internet.
 
 ## Table et cartes plus réalistes — version 0.6.0
 
@@ -36,7 +46,7 @@ Le **Tri** est maintenant un vrai duel de cartes, contre l’ordinateur ou un am
 - **Trier ♠** alterne le rangement par couleur et par valeur, y compris pendant le tour adverse. **Mes tris** met les groupes en évidence uniquement sur votre téléphone.
 - Le serveur n’envoie jamais la main adverse. Les seuls tris révélés sont ceux du gagnant, après la victoire.
 
-Cette version utilise deux jeux de 52 cartes, **sans jokers**. Le duel Wi-Fi fonctionne entre téléphones ; le duel Internet nécessite le serveur fourni **mis à jour en 0.5.0** et votre adresse WSS. Les abandons et le délai de reconnexion de 60 secondes s’appliquent aussi au Tri. La reprise solo conserve le mode, les cartes et leur ordre.
+Cette version utilise deux jeux de 52 cartes, **sans jokers**. Le duel fonctionne en Wi-Fi ou sur le serveur Supabase préconfiguré. Les abandons et le délai de reconnexion de 60 secondes s’appliquent aussi au Tri. La reprise solo conserve le mode, les cartes et leur ordre.
 
 L’ancien exercice de classement est désormais nommé **Exercice de rangement** pour le distinguer du Tri. Les sources 0.5.0 sont disponibles ici ; les APK de test sont dans les artefacts du workflow [Android APK](https://github.com/Romuel10/Rami-3D/actions). Une publication avec signature durable attend toujours la [configuration unique de la clé](docs/SIGNING.md).
 
@@ -63,7 +73,7 @@ Les sources 0.4.0 et les vérifications sont disponibles dans ce dépôt. La pub
 - **Adversaires animés** : mains de dos, pioche et défausse visibles, actions successives et petite célébration en fin de manche.
 - **Invitations à copier/coller** : l’hôte choisit **Copier l’invitation** dans le salon. L’ami la colle dans **Jouer avec des amis → Rejoindre avec l’invitation**. L’adresse et le code sont remplis automatiquement.
 
-Une invitation Wi-Fi fonctionne sur le même réseau. Une invitation Internet nécessite un serveur WebSocket accessible, comme dans les versions précédentes ; cette livraison n’installe pas de serveur public. L’invitation est un texte à coller dans le jeu, sans ouverture automatique par Android. Les sauvegardes et statistiques solo restent sur l’appareil.
+Une invitation Wi-Fi fonctionne sur le même réseau. Une invitation Internet utilise l’adresse du serveur du salon, Supabase par défaut. L’invitation est un texte à coller dans le jeu, sans ouverture automatique par Android. Les sauvegardes et statistiques solo restent sur l’appareil.
 
 À la fin de chaque manche, les cartes restantes comptent comme pénalités : nombres à leur valeur, figures à 10, as à 11 et jokers à 20. Le plus petit total gagne le match ; les égalités restent ex æquo. Les manches suivantes alternent le premier joueur. Une nouvelle partie remplace la reprise précédente.
 
@@ -141,16 +151,14 @@ L’hôte garde le jeu ouvert pendant la partie. Les adresses et codes figurant 
 
 ## Avec des amis par Internet
 
-Le client Android et le serveur Internet sont implémentés et testés ensemble. **Aucun serveur public n’est actuellement hébergé.** L’hébergement choisi est **Vercel** : [vercel/README.md](vercel/README.md) décrit le déploiement et le stockage Redis nécessaire. Le serveur Godot autonome reste disponible en alternative dans [server/README.md](server/README.md).
+Le serveur est hébergé dans le projet Supabase `mppunkypxdqyazoojksv`. L’adresse est intégrée à l’application : aucune clé API ni configuration technique n’est demandée aux joueurs. [Détails du serveur](supabase/README.md).
 
-Une fois le serveur accessible :
-
-1. Tous les joueurs choisissent **Internet**. À la première utilisation, saisir l’adresse HTTPS du déploiement Vercel (ou coller une invitation) ; elle est mémorisée. Une adresse publique peut aussi être préconfigurée dans `network/default_server_url` avant compilation.
+1. Tous les joueurs choisissent **Jouer avec des amis → Internet**. Le serveur Supabase est déjà sélectionné si aucune adresse personnalisée n’a été mémorisée.
 2. Le premier crée un salon et partage son code.
 3. Les autres saisissent le code et rejoignent le salon.
 4. Le créateur commence la partie.
 
-Chaque connexion reçoit uniquement sa propre main. Le serveur valide les actions et suspend la partie pendant une coupure réseau, pendant 60 secondes au maximum. La reconnexion automatique, **Se reconnecter** ou **Retrouver mon salon** récupère la même place dans ce délai, y compris après une fermeture du jeu. Un abandon volontaire transmis au serveur est définitif et efface le jeton local. Après expiration du délai, le joueur absent perd. Le serveur peut sauvegarder les salons avec `--state-file` ; voir le guide du serveur. Pour rejouer après un match terminé, créer un nouveau salon.
+Chaque connexion reçoit uniquement sa propre main. Le serveur valide les actions et suspend la partie pendant une coupure réseau, pendant 60 secondes au maximum. La reconnexion automatique, **Se reconnecter** ou **Retrouver mon salon** récupère la même place dans ce délai, y compris après une fermeture du jeu. Un abandon volontaire transmis au serveur est définitif et efface le jeton local. Après expiration du délai, le joueur absent perd. Les salons sont enregistrés dans Postgres à chaque action ; ils expirent après 24 heures sans activité de jeu. Pour rejouer après un match terminé, créer un nouveau salon.
 
 ## Règles de cette version
 

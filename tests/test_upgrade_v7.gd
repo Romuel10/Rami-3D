@@ -20,6 +20,7 @@ func _run() -> void:
 	check(Profile.normalise("https://table.vercel.app")=="wss://table.vercel.app/api/ws","Vercel HTTPS URL becomes WebSocket endpoint")
 	check(Profile.normalise("wss://table.vercel.app/")=="wss://table.vercel.app/api/ws","base Vercel WSS URL is completed")
 	check(Profile.normalise("wss://jeu.exemple.fr/salon")=="wss://jeu.exemple.fr/salon","custom WS path preserved")
+	check(Profile.normalise("https://mppunkypxdqyazoojksv.supabase.co/functions/v1/rami-online")==Profile.configured_url(),"hosted Supabase path preserved")
 	for invalid in ["", "https://nom:pass@jeu.fr", "ftp://jeu.fr", "https://jeu.fr#token", "https://jeu.fr:99999", "https://jeu.fr/ espace"]:
 		check(Profile.normalise(invalid).is_empty(),"invalid public endpoint rejected")
 	var hand: Array = ["0:H:7","0:S:8","0:C:9","1:H:7","0:C:8","0:D:9","0:C:7","0:D:8","0:S:9","0:S:1","0:D:2","0:H:3"]
@@ -89,7 +90,13 @@ func _run() -> void:
 	app._close_overlay()
 	app.saved_address = ""
 	app._show_friends(true)
-	check(app.address_input.visible,"no invented public host if none configured")
+	check(not app.address_input.visible and app.address_input.text==Profile.configured_url(),"hosted default enables code-only entry")
+	app._close_overlay()
+	var hosted_default: String = Profile.configured_url()
+	ProjectSettings.set_setting("network/default_server_url", "")
+	app._show_friends(true)
+	check(app.address_input.visible,"custom builds without hosting request an endpoint")
+	ProjectSettings.set_setting("network/default_server_url", hosted_default)
 	app._close_overlay()
 	app.tri_choice = 12
 	app._show_tri_setup()

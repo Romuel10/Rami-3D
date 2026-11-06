@@ -1,14 +1,12 @@
-# Rami Salon 3D 0.7.0 — apprendre, organiser et jouer en ligne
+# Rami Salon 3D 0.8.0 — salons Internet sur Supabase
 
-- Tutoriel interactif du Tri à 6/12 cartes, jusqu’à une vraie défausse gagnante.
-- Tris espacés et regroupés dans la main privée, avec retour au rangement libre par tri ou glissement manuel.
-- Gestes adverses de réflexion, pioche, pose et défausse ; mouvements courts et réduction des animations respectée.
-- Sons originaux de papier et feutre, volume indépendant et silence en arrière-plan.
-- Mode économie de batterie à 30 images/s sans ombres ; mode normal limité à 60 images/s.
-- Serveur Internet adapté à Vercel : WebSocket Node, parties privées et reconnexion stockées dans Redis entre les instances.
-- Adresse Vercel HTTPS mémorisée, puis connexion avec le code du salon.
-- Outil Android de vérification et d’essai sur appareil explicitement choisi ; contrôle de configuration de signature durable.
+- Serveur Internet hébergé dans le projet Supabase du jeu, avec adresse intégrée à l’application.
+- Rami à 2–4 joueurs ; Tri en duel à 6 ou 12 cartes.
+- Création et invitation par code à six chiffres, sans compte à créer pour les joueurs.
+- Cartes privées et actions vérifiées par le serveur. Les salons sont sauvegardés dans Postgres, avec verrouillage des actions concurrentes.
+- Reconnexion à la même place pendant 60 secondes, y compris dans le salon d’attente. La rotation des connexions du service reprend le même salon.
+- Les modes solo et Wi-Fi restent disponibles. Les adresses de serveurs personnalisés peuvent toujours être mémorisées.
 
-L’APK d’essai a été vérifié sous Linux : signature, intégrité, alignement et réglages. Aucun téléphone Android physique n’a été utilisé ici.
+Dans **Jouer avec des amis → Internet**, créer un salon puis transmettre son code. Pour le Tri, choisir d’abord le duel et le format 6/12 cartes.
 
-Le code du serveur Vercel est prêt à déployer ; aucun compte Vercel/Redis de production n’est connecté et aucune adresse publique n’est préconfigurée. Le jeu solo et le Wi-Fi fonctionnent sans serveur Internet. Une clé Android durable reste nécessaire pour publier des mises à jour GitHub avec la même signature.
+Les tests automatiques ne remplacent pas un essai sur téléphone Android physique. Les compilations sans clé de signature durable restent des APK de test disponibles dans les artefacts GitHub Actions.

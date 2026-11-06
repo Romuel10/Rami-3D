@@ -341,7 +341,7 @@ jobs:
               f'APK SHA256: {hashlib.sha256(apk.read_bytes()).hexdigest()}',
               'Durable mode keeps the configured signing certificate across published updates; temporary-test artifacts cannot replace a published app.',
               'No physical Android device test was performed by this workflow.',
-              'Internet multiplayer requires hosting the included game server.',
+              'Internet multiplayer: Supabase endpoint preconfigured; hosted service availability is verified separately.',
           ])
           Path('builds/CI-BUILD-INFO.txt').write_text(text + '\n')
           PY

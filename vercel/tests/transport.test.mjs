@@ -140,6 +140,24 @@ test('lobby departure releases a seat and transfers owner across instances',asyn
   b.send({type:'start'}); assert.equal((await b.until('state')).data.players.length,2);
 });
 
+test('a Supabase-style lobby survives socket rotation, but leave and grace expiry release seats',async t=>{
+  const f=await fixture(t,{preserveLobby:true,graceMs:300});
+  const one=await f.app(),two=await f.app();
+  const a=await f.connect(one),b=await f.connect(two);
+  const aw=await create(a,6),bw=await join(b,aw.code);
+  b.close();
+  const waiting=(await a.until('lobby',m=>m.data.players.length===2&&!m.data.players[1].connected)).data;
+  assert.equal(waiting.started,false);
+  a.send({type:'start'}); assert.match((await a.until('error')).message,/reconnexion/);
+  const resumed=await f.connect(two); const restored=await join(resumed,aw.code,bw.token);
+  assert.equal(restored.player,1); assert.equal(restored.token,bw.token);
+  resumed.send({type:'leave'});
+  await a.until('lobby',m=>m.data.players.length===1);
+  const replacement=await f.connect(two); await join(replacement,aw.code);
+  replacement.close();
+  await a.until('lobby',m=>m.data.players.length===1);
+});
+
 test('transient transport loss pauses, same hand resumes, long loss forfeits',async t=>{
   const f=await fixture(t,{graceMs:400}); const one=await f.app(),two=await f.app();
   const a=await f.connect(one),b=await f.connect(two); const aw=await create(a); const bw=await join(b,aw.code); const [,before]=await start(a,b);

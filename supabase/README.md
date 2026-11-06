@@ -1,0 +1,54 @@
+# Salons Rami/Tri sur Supabase
+
+Projet : `mppunkypxdqyazoojksv`. Le client 0.8.0 utilise directement :
+
+```
+wss://mppunkypxdqyazoojksv.supabase.co/functions/v1/rami-online
+```
+
+[État public](https://mppunkypxdqyazoojksv.supabase.co/functions/v1/rami-online/health) · [Fonctions du projet](https://supabase.com/dashboard/project/mppunkypxdqyazoojksv/functions)
+
+## Jouer
+
+Tous les joueurs installent la même version, choisissent **Jouer avec des amis → Internet**, puis créent ou rejoignent un salon avec son code à six chiffres. Pour le Tri, choisir d’abord le duel 6/12 cartes. L’hôte lance la partie quand tout le monde est présent. Le téléphone de l’hôte ne fait pas fonctionner le serveur Internet.
+
+Une adresse personnalisée précédemment mémorisée est conservée. Pour revenir au serveur du projet, toucher **Changer de serveur** et coller l’adresse ci-dessus.
+
+## Fonctionnement
+
+L’Edge Function exécute le même moteur JavaScript que `vercel/lib/engine.mjs`, vérifié contre le moteur Godot. Le protocole WebSocket reste celui de `scripts/network_manager.gd`. Chaque action relit l’état durable ; seule `viewFor` envoie une vue privée au joueur concerné. Les instances interrogent les versions enregistrées toutes les secondes pour synchroniser les autres téléphones.
+
+Les mains, la pioche et les jetons de session restent dans `rami_private.rooms`, hors des schémas exposés. RLS est activé, sans accès `anon`/`authenticated`. Les cinq RPC sont `SECURITY INVOKER`, accordés uniquement à `service_role`. Le worker lit la clé secrète injectée par Supabase ; aucune clé d’administration n’est compilée dans l’APK ni stockée dans le dépôt.
+
+Les connexions n’utilisent pas le contrôle JWT du point d’entrée : les joueurs créent/rejoignent un salon par invitation, puis leur place s’authentifie avec un jeton aléatoire privé de 192 bits dans les messages WSS. Un jeton de joueur ne donne accès qu’à sa propre place. Les paquets ont une limite de 32 Kio et de 30 messages/s par connexion ; le stockage limite le service à 64 salons non expirés.
+
+Un bail Postgres de huit secondes sérialise les modifications d’un salon. Le jeton de verrou et le numéro de version empêchent un ancien worker d’écraser une sauvegarde récente. Sauvegarde et libération du verrou sont atomiques. Une perte réseau conserve la place 60 secondes ; un départ volontaire avant le démarrage la libère, pendant la partie il vaut abandon.
+
+Les Edge Functions ont une durée maximale. Le serveur ferme chaque socket au bout de 100 secondes ; le client reprend automatiquement sa place avec son jeton. Un arrêt imprévu du worker est détecté après expiration du bail de présence de 15 secondes, puis applique le délai de reconnexion. Il peut donc y avoir une brève pause lors d’une reprise. Aucun état de partie ne dépend de la mémoire du worker.
+
+Les salons expirent après 24 heures sans action de jeu ; les lignes expirées sont purgées lors des créations suivantes. Le service dépend des quotas et de la disponibilité du projet Supabase.
+
+## Redéployer
+
+Avec Supabase CLI installé, consulter `supabase --help` puis les aides des commandes de votre version. Appliquer les migrations de `supabase/migrations` au projet lié, puis déployer `rami-online` avec les fichiers de cette fonction et ses dépendances relatives dans `vercel/lib`. `supabase/config.toml` déclare l’entrée et son authentification de session. Ne pas activer le JWT de passerelle sans modifier le protocole du client.
+
+Les variables `SUPABASE_URL` et `SUPABASE_SECRET_KEYS` sont injectées par Supabase. Le code accepte également la variable historique `SUPABASE_SERVICE_ROLE_KEY`. Ne jamais mettre ces secrets dans un message, une URL publique ou le dépôt.
+
+## Vérifier
+
+Les tests de règles et de protocole locaux nécessitent Node.js 24 et `redis-server` (voir aussi `vercel/README.md`) :
+
+```bash
+npm ci --prefix vercel
+npm test --prefix vercel
+```
+
+Le script `supabase/tests/storage.sql` vérifie les verrous, les versions, les droits et les suppressions, dans une transaction entièrement annulée. L’exécuter avec une connexion SQL privilégiée de développement.
+
+Pour tester explicitement un service déployé, sans clé administrative :
+
+```bash
+node supabase/tests/live.mjs wss://mppunkypxdqyazoojksv.supabase.co/functions/v1/rami-online --rotation
+```
+
+Il crée des salons QA pour Rami à quatre et Tri 6/12, vérifie les mains privées, les refus d’actions, la reprise et l’abandon. `--rotation` attend aussi le renouvellement réel d’une connexion du salon d’attente. Ces essais consomment temporairement des salons et des requêtes du projet ; ils ne sont pas lancés automatiquement à chaque CI.

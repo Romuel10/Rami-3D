@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { Buffer } from 'node:buffer';
 import { createGame, applyAction, forfeitPlayer, viewFor } from './engine.mjs';
 
 class ClientError extends Error { constructor(message, fatal = false) { super(message); this.fatal = fatal; } }
@@ -9,13 +10,14 @@ const forfeited = (room, index) => room.started && !!room.game?.players[index]?.
 const owner = room => Math.max(0, room.players.findIndex((_, i) => !forfeited(room, i)));
 
 export class GameHub {
-  constructor(store, { graceMs = 60000, leaseMs = 15000, heartbeatMs = 5000, sweepMs = 1000, authMs = 8000 } = {}) {
+  constructor(store, { graceMs = 60000, leaseMs = 15000, heartbeatMs = 5000, sweepMs = 1000, authMs = 8000, preserveLobby = false } = {}) {
     this.store = store;
     this.graceMs = graceMs;
     this.leaseMs = leaseMs;
     this.heartbeatMs = heartbeatMs;
     this.sweepMs = sweepMs;
     this.authMs = authMs;
+    this.preserveLobby = preserveLobby;
     this.entries = new Set();
     this.closed = false;
     this.pending = new Set();
@@ -23,15 +25,17 @@ export class GameHub {
   }
   async start() {
     await this.store.ready();
-    this.subscriber = this.store.redis.duplicate({ lazyConnect: true });
-    this.subscriber.on('error', () => {});
-    this.subscriber.on('ready', () => {
-      // Redis Pub/Sub is at-most-once: reload after any subscriber reconnect.
-      for (const code of new Set([...this.entries].map(entry => entry.code).filter(Boolean))) this.track(this.deliver(code));
-    });
-    await this.subscriber.connect();
-    this.subscriber.on('message', (_channel, code) => this.track(this.deliver(code)));
-    await this.subscriber.subscribe(this.store.channel);
+    if (this.store.redis) {
+      this.subscriber = this.store.redis.duplicate({ lazyConnect: true });
+      this.subscriber.on('error', () => {});
+      this.subscriber.on('ready', () => {
+        // Redis Pub/Sub is at-most-once: reload after any subscriber reconnect.
+        for (const code of new Set([...this.entries].map(entry => entry.code).filter(Boolean))) this.track(this.deliver(code));
+      });
+      await this.subscriber.connect();
+      this.subscriber.on('message', (_channel, code) => this.track(this.deliver(code)));
+      await this.subscriber.subscribe(this.store.channel);
+    }
     this.timer = setInterval(() => this.track(this.tick()), this.sweepMs);
     this.timer.unref?.();
   }
@@ -84,7 +88,7 @@ export class GameHub {
         player.deadline = player.leaseUntil + this.graceMs;
         changed = true;
       }
-      if (!room.started && !player.connection) { room.players.splice(i, 1); changed = true; }
+      if (!room.started && !player.connection && (!this.preserveLobby || player.deadline <= now)) { room.players.splice(i, 1); changed = true; }
     }
     if (room.started && !finished(room)) {
       for (let i = 0; i < room.players.length; i++) {
@@ -140,6 +144,7 @@ export class GameHub {
           if (index !== owner(room)) throw new ClientError('Seul l’hôte peut lancer la partie.');
           if (room.started) throw new ClientError('La partie a déjà commencé.');
           if (room.players.length < 2) throw new ClientError('Il faut au moins deux joueurs.');
+          if (room.players.some(p => !p.connection)) throw new ClientError('Attendez la reconnexion de tous les joueurs.');
           room.game = createGame(room.players.map(p => p.name), { triCards: room.tri_cards });
           room.started = true;
           return;
@@ -251,7 +256,7 @@ export class GameHub {
     await this.transact(code, room => {
       const index = room.players.findIndex(p => p.connection === entry.id && secretEquals(p.token, entry.token));
       if (index < 0) return;
-      if (!room.started) room.players.splice(index, 1);
+      if (!room.started && !this.preserveLobby) room.players.splice(index, 1);
       else {
         const player = room.players[index];
         player.connection = '';
@@ -282,9 +287,12 @@ export class GameHub {
         if(!room) { await this.deliver(code); continue; }
         const expires = room.players.some((player,index) =>
           (player.connection && player.leaseUntil <= now) ||
-          (!player.connection && !room.started) ||
+          (!player.connection && !room.started && (!this.preserveLobby || player.deadline <= now)) ||
           (!player.connection && room.started && !finished(room) && !forfeited(room,index) && player.deadline > 0 && player.deadline <= now));
         if(expires) await this.transact(code, () => {}, false);
+        // Postgres workers poll committed versions instead of Redis Pub/Sub.
+        // deliver() still rebuilds a separate private view for each seat.
+        if(this.store.pollUpdates) await this.deliver(code);
       }
     } finally { this.tickRunning = false; }
   }

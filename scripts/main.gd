@@ -962,11 +962,11 @@ func _show_friends(internet: bool) -> void:
 	if internet:
 		var endpoint := ServerProfile.normalise(saved_address)
 		if endpoint.is_empty(): endpoint = ServerProfile.configured_url()
-		address_input = _field("https://votre-jeu.vercel.app", endpoint, box)
+		address_input = _field("https://votre-serveur/…", endpoint, box)
 		address_input.visible = endpoint.is_empty()
 		if endpoint.is_empty():
-			_long_text("Configurez une fois l’adresse de votre jeu hébergé sur Vercel. Vous pourrez ensuite rejoindre vos amis avec leur code.",box)
-			_button("Guide d’hébergement Vercel",func(): OS.shell_open("https://github.com/Romuel10/Rami-3D/blob/main/vercel/README.md"),box)
+			_long_text("Renseignez l’adresse Internet de votre jeu. Vous pourrez ensuite rejoindre vos amis avec leur code.",box)
+			_button("Guide du mode Internet",func(): OS.shell_open("https://github.com/Romuel10/Rami-3D/blob/main/supabase/README.md"),box)
 		else:
 			_label("Serveur mémorisé · saisissez seulement le code du salon",14,MUTED,box)
 			_button("Changer de serveur",func(): address_input.show(); address_input.grab_focus(),box)
@@ -994,7 +994,7 @@ func _create_room() -> void:
 	if online_tab:
 		var address := ServerProfile.normalise(address_input.text)
 		if address.is_empty():
-			_toast("Saisissez l’adresse HTTPS de votre jeu Vercel ou une adresse WSS valide.")
+			_toast("Saisissez une adresse HTTPS ou WSS valide.")
 			return
 		saved_address = address
 		_save_preferences()

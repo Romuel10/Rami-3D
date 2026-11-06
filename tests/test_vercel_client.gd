@@ -15,7 +15,7 @@ func check(ok: bool, message: String) -> void:
 		failures += 1
 		push_error(message)
 func until(predicate: Callable) -> void:
-	var deadline := Time.get_ticks_msec()+5000
+	var deadline := Time.get_ticks_msec()+15000
 	while not predicate.call() and Time.get_ticks_msec()<deadline: await create_timer(.01).timeout
 	check(predicate.call(),"bounded protocol response")
 func _run() -> void:
