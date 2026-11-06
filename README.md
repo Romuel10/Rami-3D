@@ -2,6 +2,16 @@
 
 Jeu Android de rami en français : une table et des cartes en 3D, un mode solo contre 1 à 3 ordinateurs, et des parties privées à 2–4 joueurs où chacun utilise son téléphone. Projet réalisé avec Godot 4.6.3, sans publicité, compte ni achat intégré.
 
+## Cartes classiques et présentation revue — version 0.9.0
+
+- **Cartes illustrées** : vrais portraits de valets, dames et rois, avec les indices classiques J/Q/K. Les 52 faces proviennent du jeu public SVGCards ; deux illustrations de joker servent aux quatre jokers physiques du rami.
+- **Le même jeu partout** : parties solo, Wi-Fi, Internet, tutoriels et exercice de rangement utilisent les mêmes illustrations, incluses dans l’APK pour jouer hors connexion.
+- **Textes plus simples** : titres en casse normale, boutons courts, une seule famille de caractères pour l’interface et suppression des slogans et flèches décoratives. Les règles gardent leurs explications et exemples.
+- **Table plus naturelle** : feutre visible au-dessus de son support, relief et rugosité des matières, dos bleu marine, éclairage ajusté et mains avec doigts distincts.
+- Le mode économie conserve 30 images/s sans ombres ni anticrénelage ; le mode normal vise 60 images/s avec anticrénelage 2×. Les performances réelles dépendent du téléphone.
+
+Illustrations : [SVGCards de Saul Spatz](https://github.com/saulspatz/SVGCards), domaine public. [Crédits et adaptations](assets/cards/LICENSE.txt). Le bouton **Crédits** de l’accueil indique aussi leur origine. Les salons Supabase sont préconfigurés comme en 0.8.0.
+
 ## Mode entre amis hébergé — version 0.8.0
 
 - **Supabase est le serveur Internet du projet** : salons persistants, Rami à 2–4 joueurs et Tri en duel à 6/12 cartes.

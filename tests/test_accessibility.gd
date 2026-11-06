@@ -100,7 +100,7 @@ func _run() -> void:
 	restored_order.reverse()
 	_check(app.action_row.get_children() == restored_order, "fresh scene restores the left-handed action order")
 	app._leave_to_menu()
-	var tutorial_button = _find_text(app.ui,"Je débute : jouer mon premier tour")
+	var tutorial_button = _find_text(app.ui,"Apprendre à jouer")
 	_check(tutorial_button is Button, "menu exposes the playable first-turn tutorial")
 	if tutorial_button is Button:
 		tutorial_button.pressed.emit()

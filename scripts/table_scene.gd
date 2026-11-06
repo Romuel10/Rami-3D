@@ -1,6 +1,7 @@
 extends Node3D
 ## Static, shared materials and light meshes keep the salon inexpensive on mobile.
 static var _materials: Dictionary = {}
+static var _finger_meshes: Dictionary = {}
 var _seats: Dictionary = {}
 var _seat_layout := ""
 var seating: Node3D
@@ -22,6 +23,8 @@ func _surface(kind: String) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	mat.roughness = 0.88
 	var image := Image.create(256,256,false,Image.FORMAT_RGB8)
+	var relief := Image.create(256,256,false,Image.FORMAT_RGB8)
+	var roughness_map := Image.create(256,256,false,Image.FORMAT_RGB8)
 	var noise := FastNoiseLite.new()
 	noise.seed = 173
 	noise.frequency = 0.065
@@ -30,22 +33,39 @@ func _surface(kind: String) -> StandardMaterial3D:
 			var grain := noise.get_noise_2d(x,y)
 			var value := 0.0
 			var color: Color
+			var height_value := .5 + grain*.2
+			var rough_value := .94 + grain*.04
 			if kind == "felt":
-				value = grain*0.023 + (0.008 if (x+y)%2==0 else -0.008)
-				color = Color(0.075+value*0.32,0.32+value,0.225+value*0.65)
+				var fibre := sin(float(x)*2.4 + float(y)*.2)*sin(float(y)*2.0)
+				value = grain*.030 + fibre*.006
+				color = Color(.073+value*.38,.265+value,.151+value*.62)
+				height_value = .5 + grain*.10 + fibre*.08
 			elif kind == "wood":
-				var line := sin(float(x)*0.23 + noise.get_noise_2d(x*0.45,y*0.10)*5.0)
-				value = line*0.035 + grain*0.026
-				color = Color(0.19+value,0.093+value*0.57,0.043+value*0.30)
+				var line := sin(float(x)*.18 + noise.get_noise_2d(x*.4,y*.07)*7.0)
+				value = line*.035 + grain*.028
+				color = Color(.235+value,.123+value*.62,.062+value*.38)
+				height_value = .5 + line*.06 + grain*.025
+				rough_value = .86 + grain*.10
 			elif kind == "leather":
 				value = grain*0.022 + (0.005 if x%3==0 else 0.0)
-				color = Color(0.065+value,0.086+value,0.071+value)
+				color = Color(.085+value,.069+value,.052+value)
+				height_value = .5 + grain*.34
+				rough_value = .88 + grain*.08
 			else:
 				value = grain*0.013
 				color = Color(0.062+value,0.068+value,0.058+value)
 			image.set_pixel(x,y,color)
+			relief.set_pixel(x,y,Color(height_value,height_value,height_value))
+			roughness_map.set_pixel(x,y,Color(rough_value,rough_value,rough_value))
 	image.generate_mipmaps()
+	relief.bump_map_to_normal_map(2.0)
+	relief.generate_mipmaps()
+	roughness_map.generate_mipmaps()
 	mat.albedo_texture = ImageTexture.create_from_image(image)
+	mat.normal_enabled = true
+	mat.normal_scale = .28 if kind=="felt" else .22
+	mat.normal_texture = ImageTexture.create_from_image(relief)
+	mat.roughness_texture = ImageTexture.create_from_image(roughness_map)
 	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	mat.uv1_triplanar = true
 	mat.uv1_triplanar_sharpness = 2.0
@@ -97,8 +117,9 @@ func _build_table() -> void:
 	_oval("BrassInlay",9.24,.035,-.16,_plain(Color("b08a4c"),.32,.72))
 	_oval("LeatherRail",9.18,.21,-.08,_surface("leather"))
 	_ring("PaddedRail",8.98,.22,.002,_surface("leather"))
-	_oval("FeltSurface",8.74,.055,-.015,_surface("felt"))
-	_ring("InnerSeam",8.61,.015,.024,_plain(Color("8a8965")))
+	# The solid leather support must stay below the felt, not cover its grain.
+	_oval("FeltSurface",8.74,.055,.026,_surface("felt"))
+	_ring("InnerSeam",8.61,.015,.058,_plain(Color("8a8965")))
 	# Short stitches are one mesh, rather than hundreds of scene nodes.
 	var stitch_mesh := ImmediateMesh.new()
 	stitch_mesh.surface_begin(Mesh.PRIMITIVE_LINES)
@@ -121,14 +142,14 @@ func _build_table() -> void:
 	# Small embossed mark sits on the felt and follows its lighting.
 	var brand := Label3D.new()
 	brand.name = "FeltEmbossing"
-	brand.text = "R A M I   S A L O N"
+	brand.text = "Rami"
 	brand.font = load("res://assets/serif.ttf")
-	brand.font_size = 72
+	brand.font_size = 56
 	brand.pixel_size = .007
-	brand.modulate = Color(.42,.56,.44,.30)
+	brand.modulate = Color(.42,.52,.34,.22)
 	brand.outline_size = 0
 	brand.rotation_degrees.x = -90
-	brand.position = Vector3(0,.024,.65)
+	brand.position = Vector3(0,.057,.65)
 	add_child(brand)
 
 static func seat_position(index: int, count: int) -> Vector3:
@@ -226,6 +247,32 @@ func _build_player(seat: Node3D, style: int) -> void:
 		_limb(arm,"Cuff",hand-Vector3(0,0,.11),hand+Vector3(0,0,.06),.205,_plain(clothing[style%3].lightened(.10)))
 		_ellipsoid(arm,"Palm",hand+Vector3(0,-.02,.21),Vector3(.22,.105,.32),skin)
 		_limb(arm,"Thumb",hand+Vector3(side*.17,.06,.15),hand+Vector3(side*.23,.10,.34),.066,skin)
+		# Four distinct, curled fingers replace the old mitten silhouette.
+		# Their geometry follows the public arm gesture, never hidden cards.
+		var grip := Node3D.new()
+		grip.name = "FingerGrip"
+		grip.position = hand+Vector3(0,-.02,.39)
+		arm.add_child(grip)
+		if not _finger_meshes.has(side):
+			var lengths := [.27,.33,.30,.23]
+			for finger in range(4):
+				var x := float(side)*(float(finger)-1.5)*.098
+				var length: float = lengths[finger]
+				var start := Vector3(x,0,0)
+				var middle := start+Vector3(0,.025,length*.60)
+				var tip := start+Vector3(0,.12,length*.43)
+				_limb(grip,"Finger%dBase"%finger,start,middle,.044,skin)
+				_limb(grip,"Finger%dTip"%finger,middle,tip,.039,skin)
+				_ellipsoid(grip,"Knuckle%d"%finger,start,Vector3(.052,.046,.055),skin)
+			var combined := SurfaceTool.new()
+			combined.begin(Mesh.PRIMITIVE_TRIANGLES)
+			for piece in grip.get_children():
+				combined.append_from(piece.mesh,0,piece.transform)
+				grip.remove_child(piece)
+				piece.free()
+			_finger_meshes[side] = combined.commit()
+		# One shared draw per hand keeps the detail affordable on phones.
+		_mesh(grip,_finger_meshes[side],skin,"Digits",Vector3.ZERO)
 	var label := Label3D.new()
 	label.name = "Nameplate"
 	label.font = load("res://assets/sans.ttf")

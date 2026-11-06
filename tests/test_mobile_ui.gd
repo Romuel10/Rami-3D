@@ -145,7 +145,7 @@ func _run() -> void:
 		_check(app.engine.export_game() == unchanged and app.hand_cards.size() == 7,"invalid meld cannot remove or duplicate a card")
 		# Existing multi-selection is respected when one member is dragged.
 		app._suggest()
-		_check(app.selected.size() == 6 and "30 / 30" in app.hand_status.text,"opening preview shows selected groups total")
+		_check(app.selected.size() == 6 and "30/30" in app.hand_status.text,"opening preview shows selected groups total")
 		card = app._view_cards["card:0:H:7"]
 		await _settle()
 		await _drag(card,Vector2(logical.x*0.25,365))

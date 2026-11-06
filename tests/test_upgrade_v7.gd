@@ -100,7 +100,7 @@ func _run() -> void:
 	app._close_overlay()
 	app.tri_choice = 12
 	app._show_tri_setup()
-	find_button(app.overlay,"Apprendre le Tri pas à pas").pressed.emit()
+	find_button(app.overlay,"Apprendre le Tri").pressed.emit()
 	check(app.game_mode=="tutorial" and app.content.get_child_count()>0,"tutorial opens from actual Tri setup")
 	var tutorial = app.content.get_child(app.content.get_child_count()-1)
 	check(tutorial.hand_size==12 and tutorial.engine.state.tri_hand_size==12,"tutorial uses selected twelve-card format")

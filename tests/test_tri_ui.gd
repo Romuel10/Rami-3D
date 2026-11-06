@@ -19,8 +19,8 @@ func _run() -> void:
 	var app = Main.instantiate()
 	root.add_child(app)
 	await process_frame
-	check(button(app.ui,"Jouer au Tri   →") != null,"real Tri menu entry exists")
-	button(app.ui,"Jouer au Tri   →").pressed.emit()
+	check(button(app.ui,"Jouer au Tri") != null,"real Tri menu entry exists")
+	button(app.ui,"Jouer au Tri").pressed.emit()
 	check(button(app.overlay,"Tri contre l’ordinateur") != null and button(app.overlay,"Tri avec un ami") != null,"duel setup includes AI and friends")
 	for size in [6,12]:
 		app.tri_choice = size

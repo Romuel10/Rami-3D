@@ -16,11 +16,11 @@ const SoundEffects = preload("res://scripts/sound_effects.gd")
 const Invitation = preload("res://scripts/invitation.gd")
 const HAND_SCALE := 2.15
 const DECK_POSITION := Vector3(-0.8, 0.28, -0.8)
-const INK = Color("ecede3")
-const MUTED = Color("91aba7")
-const GOLD = Color("dfbd78")
-const TEAL = Color("123c3a")
-const DEEP = Color("0a2428")
+const INK = Color("f2eee4")
+const MUTED = Color("b2bbb1")
+const GOLD = Color("d1b581")
+const TEAL = Color("303b33")
+const DEEP = Color("1d2520")
 
 var engine: RefCounted
 var network: Node
@@ -37,6 +37,7 @@ var economy_mode := false
 var _tri_boundaries: Array = []
 var _group_button: Button
 var _key_light: DirectionalLight3D
+var _heading_font: FontVariation
 var tri_choice := 6
 var friends_tri_cards := 0
 var bot_count := 1
@@ -162,10 +163,10 @@ func _make_world() -> void:
 	var world := WorldEnvironment.new()
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("151b18")
+	env.background_color = Color("1c201b")
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color("cbd2ce")
-	env.ambient_light_energy = 0.40
+	env.ambient_light_color = Color("c8cfdb")
+	env.ambient_light_energy = 0.30
 	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	world.environment = env
 	add_child(world)
@@ -183,14 +184,17 @@ func _make_world() -> void:
 	var key := DirectionalLight3D.new()
 	_key_light = key
 	key.rotation_degrees = Vector3(-62, -22, 0)
-	key.light_color = Color("fff1d4")
-	key.light_energy = 0.53
+	key.light_color = Color("fff1d8")
+	key.light_energy = 0.68
 	key.shadow_enabled = true
+	key.shadow_bias = .10
+	key.shadow_normal_bias = 1.5
+	key.directional_shadow_max_distance = 32
 	add_child(key)
 	var light := OmniLight3D.new()
 	light.position = Vector3(0, 7, -3)
 	light.light_color = Color("b8c9dd")
-	light.light_energy = 0.18
+	light.light_energy = 0.16
 	light.omni_range = 18
 	add_child(light)
 	table_scene = TableSalon.new()
@@ -227,20 +231,23 @@ func _make_interface() -> void:
 	var symbol_fallbacks: Array[Font] = [load("res://assets/symbols.ttf")]
 	text_font.fallbacks = symbol_fallbacks
 	theme.default_font = text_font
-	theme.default_font_size = 19
+	theme.default_font_size = 18
+	_heading_font = FontVariation.new()
+	_heading_font.base_font = text_font
+	_heading_font.variation_embolden = 0.5
 	theme.set_color("font_color", "Label", INK)
 	theme.set_color("font_color", "Button", INK)
 	theme.set_color("font_hover_color", "Button", GOLD)
 	theme.set_color("font_disabled_color", "Button", Color("627c78"))
-	theme.set_stylebox("normal", "Button", _style(Color("163b3c"), Color("345653"), 12, 18))
-	theme.set_stylebox("hover", "Button", _style(Color("245653"), GOLD, 12, 18))
-	theme.set_stylebox("pressed", "Button", _style(Color("32685d"), GOLD, 12, 18))
-	theme.set_stylebox("disabled", "Button", _style(Color("152e31"), Color("27413f"), 12, 18))
-	theme.set_stylebox("normal", "LineEdit", _style(Color("0c282c"), Color("365956"), 10, 16))
-	theme.set_stylebox("focus", "LineEdit", _style(Color("123b3c"), GOLD, 10, 16))
+	theme.set_stylebox("normal", "Button", _style(Color("29372f"), Color("526052"), 12, 18))
+	theme.set_stylebox("hover", "Button", _style(Color("3c4e40"), GOLD, 12, 18))
+	theme.set_stylebox("pressed", "Button", _style(Color("4e6050"), GOLD, 12, 18))
+	theme.set_stylebox("disabled", "Button", _style(Color("232c25"), Color("3c483f"), 12, 18))
+	theme.set_stylebox("normal", "LineEdit", _style(Color("18231d"), Color("526253"), 10, 16))
+	theme.set_stylebox("focus", "LineEdit", _style(Color("283b2e"), GOLD, 10, 16))
 	theme.set_color("font_color", "LineEdit", INK)
 	theme.set_color("font_placeholder_color", "LineEdit", MUTED)
-	theme.set_stylebox("panel", "PopupMenu", _style(DEEP, Color("365956"), 8, 10))
+	theme.set_stylebox("panel", "PopupMenu", _style(DEEP, Color("526253"), 8, 10))
 	ui.theme = theme
 	var header := HBoxContainer.new()
 	_place(header, ui, Vector2(36, 22), Vector2(-36, 78), Vector2(0,0), Vector2(1,0))
@@ -252,16 +259,15 @@ func _make_interface() -> void:
 	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	header.add_child(logo)
 	var brand := VBoxContainer.new()
-	brand.add_theme_constant_override("separation", -3)
+	brand.alignment = BoxContainer.ALIGNMENT_CENTER
 	header.add_child(brand)
-	_label("RAMI SALON", 24, INK, brand)
-	_label("L E   P L A I S I R   D E   J O U E R", 10, GOLD, brand)
+	_label("Rami", 24, INK, brand)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(spacer)
-	header_status = _label("HORS LIGNE · SANS COMPTE", 13, MUTED, header)
+	header_status = _label("Solo ou entre amis", 13, MUTED, header)
 	header_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_button("Apprendre", _show_rules, header)
+	_button("Règles", _show_rules, header)
 	_button("Confort", _show_comfort_settings, header)
 	music_button = _button("Musique", _show_music_settings, header)
 	fullscreen_button = _button("Plein écran", _toggle_fullscreen, header)
@@ -276,7 +282,7 @@ func _make_interface() -> void:
 	_place(toast_label, ui, Vector2(-400,-192), Vector2(400,-140), Vector2(0.5,1), Vector2(0.5,1))
 	toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	toast_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	toast_label.add_theme_stylebox_override("normal", _style(Color("183d3b"), GOLD, 12, 14))
+	toast_label.add_theme_stylebox_override("normal", _style(Color("29382e"), GOLD, 12, 14))
 	toast_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	toast_label.hide()
 
@@ -308,6 +314,8 @@ func _label(text: String, size: int, color: Color, parent: Node) -> Label:
 	var label := Label.new()
 	label.text = text
 	label.add_theme_font_size_override("font_size", size)
+	label.add_theme_constant_override("line_spacing", 3)
+	if size >= 24 and _heading_font != null: label.add_theme_font_override("font", _heading_font)
 	label.add_theme_color_override("font_color", color)
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	parent.add_child(label)
@@ -365,21 +373,20 @@ func _show_menu() -> void:
 	game_mode = "menu"
 	snapshot = {}
 	_clear_content()
-	header_status.text = "HORS LIGNE · SANS COMPTE"
+	header_status.text = "Solo ou entre amis"
 	var shade := ColorRect.new()
-	shade.color = Color(0.015, 0.06, 0.07, 0.36)
+	shade.color = Color(0.015, 0.03, 0.02, 0.12)
 	_place(shade, content, Vector2(0, 96), Vector2.ZERO, Vector2.ZERO, Vector2.ONE)
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var hero := VBoxContainer.new()
 	_place(hero, content, Vector2(68, 148), Vector2(670, 460))
 	hero.add_theme_constant_override("separation", 12)
-	_label("VOTRE TABLE VOUS ATTEND", 15, GOLD, hero)
-	var title := _label("À vous\nde jouer.", 76, INK, hero)
-	title.add_theme_font_override("font", load("res://assets/serif.ttf"))
-	title.add_theme_constant_override("line_spacing", -14)
-	_label("Un beau jeu. Une bonne main.\nLe plaisir du rami, où que vous soyez.", 23, Color("bdd0c7"), hero)
+	_label("Rami et Tri", 18, MUTED, hero)
+	var title := _label("Une partie ?", 58, INK, hero)
+	title.add_theme_constant_override("line_spacing", 0)
+	_label("Contre l’ordinateur ou avec vos amis.", 21, INK, hero)
 	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", _style(Color(0.035, 0.13, 0.15, 0.96), Color("3a5b51"), 22, 30))
+	panel.add_theme_stylebox_override("panel", _style(Color("222e26"), Color("657461"), 10, 26))
 	_place(panel, content, Vector2(-470, 120), Vector2(-48, -40), Vector2(1,0), Vector2(1,1))
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 12)
@@ -388,13 +395,13 @@ func _show_menu() -> void:
 	panel.add_child(menu_scroll)
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	menu_scroll.add_child(box)
-	_label("Installez-vous", 29, INK, box)
-	_label("Comment voulez-vous jouer ?", 17, MUTED, box)
+	_label("Nouvelle partie", 27, INK, box)
+	_label("Votre prénom", 15, MUTED, box)
 	name_input = _field("Votre prénom", saved_name, box)
 	name_input.max_length = 18
 	var divider := HSeparator.new()
 	box.add_child(divider)
-	_label("01  ·  EN SOLO", 13, GOLD, box)
+	_label("Rami", 18, INK, box)
 	solo_select = OptionButton.new()
 	solo_select.custom_minimum_size.y = 45
 	solo_select.add_item("Face à 1 ordinateur", 1)
@@ -403,25 +410,25 @@ func _show_menu() -> void:
 	box.add_child(solo_select)
 	if not SoloStore.load_game().is_empty():
 		_button("Reprendre ma partie solo", _resume_solo, box, true)
-	_button("Jouer contre l’ordinateur   →", _start_solo, box, true)
-	_label("02  ·  EN BONNE COMPAGNIE", 13, GOLD, box)
-	_button("Jouer avec des amis   ↗", _open_friends, box)
+	_button("Jouer au rami", _start_solo, box, true)
+	_label("Entre amis", 18, INK, box)
+	_button("Jouer avec des amis", _open_friends, box)
 	if network.has_saved_session():
 		_button("Retrouver mon salon", _resume_network, box)
 	_label("2 à 4 joueurs · un téléphone par personne", 12, MUTED, box)
-	_label("03  ·  TRI EN DUEL", 13, GOLD, box)
-	_button("Jouer au Tri   →", _show_tri_setup, box)
-	_label("6 ou 12 cartes · combinaisons cachées", 12, MUTED, box)
+	_label("Tri", 18, INK, box)
+	_button("Jouer au Tri", _show_tri_setup, box)
+	_label("Duel à 6 ou 12 cartes", 12, MUTED, box)
 	_button("Exercice de rangement", _start_sorting, box)
-	_button("Je débute : jouer mon premier tour", _start_tutorial, hero)
-	_button("Lire le guide complet", _show_rules, hero)
-	_button("Difficulté, manches et statistiques", _show_solo_settings, hero)
+	_button("Apprendre à jouer", _start_tutorial, hero)
+	_button("Règles du jeu", _show_rules, hero)
+	_button("Options du solo", _show_solo_settings, hero)
 	var footer := HBoxContainer.new()
 	_place(footer, content, Vector2(68,-72), Vector2(-68,-30), Vector2(0,1), Vector2(1,1))
 	footer.add_theme_constant_override("separation", 32)
-	_label("♠   UNE VRAIE TABLE EN 3D", 12, MUTED, footer)
-	_label("♣   WI-FI & INTERNET", 12, MUTED, footer)
-	_label("♦   SANS PUBLICITÉ", 12, MUTED, footer)
+	_label("Solo · Wi-Fi · Internet", 14, MUTED, footer)
+	_button("Crédits", _show_credits, footer)
+	_label("Sans publicité", 14, MUTED, footer)
 	var menu_ids := ["0:H:1", "0:S:13", "0:D:12", "0:C:11", "0:H:10"]
 	for i in range(menu_ids.size()):
 		var card = _card(menu_ids[i], true, Vector3(-4.3 + i * 1.0, 0.22 + i * 0.035, 3.85 - absf(i - 2) * 0.1))
@@ -463,11 +470,11 @@ func _start_solo(tri_size: int = 0) -> void:
 	game_mode = "solo"
 	_show_game()
 	_refresh_snapshot()
-	_toast("Piochez pour commencer. « Conseils pas à pas » vous accompagne." if beginner_enabled else "Piochez une carte pour commencer.")
+	_toast("Piochez une carte pour commencer.")
 
 func _show_game() -> void:
 	_clear_content()
-	header_status.text = "SOLO · " + ["FACILE","NORMAL","DIFFICILE"][difficulty] if game_mode == "solo" else "TABLE PRIVÉE · " + network.room_code
+	header_status.text = "Solo · " + ["facile","normal","difficile"][difficulty] if game_mode == "solo" else "Salon · " + network.room_code
 	players_row = HBoxContainer.new()
 	players_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	players_row.add_theme_constant_override("separation", 18)
@@ -482,12 +489,12 @@ func _show_game() -> void:
 	draw_row.add_theme_constant_override("separation", 16)
 	_place(draw_row, content, Vector2(-270,420), Vector2(270,470), Vector2(0.5,0), Vector2(0.5,0))
 	draw_buttons = []
-	draw_buttons.append(_button("↓  Piocher", func(): _act({"type":"draw", "source":"deck"}), draw_row))
-	draw_buttons.append(_button("↙  Défausse", func(): _act({"type":"draw", "source":"discard"}), draw_row))
-	hand_status = _label("VOTRE MAIN", 14, GOLD, content)
+	draw_buttons.append(_button("Piocher", func(): _act({"type":"draw", "source":"deck"}), draw_row))
+	draw_buttons.append(_button("Prendre la défausse", func(): _act({"type":"draw", "source":"discard"}), draw_row))
+	hand_status = _label("Votre main", 14, GOLD, content)
 	_place(hand_status, content, Vector2(38,424), Vector2(410,470))
 	hand_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	coach_button = _button("Conseils pas à pas", _show_coach, content, true)
+	coach_button = _button("Conseils", _show_coach, content, true)
 	_place(coach_button, content, Vector2(-300,420), Vector2(-38,472), Vector2(1,0), Vector2(1,0))
 	action_row = HBoxContainer.new()
 	action_row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -502,7 +509,7 @@ func _show_game() -> void:
 		play_buttons.append(_button("Suggestion", _suggest, action_row))
 		play_buttons.append(_button("Poser", _meld_selected, action_row, true))
 		play_buttons.append(_button("Compléter", _extend_selected, action_row))
-	play_buttons.append(_button("Défausser →", _discard_selected, action_row))
+	play_buttons.append(_button("Défausser", _discard_selected, action_row))
 	action_buttons_base = action_row.get_children()
 	_apply_comfort()
 
@@ -533,7 +540,7 @@ func _render_snapshot() -> void:
 	var turn := int(snapshot.get("turn", 0))
 	var players: Array = snapshot.get("players", [])
 	if game_mode == "solo":
-		header_status.text = "SOLO · %s · %d/%d" % [["FACILE","NORMAL","DIFFICILE"][difficulty],int(snapshot.get("match",{}).get("round",1)),int(snapshot.get("match",{}).get("length",1))]
+		header_status.text = "Solo · %s · manche %d/%d" % [["facile","normal","difficile"][difficulty],int(snapshot.get("match",{}).get("round",1)),int(snapshot.get("match",{}).get("length",1))]
 	for i in range(players.size()):
 		var panel := PanelContainer.new()
 		panel.custom_minimum_size = Vector2(172, 32)
@@ -549,13 +556,13 @@ func _render_snapshot() -> void:
 		var count := int(p.get("count", p.get("hand_count", 13)))
 		l = _label("Abandon · éliminé" if p.get("forfeited",false) else str(count) + " cartes" + (" · ouvert" if p.get("opened",false) else ""), 11, MUTED, column)
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	if _is_tri(): header_status.text = "TRI · %d CARTES · OBJECTIF %d TRIS" % [int(snapshot.tri_hand_size),int(snapshot.tri_goal)]
+	if _is_tri(): header_status.text = "Tri · %d cartes · %d tris à former" % [int(snapshot.tri_hand_size),int(snapshot.tri_goal)]
 	var phase: String = snapshot.get("phase", "draw")
 	var can_act: bool = turn == own and not snapshot.get("paused", false) and int(snapshot.get("winner", -1)) < 0 and own < players.size() and not players[own].get("forfeited",false)
 	for button in draw_buttons:
 		button.disabled = not can_act or phase != "draw"
 	if not draw_buttons.is_empty():
-		draw_buttons[0].text = "↓  Piocher · " + str(snapshot.get("deck_count", 0))
+		draw_buttons[0].text = "Piocher · " + str(snapshot.get("deck_count", 0))
 	for button in play_buttons:
 		if is_instance_valid(button): button.disabled = not can_act or phase != "play"
 	if int(snapshot.get("winner",-1)) >= 0:
@@ -719,11 +726,12 @@ func _update_hand_status() -> void:
 		var players: Array = snapshot.get("players", [])
 		if not _is_tri() and own < players.size() and not players[own].get("opened", false):
 			var preview: Dictionary = EngineRules.new().selection_preview(snapshot, selected, suggested)
-			opening = "\nOUVERTURE : %d / 30 POINTS" % int(preview.points)
-		if _is_tri(): opening = "\nVOS TRIS : %d / %d" % [EngineRules.new().tri_groups(snapshot.get("hand",[])).size(),int(snapshot.get("tri_goal",0))]
-		hand_status.text = "VOTRE MAIN · " + str(snapshot.get("hand", []).size()) + " CARTES" + opening
+			opening = "\nOuverture : %d/30 points" % int(preview.points)
+		if _is_tri(): opening = "\nVos tris : %d / %d" % [EngineRules.new().tri_groups(snapshot.get("hand",[])).size(),int(snapshot.get("tri_goal",0))]
+		hand_status.text = "Votre main · " + str(snapshot.get("hand", []).size()) + " cartes"
 		if not selected.is_empty():
-			hand_status.text = "VOTRE MAIN · " + str(snapshot.get("hand", []).size()) + " CARTES · " + str(selected.size()) + " CHOISIE(S)" + opening
+			hand_status.text += " · %d sélectionnée%s" % [selected.size(), "s" if selected.size()>1 else ""]
+		hand_status.text += opening
 
 	var preview: Dictionary = EngineRules.new().selection_preview(snapshot, selected, suggested)
 	for card in card_nodes:
@@ -888,10 +896,13 @@ func _winner_result() -> Dictionary:
 	if finished:
 		if forfeit:
 			title = "Victoire par forfait" if own in winners else "Défaite par abandon"
-			body = ("Vous gagnez : votre adversaire a abandonné." if winners.size() == 1 else "Les joueurs restants sont déclarés gagnants : " + ", ".join(names) + ".") if own in winners else "Votre abandon termine votre participation. " + ", ".join(names) + " remporte(nt) le match."
+			if own in winners:
+				body = "Vous gagnez : votre adversaire a abandonné." if winners.size()==1 else "Victoire par abandon pour " + ", ".join(names) + "."
+			else:
+				body = "Vous avez abandonné. " + ", ".join(names) + (" remporte le match." if names.size()==1 else " remportent le match.")
 		elif winners.size() > 1:
 			title = "Match terminé · ex æquo"
-			body = ", ".join(names) + " partage(nt) la victoire avec le plus petit total de pénalités."
+			body = ", ".join(names) + " partagent la victoire avec le même total de points."
 		else:
 			title = "Match remporté !" if own in winners else "Match terminé"
 			body = "Vous gagnez le match au total des points." if own in winners else ", ".join(names) + " gagne le match au total des points."
@@ -953,7 +964,7 @@ func _open_friends() -> void:
 
 func _show_friends(internet: bool) -> void:
 	online_tab = internet
-	var box := _modal("Tri en duel" if friends_tri_cards > 0 else "Une table entre amis", "Chacun joue avec son téléphone et garde sa main privée.")
+	var box := _modal("Tri en duel" if friends_tri_cards > 0 else "Jouer avec des amis", "Chacun joue avec son téléphone et garde sa main privée.")
 	var tabs := HBoxContainer.new()
 	tabs.add_theme_constant_override("separation", 12)
 	box.add_child(tabs)
@@ -968,7 +979,7 @@ func _show_friends(internet: bool) -> void:
 			_long_text("Renseignez l’adresse Internet de votre jeu. Vous pourrez ensuite rejoindre vos amis avec leur code.",box)
 			_button("Guide du mode Internet",func(): OS.shell_open("https://github.com/Romuel10/Rami-3D/blob/main/supabase/README.md"),box)
 		else:
-			_label("Serveur mémorisé · saisissez seulement le code du salon",14,MUTED,box)
+			_label("Entrez le code de votre ami pour le rejoindre.",14,MUTED,box)
 			_button("Changer de serveur",func(): address_input.show(); address_input.grab_focus(),box)
 	else:
 		var info := _label("Connectez tous les téléphones au même Wi-Fi.\nL’un crée le salon ; les autres le rejoignent.", 16, MUTED, box)
@@ -977,17 +988,17 @@ func _show_friends(internet: bool) -> void:
 	var sep := HSeparator.new()
 	box.add_child(sep)
 	if not internet:
-		_label("ADRESSE DU TÉLÉPHONE HÔTE", 13, GOLD, box)
+		_label("Adresse de l’hôte", 13, GOLD, box)
 		address_input = _field("192.168.1.20:7357", "", box)
-	_label("INVITATION D’UN AMI", 13, GOLD, box)
+	_label("Invitation", 13, GOLD, box)
 	invitation_input = _field("Collez ici l’invitation rami3d://…", "", box)
 	invitation_input.max_length = 2048
 	_button("Rejoindre avec l’invitation", _join_invitation, box, true)
-	_label("CODE DU SALON", 13, GOLD, box)
+	_label("Code du salon", 13, GOLD, box)
 	code_input = _field("Code à 6 chiffres", "", box)
 	code_input.max_length = 6
 	code_input.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
-	_button("Rejoindre le salon   →", _join_room, box)
+	_button("Rejoindre le salon", _join_room, box)
 	_button("Retour", _close_overlay, box)
 
 func _create_room() -> void:
@@ -1024,7 +1035,7 @@ func _lobby_updated(data: Dictionary) -> void:
 	game_mode = "lobby"
 	_close_overlay()
 	_clear_content()
-	header_status.text = "SALON PRIVÉ · " + str(data.get("code", network.room_code))
+	header_status.text = "Salon · " + str(data.get("code", network.room_code))
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _style(Color("0b292d"), Color("456551"), 22, 30))
 	_place(panel, content, Vector2(-330,160), Vector2(330,760), Vector2(0.5,0), Vector2(0.5,0))
@@ -1032,7 +1043,7 @@ func _lobby_updated(data: Dictionary) -> void:
 	lobby_box.add_theme_constant_override("separation", 16)
 	panel.add_child(lobby_box)
 	_label("Votre salon est prêt", 30, INK, lobby_box)
-	_label("PARTAGEZ CE CODE AVEC VOS AMIS", 12, GOLD, lobby_box)
+	_label("Code à partager avec vos amis", 12, GOLD, lobby_box)
 	var code := _label(str(data.get("code", network.room_code)), 52, GOLD, lobby_box)
 	code.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	if network.is_host:
@@ -1046,10 +1057,10 @@ func _lobby_updated(data: Dictionary) -> void:
 		var p: Dictionary = players[i]
 		_label(("●  " if p.get("connected",true) else "○  ") + str(p.get("name","Joueur")) + (" · hôte" if i == 0 else ""), 21, INK, lobby_box)
 	if players.size() < (2 if friends_tri_cards > 0 else 4):
-		_label("+  En attente d’un ami…", 18, MUTED, lobby_box)
+		_label("En attente d’un ami…", 18, MUTED, lobby_box)
 	_label(("Tri · %d cartes · duel" % friends_tri_cards) if friends_tri_cards > 0 else "2 à 4 joueurs · la partie commence quand l’hôte est prêt.", 14, MUTED, lobby_box)
 	if network.is_host:
-		lobby_start = _button("Commencer la partie   →", func(): network.start_match(), lobby_box, true)
+		lobby_start = _button("Commencer la partie", func(): network.start_match(), lobby_box, true)
 		lobby_start.disabled = players.size() < 2
 	else:
 		_label("L’hôte lancera la partie.", 18, GOLD, lobby_box)
@@ -1086,10 +1097,10 @@ func _modal(title: String, subtitle: String) -> VBoxContainer:
 	toast_time = 0.0
 	overlay_kind = "general"
 	var dim := ColorRect.new()
-	dim.color = Color(0.005, 0.025, 0.03, 0.84)
+	dim.color = Color(0.015, 0.02, 0.015, 0.84)
 	_place(dim, overlay, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ONE)
 	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", _style(Color("0e2e31"), Color("4a6658"), 22, 28))
+	panel.add_theme_stylebox_override("panel", _style(Color("222e26"), Color("657461"), 10, 28))
 	_place(panel, overlay, Vector2(-340,105), Vector2(340,-38), Vector2(0.5,0), Vector2(0.5,1))
 	if animations_enabled:
 		dim.modulate.a = 0.0
@@ -1115,6 +1126,13 @@ func _close_overlay() -> void:
 		node.get_parent().remove_child(node)
 		node.queue_free()
 
+func _show_credits() -> void:
+	var box := _modal("Crédits", "Les illustrations et polices du jeu.")
+	_long_text("Cartes : SVGCards, Saul Spatz. Illustrations du domaine public, avec les figures classiques de Byron Knoll.",box)
+	_button("Voir les cartes d’origine",func(): OS.shell_open("https://github.com/saulspatz/SVGCards"),box)
+	_long_text("Polices : Open Sans, Noto Sans Symbols et DejaVu Serif. Leurs licences sont incluses dans l’application.",box)
+	_button("Fermer",_close_overlay,box,true)
+
 func _show_rules() -> void:
 	if _is_tri():
 		_show_tri_rules()
@@ -1124,34 +1142,36 @@ func _show_rules() -> void:
 func _show_lessons(chapter: int = -1) -> void:
 	lesson_index = chapter
 	var lessons: Array = coach.lessons()
-	var box := _modal("Apprendre le rami", "Un guide pour votre première partie, avec des exemples expliqués.")
+	var box := _modal("Apprendre le rami", "Les règles, avec quelques exemples.")
 	overlay_kind = "lessons"
 	var setting := CheckButton.new()
-	setting.text = "Mode débutant · conseils pendant la partie"
+	setting.text = "Afficher les conseils pendant la partie"
 	setting.button_pressed = beginner_enabled
 	setting.custom_minimum_size.y = 48
 	setting.toggled.connect(func(value: bool): beginner_enabled = value; _save_preferences())
 	box.add_child(setting)
 	if chapter < 0:
-		var intro := _label("Le but : vider votre main en formant des groupes de cartes. Prenez le temps de découvrir une étape, puis essayez-la en solo.", 18, INK, box)
+		var intro := _label("Pour gagner, videz votre main en posant des combinaisons. Choisissez une règle ou essayez un tour d’entraînement.", 18, INK, box)
 		intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		for i in range(lessons.size()):
 			var idx := i
-			var button := _button(str(i+1) + ". " + str(lessons[i].get("title", "")), func(): _show_lessons(idx), box)
+			var title := str(lessons[i].get("title", "")).trim_prefix(str(i+1)+" · ")
+			var button := _button(str(i+1) + ". " + title, func(): _show_lessons(idx), box)
 			button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		_button("Pratiquer mon premier tour", _start_tutorial, box, true)
+		_button("Faire un tour d’essai", _start_tutorial, box, true)
 		if game_mode in ["solo", "online"]:
 			_button("Expliquer mon tour actuel", _show_coach, box)
 	else:
 		var lesson: Dictionary = lessons[clampi(chapter, 0, lessons.size()-1)]
-		_label(str(chapter+1) + " / " + str(lessons.size()) + " · " + str(lesson.get("title", "")), 23, GOLD, box).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var title := str(lesson.get("title", "")).trim_prefix(str(chapter+1)+" · ")
+		_label(str(chapter+1) + " / " + str(lessons.size()) + " · " + title, 23, GOLD, box).autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_long_text(str(lesson.get("body", "")), box)
-		_label("EXEMPLE EXPLIQUÉ", 13, GOLD, box)
+		_label("Exemple", 13, GOLD, box)
 		_long_text(str(lesson.get("example", "")), box)
 		for tip in lesson.get("tips", []):
 			_long_text("• " + str(tip), box)
 		if chapter < lessons.size()-1:
-			_button("Étape suivante →", func(): _show_lessons(chapter+1), box, true)
+			_button("Étape suivante", func(): _show_lessons(chapter+1), box, true)
 		_button("Toutes les étapes", func(): _show_lessons(-1), box)
 	_button("C’est compris", _close_overlay, box)
 
@@ -1168,16 +1188,16 @@ func _show_coach() -> void:
 	var advice: Dictionary = coach.advice(snapshot, selected)
 	var box := _modal(str(advice.get("title", "Votre prochain tour")), str(advice.get("body", "")))
 	overlay_kind = "coach"
-	_label("PAS À PAS", 13, GOLD, box)
+	_label("Les étapes", 13, GOLD, box)
 	var steps: Array = advice.get("steps", [])
 	for i in range(steps.size()):
 		_long_text(str(i+1) + ". " + str(steps[i]), box)
-	_label("AVEC VOS CARTES", 13, GOLD, box)
+	_label("Avec votre main", 13, GOLD, box)
 	_long_text(str(advice.get("example", "")), box)
-	_label("PROCHAINE ACTION", 13, GOLD, box)
+	_label("À faire maintenant", 13, GOLD, box)
 	_long_text(str(advice.get("action", "")), box)
 	_button("Revenir à ma main", _close_overlay, box, true)
-	_button("Ouvrir le guide complet", _show_rules, box)
+	_button("Lire les règles", _show_rules, box)
 
 func _start_sorting() -> void:
 	_save_profile()
@@ -1188,14 +1208,14 @@ func _start_sorting() -> void:
 	_close_overlay()
 	snapshot = {}
 	_clear_content()
-	header_status.text = "EXERCICE DE RANGEMENT · 3 MANCHES"
+	header_status.text = "Rangement · 3 manches"
 	var challenge := SortingChallenge.new()
 	_place(challenge, content, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ONE)
 	challenge.exit_requested.connect(_leave_to_menu)
 	challenge.start_challenge()
 
 func _show_music_settings() -> void:
-	var box := _modal("Votre ambiance musicale", "Trois morceaux instrumentaux originaux, joués en boucle pendant vos parties.")
+	var box := _modal("Musique et sons", "Réglez la musique et le volume des cartes.")
 	overlay_kind = "music"
 	var toggle := CheckButton.new()
 	toggle.text = "Écouter la musique"
@@ -1203,7 +1223,7 @@ func _show_music_settings() -> void:
 	toggle.button_pressed = music.enabled
 	toggle.toggled.connect(func(value: bool): music.set_enabled(value))
 	box.add_child(toggle)
-	_label("CHOISIR UN MORCEAU", 13, GOLD, box)
+	_label("Morceau", 13, GOLD, box)
 	var choice := OptionButton.new()
 	choice.custom_minimum_size.y = 54
 	for name_text in music.track_names():
@@ -1220,7 +1240,7 @@ func _show_music_settings() -> void:
 	slider.custom_minimum_size.y = 56
 	slider.value_changed.connect(func(value: float): music.set_volume(value/100.0); level.text = "Volume · " + str(roundi(value)) + " %")
 	box.add_child(slider)
-	_label("EFFETS SONORES · INDÉPENDANTS DE LA MUSIQUE", 13, GOLD, box)
+	_label("Sons des cartes", 13, GOLD, box)
 	var effects_toggle := CheckButton.new()
 	effects_toggle.text = "Sons des cartes et de la victoire"
 	effects_toggle.button_pressed = effects_enabled
@@ -1419,7 +1439,7 @@ func _resume_solo() -> void:
 
 func _show_solo_settings() -> void:
 	var box := _modal("Votre partie solo", "Ces réglages s’appliquent à la prochaine partie. Une reprise conserve sa difficulté.")
-	_label("DIFFICULTÉ", 13, GOLD, box)
+	_label("Difficulté", 13, GOLD, box)
 	var choice := OptionButton.new()
 	for title in ["Facile · pour apprendre", "Normal · équilibré", "Difficile · anticipe les combinaisons"]:
 		choice.add_item(title)
@@ -1427,7 +1447,7 @@ func _show_solo_settings() -> void:
 	choice.custom_minimum_size.y = 52
 	choice.item_selected.connect(func(index: int): difficulty = index; _save_preferences())
 	box.add_child(choice)
-	_label("NOMBRE DE MANCHES", 13, GOLD, box)
+	_label("Manches", 13, GOLD, box)
 	var rounds := OptionButton.new()
 	for count in [1,3,5]: rounds.add_item(str(count) + " manche(s)",count)
 	rounds.selected = [1,3,5].find(match_length)
@@ -1435,7 +1455,7 @@ func _show_solo_settings() -> void:
 	rounds.item_selected.connect(func(index: int): match_length = [1,3,5][index]; _save_preferences())
 	box.add_child(rounds)
 	var stats: Dictionary = SoloStore.statistics()
-	_label("VOS STATISTIQUES SOLO",13,GOLD,box)
+	_label("Vos statistiques",13,GOLD,box)
 	_long_text("%d manches terminées · %d victoires\n%d points de pénalité cumulés" % [stats.rounds,stats.wins,stats.points],box)
 	_long_text("À la fin de chaque manche, les cartes restantes comptent : nombres à leur valeur, figures 10, as 11, joker 20. Le total le plus faible gagne le match ; les égalités restent ex æquo.",box)
 	_button("Terminé",_close_overlay,box,true)
@@ -1668,7 +1688,7 @@ func _cancel_drag(restore: bool = true) -> void:
 var _UI_sparkles: Array = []
 
 func _show_comfort_settings() -> void:
-	var box := _modal("Votre confort de jeu","Ces réglages sont mémorisés sur ce téléphone.")
+	var box := _modal("Affichage et confort","Ces réglages sont mémorisés sur ce téléphone.")
 	var motion := CheckButton.new()
 	motion.text = "Animations des cartes et transitions"
 	motion.custom_minimum_size.y = 52
@@ -1730,7 +1750,7 @@ func _start_tutorial() -> void:
 	network.leave_room()
 	_close_overlay()
 	_clear_content()
-	header_status.text = "MON PREMIER TOUR · ENTRAÎNEMENT"
+	header_status.text = "Apprendre le rami"
 	var practice := Practice.new()
 	_place(practice,content,Vector2.ZERO,Vector2.ZERO,Vector2.ZERO,Vector2.ONE)
 	practice.exit_requested.connect(_leave_to_menu)
@@ -1758,7 +1778,7 @@ func _show_tri_setup() -> void:
 	choice.item_selected.connect(func(index: int): tri_choice = [6,12][index])
 	box.add_child(choice)
 	_long_text("Un tri : trois cartes de même valeur, au maximum deux de la même couleur (♣ ♦ ♥ ♠). Les tris restent dans la main. Piochez puis défaussez ; la victoire est vérifiée après la défausse. À 12 cartes, trois tris suffisent, les trois autres cartes restent libres.",box)
-	_button("Apprendre le Tri pas à pas",_start_tri_tutorial,box)
+	_button("Apprendre le Tri",_start_tri_tutorial,box)
 	_button("Tri contre l’ordinateur",func(): _start_solo(tri_choice),box,true)
 	_button("Tri avec un ami",func(): friends_tri_cards = tri_choice; _show_friends(false),box)
 	_button("Retour",_close_overlay,box)
@@ -1782,6 +1802,7 @@ func _toggle_tri_groups() -> void:
 
 func _apply_performance() -> void:
 	Engine.max_fps = 30 if economy_mode else 60
+	get_viewport().msaa_3d = Viewport.MSAA_DISABLED if economy_mode else Viewport.MSAA_2X
 	if is_instance_valid(_key_light): _key_light.shadow_enabled = not economy_mode
 
 func _start_tri_tutorial() -> void:
@@ -1795,7 +1816,7 @@ func _start_tri_tutorial() -> void:
 	network.leave_room()
 	_close_overlay()
 	_clear_content()
-	header_status.text = "MON PREMIER TRI · %d CARTES" % tri_choice
+	header_status.text = "Apprendre le Tri · %d cartes" % tri_choice
 	var practice := TriPractice.new()
 	_place(practice,content,Vector2.ZERO,Vector2.ZERO,Vector2.ZERO,Vector2.ONE)
 	practice.exit_requested.connect(_leave_to_menu)

@@ -17,10 +17,10 @@ func _run() -> void:
 	_check(app.game_mode == "menu" and app.card_nodes.size() == 5, "menu starts with decorative cards")
 	app.name_input.text = "Test UI"
 	app.solo_select.select(0)
-	_press("Jouer contre l’ordinateur   →")
+	_press("Jouer au rami")
 	_check(app.game_mode == "solo" and app.snapshot.hand.size() == 13 and app.snapshot.players.size() == 2, "menu button starts a solo match")
 	_check(app.snapshot.phase == "draw" and app.snapshot.turn == 0 and app._my_turn(), "player starts at draw phase")
-	_press("↓  Piocher")
+	_press("Piocher")
 	_check(app.snapshot.phase == "play" and app.snapshot.hand.size() == 14, "draw button updates visible hand")
 	var drawn_state: Dictionary = app.engine.state.duplicate(true)
 	_check(app.draw_buttons[0].disabled and app.draw_buttons[1].disabled, "draw controls disable after drawing")
@@ -43,7 +43,7 @@ func _run() -> void:
 	_check(app.selected.is_empty() and app.suggested.is_empty(), "snapshot refresh clears played selection")
 	_tap_hand("0:S:13")
 	_check(app.selected == ["0:S:13"], "hand mesh tap selects exact card")
-	_press("Défausser →")
+	_press("Défausser")
 	_check(app.snapshot.turn == 1 and app.busy and app.snapshot.players[0].count == 1, "discard starts opponent turn")
 	var bot_deadline := Time.get_ticks_msec() + 15000
 	while app.busy and Time.get_ticks_msec() < bot_deadline:
@@ -93,7 +93,7 @@ func _run() -> void:
 	_tap_table_meld("0:H:7")
 	_check(app.snapshot.melds[0].cards.size() == 4 and app.snapshot.hand == ["0:S:13"], "table extension updates hand and public meld")
 	_tap_hand("0:S:13")
-	_press("Défausser →")
+	_press("Défausser")
 	_check(app.snapshot.winner == 0 and app.overlay.get_child_count() > 0, "final discard opens victory dialog")
 	var outcome: Dictionary = app._winner_result()
 	_check(outcome.winners == [0] and _find_text(app.overlay, outcome.body) != null, "victory dialog identifies the local match winner")
@@ -104,10 +104,10 @@ func _run() -> void:
 	# Leaving during the artificial thinking delay must cancel that old turn.
 	_tap_deck()
 	_tap_hand(str(app.snapshot.hand[0]))
-	_press("Défausser →")
+	_press("Défausser")
 	_check(app.busy, "bot is pending before leave")
 	app._leave_to_menu()
-	_press("Jouer contre l’ordinateur   →")
+	_press("Jouer au rami")
 	var fresh_hand: Array = app.snapshot.hand.duplicate()
 	await create_timer(1.15).timeout
 	_check(app.snapshot.turn == 0 and app.snapshot.phase == "draw" and app.snapshot.hand == fresh_hand, "old bot timer cannot play in a new game")
@@ -159,7 +159,7 @@ func _tap_deck() -> void:
 
 func _press(text: String) -> void:
 	var node = _find_text(app.ui, text)
-	if node == null and text == "↓  Piocher":
+	if node == null and text == "Piocher":
 		node = _find_button_prefix(app.ui, text)
 	_check(node is Button, "button available: " + text)
 	if node is Button:

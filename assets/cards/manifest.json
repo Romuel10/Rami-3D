@@ -1,0 +1,289 @@
+{
+  "source_commit": "f8df28774736ea2545fc8e7fb693eb55ce031945",
+  "face": [
+    256,
+    384
+  ],
+  "cell": [
+    272,
+    400
+  ],
+  "padding": 8,
+  "cards": [
+    {
+      "index": 0,
+      "source": "spadeAce.svg",
+      "sha256": "f26ba79bd78b5bdeb6ba7fa74c3df27366bbc86708c974efff0ea89a7c1732d7"
+    },
+    {
+      "index": 1,
+      "source": "spade2.svg",
+      "sha256": "f1e84b4864736cd07bfc4142c93daeef9fee442226fa60c56e82bce7fd97b2a0"
+    },
+    {
+      "index": 2,
+      "source": "spade3.svg",
+      "sha256": "b4f0f31939bee5bbfd012749c5b7b6156393421f337e8910e06d29c6e4504b09"
+    },
+    {
+      "index": 3,
+      "source": "spade4.svg",
+      "sha256": "b18847a7158716117ce77a384e75f9c239f26c9d977fce6723dcd2ca689cb3dc"
+    },
+    {
+      "index": 4,
+      "source": "spade5.svg",
+      "sha256": "b018550000669a1229c67f1e97aa4db00ea291b72a25cdfad9888ecf97910f0f"
+    },
+    {
+      "index": 5,
+      "source": "spade6.svg",
+      "sha256": "0813d176fd452a72bd4827f9ce11abb14572229d66a5e0685a82da04e4968a39"
+    },
+    {
+      "index": 6,
+      "source": "spade7.svg",
+      "sha256": "be2fdc90c312e5c918d337ae7b24da515e5496c13488dd94279b0b8da00ce0b5"
+    },
+    {
+      "index": 7,
+      "source": "spade8.svg",
+      "sha256": "0e801f602fad8fbda8acc909398f3b527d959b98d4c6cc928ebe7cec9a911e91"
+    },
+    {
+      "index": 8,
+      "source": "spade9.svg",
+      "sha256": "ccdb21dffd82d5b4594a50c4e004ef92ffeb2ea961bf10b654e859404de36699"
+    },
+    {
+      "index": 9,
+      "source": "spade10.svg",
+      "sha256": "0c71562fc96daf17a61db33ffa8509a98ec4ef4df77ffa378192b88b9c0594ed"
+    },
+    {
+      "index": 10,
+      "source": "spadeJack.svg",
+      "sha256": "42866dffa8a9524698e76a39c399648eba0244b94af7468ae838da510ca515e2"
+    },
+    {
+      "index": 11,
+      "source": "spadeQueen.svg",
+      "sha256": "b63fc1f68e648aee8f0be8f8b42a5abc33fc21dbd373d4affb84c4e4e7d8e4d6"
+    },
+    {
+      "index": 12,
+      "source": "spadeKing.svg",
+      "sha256": "a7ab767de1a3a75cf3b90dd9663440c4623223e1e93bcf8dca4e182451c59de9"
+    },
+    {
+      "index": 13,
+      "source": "heartAce.svg",
+      "sha256": "dfbc90c2af253a25754f606735ad953a9c75c61c3ea75ca0ae432e4cee9a354d"
+    },
+    {
+      "index": 14,
+      "source": "heart2.svg",
+      "sha256": "0e6adb210b4f29f22e4fe7cf3ce62a7fe33a8d841bac450a7e813434ba2fc6e7"
+    },
+    {
+      "index": 15,
+      "source": "heart3.svg",
+      "sha256": "9caa73db46efe414b106bfbfeae0800d7d2e33e8f618f19b5b9897abcbe9b928"
+    },
+    {
+      "index": 16,
+      "source": "heart4.svg",
+      "sha256": "e006092fb17351b6df64d8b6f876528c746f8bb48af37bf7bcea19872fb63b6a"
+    },
+    {
+      "index": 17,
+      "source": "heart5.svg",
+      "sha256": "5ce52cf6d15870328c8f22cd4df366c1125de90864115ab9e60b2478aee98bb5"
+    },
+    {
+      "index": 18,
+      "source": "heart6.svg",
+      "sha256": "cda9631a6545c10baa0ccf332e60cceb8d5f7b674900123128ce45b0f9b40080"
+    },
+    {
+      "index": 19,
+      "source": "heart7.svg",
+      "sha256": "c783155dee65e58296d190f343b156da97d27624abe7a98b68b7af3c6fd68eb3"
+    },
+    {
+      "index": 20,
+      "source": "heart8.svg",
+      "sha256": "d82d6a82465a924f1821ba9f8abebec205d4530987a32de28eafb8d507f7cae2"
+    },
+    {
+      "index": 21,
+      "source": "heart9.svg",
+      "sha256": "41709dedf1429d1ac5da313c4b3d93cd1b7e84e0a48e1bd014d4f3fc8cfa3d08"
+    },
+    {
+      "index": 22,
+      "source": "heart10.svg",
+      "sha256": "60dc4c8789551d86f0600f0e85ce3d18a7888a1368cbefd0bc25bba1596087f5"
+    },
+    {
+      "index": 23,
+      "source": "heartJack.svg",
+      "sha256": "9c8257f00fb8319ec4c470318df8008b44a42c8ff2334f87b1661bbd8068b6f5"
+    },
+    {
+      "index": 24,
+      "source": "heartQueen.svg",
+      "sha256": "e485fc2d97ca67bb2ed7b53310c7cb9a8e011f9b1db276fbfd2065df61f3c5a9"
+    },
+    {
+      "index": 25,
+      "source": "heartKing.svg",
+      "sha256": "9a0e45927a026e17210a49f2654fae7fea4cdf7a1720081775dadb74c6309369"
+    },
+    {
+      "index": 26,
+      "source": "diamondAce.svg",
+      "sha256": "c6d3147b12aed8000ddb148207f54231d4b05996c334fdb1ae580b8d542b2e2b"
+    },
+    {
+      "index": 27,
+      "source": "diamond2.svg",
+      "sha256": "e2a067c995d2c3a0e3645b41e1de85fd5f88e1bd4392949353728fa02f34eb04"
+    },
+    {
+      "index": 28,
+      "source": "diamond3.svg",
+      "sha256": "9b73d78b39850a4ffb7313b037934d62bc515992c9debc3266ef849d9b985b1e"
+    },
+    {
+      "index": 29,
+      "source": "diamond4.svg",
+      "sha256": "93f6dbea69ee66561448b33a15332ef61355f4596d2ec67296a837974984947f"
+    },
+    {
+      "index": 30,
+      "source": "diamond5.svg",
+      "sha256": "90a307a66a17afa219336cfcbf9f1315378c0c811d62dc7f4e6f695a0e9e3c23"
+    },
+    {
+      "index": 31,
+      "source": "diamond6.svg",
+      "sha256": "7491a05af117ee47ba1843702cca8fadb66a6ee0d2aedda95073a745562f1935"
+    },
+    {
+      "index": 32,
+      "source": "diamond7.svg",
+      "sha256": "14f96e9e34181bbacfc88ec2de2bc277e05d36ef9b23edef7ea65062c21d053c"
+    },
+    {
+      "index": 33,
+      "source": "diamond8.svg",
+      "sha256": "a0bba6a717f3f1b49c566d3573b204d9e50d55c58450dc02a144a1019c4a5a5b"
+    },
+    {
+      "index": 34,
+      "source": "diamond9.svg",
+      "sha256": "6b8f84ef87d4da43b1932ef51be95304e5deca6a96a48834bd18ad68c0cc7515"
+    },
+    {
+      "index": 35,
+      "source": "diamond10.svg",
+      "sha256": "71c7441e2499e2bd6eb4cff79b2fd78f37637cacf0fdcddb1ae3c891f585d13f"
+    },
+    {
+      "index": 36,
+      "source": "diamondJack.svg",
+      "sha256": "a7efd85e8f0905cebcd0c8efed96999286ea2f446b49e35ebaf7b330788f23d5"
+    },
+    {
+      "index": 37,
+      "source": "diamondQueen.svg",
+      "sha256": "2dd5e7db6fa8e348d82aba34d758f1fc4828931482bb2cc2d6334886775e290a"
+    },
+    {
+      "index": 38,
+      "source": "diamondKing.svg",
+      "sha256": "bba82786ec4a36ef6eb60b3b31b8b6cfdf0999f10c046f79fcf5ff6ec0bfee2b"
+    },
+    {
+      "index": 39,
+      "source": "clubAce.svg",
+      "sha256": "8bd3944b0dd715caa0a0a9073a5c9817a7d607265bc4965f9ffb4fe06f1397da"
+    },
+    {
+      "index": 40,
+      "source": "club2.svg",
+      "sha256": "8b48a747be324b34d2127094b7660364b0f402dafec2e41b283cfbd24cd68820"
+    },
+    {
+      "index": 41,
+      "source": "club3.svg",
+      "sha256": "e605e58528d3baa9f21cbc9ec7092aad045b9b08ac464e3b88e2c9207b924b49"
+    },
+    {
+      "index": 42,
+      "source": "club4.svg",
+      "sha256": "d138a67e3f456f13d7fa010ef6284bf76c49bea6e7f8790ec691e7d5bf3e1a9f"
+    },
+    {
+      "index": 43,
+      "source": "club5.svg",
+      "sha256": "170ed910228b2fa23c6f2e92d16bd776e902a89fd5c2a5b0b00a7428fc4751be"
+    },
+    {
+      "index": 44,
+      "source": "club6.svg",
+      "sha256": "6e5efe3336d2b35cce4d4418c17098d69ec8d168fdaf0038d8019111e82feeff"
+    },
+    {
+      "index": 45,
+      "source": "club7.svg",
+      "sha256": "7cdbd79f81a361deb63036d9c2252cf1a49fbe07a8a628e868641ee13d868b51"
+    },
+    {
+      "index": 46,
+      "source": "club8.svg",
+      "sha256": "38aed134a2a2eaf68b3d4d9f7b691349a06081ae6330c8a4edef2ac00f225957"
+    },
+    {
+      "index": 47,
+      "source": "club9.svg",
+      "sha256": "2bb4fb6aabfbb95ba43172e9fa54665d00bb9fd6715c3fb3bac9d79fc9925813"
+    },
+    {
+      "index": 48,
+      "source": "club10.svg",
+      "sha256": "e4949197641bdc211f11b11594dcea112df04d6570984314a13b2c9c90d64ad1"
+    },
+    {
+      "index": 49,
+      "source": "clubJack.svg",
+      "sha256": "15ca481724d004b5b5cccfcb0c7a3449d21adc26f99dc5dbfe80a8f9e313a5d8"
+    },
+    {
+      "index": 50,
+      "source": "clubQueen.svg",
+      "sha256": "eb925da6d6ecf94b90794b94bfb5d76b498dde6f87c49cba6f28b9a022294410"
+    },
+    {
+      "index": 51,
+      "source": "clubKing.svg",
+      "sha256": "7420d4009d0fcdd1fb17523695a2e7083702579239968c7002048a0d7879748b"
+    },
+    {
+      "index": 52,
+      "source": "blackJoker.svg",
+      "sha256": "8e8ef0df6c630a0347714eb3423a0b711fe80c8f4be541f4191011d35666e26a"
+    },
+    {
+      "index": 53,
+      "source": "redJoker.svg",
+      "sha256": "08cdb87583c7b55cb36a97d20bd8f05c3ed92782bac674de7c2d14a395c647ca"
+    },
+    {
+      "index": 54,
+      "source": "blueBack.svg",
+      "sha256": "13794ea7890f254971af7c8b0edd77e927d64b76c6199ec638c39f61436ab52b"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+SVGCards — public-domain playing cards
+
+Source: https://github.com/saulspatz/SVGCards
+Commit: f8df28774736ea2545fc8e7fb693eb55ce031945
+Files: Decks/Vertical2/svgs (52 faces, black/red jokers and blue back).
+
+Saul Spatz places the scripts and graphics in the public domain. The source
+README states: "Everything in this repository has been placed by the author
+in the public domain."
+
+The source credits the court illustrations to Byron Knoll and the back
+designs to Openclipart. See the upstream README for its original credits and
+links to Wikimedia Commons.
+
+Rami Salon adaptations: the blue back is navy; number-card inner frames are
+removed; the SVG illustrations have
+been rasterized with Inkscape and packed into a shared texture with gutters.
+The figures and pip arrangements are from the retrieved deck, not generated.
+
+Rebuild: python3 scripts/build-card-atlas.py /path/to/SVGCards
+Requires Inkscape and Pillow. Checkout the exact source commit above first.

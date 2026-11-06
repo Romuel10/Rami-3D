@@ -26,13 +26,13 @@ func _run() -> void:
 	await process_frame
 	_check(app.game_mode == "menu" and app.music.enabled and is_equal_approx(app.music.volume, 0.28), "application starts with configured music")
 
-	_press("Apprendre")
+	_press("Règles")
 	_check(app.lesson_index == -1 and _find_text(app.overlay, "Apprendre le rami") != null, "header opens lesson overview")
 	var first_chapter = _find_button_prefix(app.overlay, "1. ")
 	_check(first_chapter is Button, "first chapter is actionable")
 	first_chapter.pressed.emit()
-	_check(app.lesson_index == 0 and _find_text(app.overlay, "EXEMPLE EXPLIQUÉ") != null, "chapter button opens explained example")
-	_press("Étape suivante →")
+	_check(app.lesson_index == 0 and _find_text(app.overlay, "Exemple") != null, "chapter button opens explained example")
+	_press("Étape suivante")
 	_check(app.lesson_index == 1, "next chapter advances one lesson")
 	_press("Toutes les étapes")
 	_check(app.lesson_index == -1, "chapter returns to overview")
@@ -41,12 +41,12 @@ func _run() -> void:
 	_check(not app.beginner_enabled, "beginner setting updates through actual control")
 	_press("C’est compris")
 	_check(app.overlay.get_child_count() == 0 and app.game_mode == "menu", "lesson closes without changing screen")
-	_press("Lire le guide complet")
+	_press("Règles du jeu")
 	_check(not _find_type(app.overlay, "CheckButton").button_pressed, "lesson overview reflects saved beginner choice")
 	_press("C’est compris")
 
 	app.solo_select.select(0)
-	_press("Jouer contre l’ordinateur   →")
+	_press("Jouer au rami")
 	await create_timer(1.05).timeout
 	_check(app.hand_cards.size() == 13 and app.hand_root.get_parent() == app.camera, "own hand lives under camera")
 	var own_nodes_valid := true
@@ -54,17 +54,17 @@ func _run() -> void:
 		own_nodes_valid = own_nodes_valid and card.get_parent() == app.hand_root and card.get_meta("hand_card", false) and is_equal_approx(card.scale.x, app.HAND_SCALE)
 	_check(own_nodes_valid, "all large fan cards are marked as private hand cards")
 	var untouched: Dictionary = app.snapshot.duplicate(true)
-	_press("Conseils pas à pas")
-	_check(_find_text(app.overlay, "PAS À PAS") != null and _find_text(app.overlay, "PROCHAINE ACTION") != null, "live advice includes steps and next action")
+	_press("Conseils")
+	_check(_find_text(app.overlay, "Les étapes") != null and _find_text(app.overlay, "À faire maintenant") != null, "live advice includes steps and next action")
 	_check(app.snapshot == untouched, "advice reads current turn without playing it")
 	_press("Revenir à ma main")
 	_press_draw()
 	var selected_id: String = app.hand_cards[0].card_id
 	app.hand_cards[0].tapped.emit(app.hand_cards[0])
 	var selected_y: float = app.hand_cards[0].position.y
-	_press("Conseils pas à pas")
+	_press("Conseils")
 	_check(app.selected == [selected_id] and _find_text(app.overlay, "Une carte est sélectionnée") != null, "coach explains selected card without clearing selection")
-	_press("Ouvrir le guide complet")
+	_press("Lire les règles")
 	_press("Expliquer mon tour actuel")
 	_check(app.selected == [selected_id], "guide and advice navigation retains player choice")
 	_press("Revenir à ma main")
@@ -116,7 +116,7 @@ func _run() -> void:
 	}
 	app._network_game_updated(remote_view.duplicate(true))
 	_check(app.game_mode == "online" and app.engine == null, "online integration uses public snapshot without local rules state")
-	_press("Apprendre")
+	_press("Règles")
 	_find_button_prefix(app.overlay, "1. ").pressed.emit()
 	var lesson_panel_id: int = app.overlay.get_child(1).get_instance_id()
 	app._network_game_updated(remote_view.duplicate(true))
@@ -128,7 +128,7 @@ func _run() -> void:
 	app._network_game_updated(remote_view.duplicate(true))
 	_check(app.overlay_kind == "music" and app.overlay.get_child(1).get_instance_id() == music_panel_id, "online update preserves music settings panel")
 	_press("Revenir au jeu")
-	_press("Conseils pas à pas")
+	_press("Conseils")
 	_check(_find_text(app.overlay, "Préparez votre prochain tour") != null, "online coach explains opponent's active turn")
 	remote_view.turn = 0
 	app._network_game_updated(remote_view.duplicate(true))
@@ -151,10 +151,10 @@ func _run() -> void:
 	# Real navigation while the opponent is thinking must invalidate that
 	# coroutine before the separate sorting practice is mounted.
 	app.solo_select.select(0)
-	_press("Jouer contre l’ordinateur   →")
+	_press("Jouer au rami")
 	_press_draw()
 	app.hand_cards[0].tapped.emit(app.hand_cards[0])
-	_press("Défausser →")
+	_press("Défausser")
 	_check(app.busy, "opponent thinking delay is pending")
 	_press("Accueil")
 	_press("Abandonner la partie")
@@ -174,7 +174,7 @@ func _run() -> void:
 	quit(0)
 
 func _press_draw() -> void:
-	var button = _find_button_prefix(app.ui, "↓  Piocher")
+	var button = _find_button_prefix(app.ui, "Piocher")
 	_check(button is Button and not button.disabled, "draw button available and enabled")
 	button.pressed.emit()
 

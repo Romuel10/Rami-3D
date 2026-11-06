@@ -1,12 +1,12 @@
-# Rami Salon 3D 0.8.0 — salons Internet sur Supabase
+# Rami Salon 3D 0.9.0 — cartes classiques et textes simplifiés
 
-- Serveur Internet hébergé dans le projet Supabase du jeu, avec adresse intégrée à l’application.
-- Rami à 2–4 joueurs ; Tri en duel à 6 ou 12 cartes.
-- Création et invitation par code à six chiffres, sans compte à créer pour les joueurs.
-- Cartes privées et actions vérifiées par le serveur. Les salons sont sauvegardés dans Postgres, avec verrouillage des actions concurrentes.
-- Reconnexion à la même place pendant 60 secondes, y compris dans le salon d’attente. La rotation des connexions du service reprend le même salon.
-- Les modes solo et Wi-Fi restent disponibles. Les adresses de serveurs personnalisés peuvent toujours être mémorisées.
+- Valets, dames et rois avec les illustrations traditionnelles du jeu SVGCards, récupéré sur Internet et distribué dans le domaine public. Les indices J/Q/K accompagnent les portraits.
+- Les 52 faces, deux illustrations de joker et le dos marine sont inclus dans l’application, partagés entre la 3D et les exercices. Aucune connexion n’est nécessaire pour afficher les cartes.
+- Accueil et fenêtres revus : une police cohérente, titres en casse normale, boutons courts, consignes directes et crédits accessibles.
+- Feutre réellement visible, matières avec relief, éclairage ajusté et doigts distincts sur les mains des adversaires.
+- Anticrénelage 2× en mode normal ; le mode économie le désactive avec les ombres et reste limité à 30 images/s.
+- Solo, Wi-Fi et salons Supabase restent disponibles pour le Rami et le Tri 6/12.
 
-Dans **Jouer avec des amis → Internet**, créer un salon puis transmettre son code. Pour le Tri, choisir d’abord le duel et le format 6/12 cartes.
+Les crédits et la provenance des cartes sont consultables depuis **Crédits**, sur l’accueil.
 
 Les tests automatiques ne remplacent pas un essai sur téléphone Android physique. Les compilations sans clé de signature durable restent des APK de test disponibles dans les artefacts GitHub Actions.

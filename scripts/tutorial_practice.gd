@@ -8,10 +8,10 @@ signal completed
 
 const Rules = preload("res://scripts/rami_engine.gd")
 const CardArt = preload("res://scripts/card_3d.gd")
-const INK := Color("ecede3")
-const MUTED := Color("91aba7")
-const GOLD := Color("dfbd78")
-const DEEP := Color("0a2428")
+const INK := Color("f2eee4")
+const MUTED := Color("b2bbb1")
+const GOLD := Color("d1b581")
+const DEEP := Color("1d2520")
 const OPENING_GROUPS := [["0:H:7", "0:H:8", "0:H:9"], ["0:C:2", "0:C:3", "0:C:4"]]
 const OPENING_CARDS := ["0:H:7", "0:H:8", "0:H:9", "0:C:2", "0:C:3", "0:C:4"]
 const DRAW_CARD := "0:H:9"
@@ -153,10 +153,10 @@ func _build_interface() -> void:
 	local_theme.set_color("font_hover_color", "Button", GOLD)
 	local_theme.set_color("font_disabled_color", "Button", Color("7f9b95"))
 	for style_name in ["normal", "hover", "pressed", "disabled"]:
-		local_theme.set_stylebox(style_name, "Button", _style(Color("163b3c"), GOLD if style_name == "hover" else Color("345653"), 12))
+		local_theme.set_stylebox(style_name, "Button", _style(Color("29372f"), GOLD if style_name == "hover" else Color("526052"), 12))
 	theme = local_theme
 	var background := ColorRect.new()
-	background.color = Color("071e23")
+	background.color = Color("1a251e")
 	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(background)
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -223,13 +223,13 @@ func _refresh() -> void:
 		"Vous avez terminé votre premier tour. L’adversaire jouerait maintenant. Le but d’une vraie manche reste de vider votre main en défaussant votre dernière carte."
 	]
 	_heading.text = headings[stage]
-	_progress.text = "PAS À PAS · %d / 4" % [mini(stage + 1, 4)]
+	_progress.text = "Les étapes · %d / 4" % [mini(stage + 1, 4)]
 	_explanation.text = descriptions[stage]
 	_example.text = "Repère : piocher → préparer et poser si possible → défausser. Les cartes dorées servent à l’exercice."
 	if stage in [1, 2]:
 		_example.text = "7♥ + 8♥ + 9♥ = 24 points ; 2♣ + 3♣ + 4♣ = 9 points. Total : 33 points, donc au moins 30."
 	elif stage >= 3:
-		_example.text = "SUR LA TABLE : 7♥–8♥–9♥ et 2♣–3♣–4♣. Votre ouverture à 33 points est déjà acquise."
+		_example.text = "Sur la table : 7♥–8♥–9♥ et 2♣–3♣–4♣. Votre ouverture à 33 points est déjà acquise."
 	_action.text = ["Piocher une carte", "Poser les six cartes", "Poser · ouverture à 33 points", "Défausser la carte choisie", "Exercice terminé"][stage]
 	_action.disabled = stage == 4 or stage == 1 or (stage == 3 and selected.size() != 1)
 	_render_cards()
@@ -293,11 +293,7 @@ func _card_label(id: String) -> String:
 	return str(info.get("label", id)) + str(SUITS.get(info.get("suit", ""), ""))
 
 func _texture(id: String) -> Texture2D:
-	if not _textures.has(id):
-		var image := Image.new()
-		if image.load_svg_from_string(CardArt._front_svg(id)) == OK:
-			_textures[id] = ImageTexture.create_from_image(image)
-	return _textures.get(id)
+	return CardArt.texture_for(id)
 
 func _feedback_text(message: String, color: Color) -> void:
 	if is_instance_valid(_feedback):

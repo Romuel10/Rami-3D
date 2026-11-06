@@ -6,10 +6,10 @@ extends Control
 signal exit_requested
 
 const CardArt = preload("res://scripts/card_3d.gd")
-const INK := Color("ecede3")
-const MUTED := Color("91aba7")
-const GOLD := Color("dfbd78")
-const DEEP := Color("0a2428")
+const INK := Color("f2eee4")
+const MUTED := Color("b2bbb1")
+const GOLD := Color("d1b581")
+const DEEP := Color("1d2520")
 const SUITS := ["C", "D", "H", "S"]
 const SUIT_SYMBOLS := {"C": "♣", "D": "♦", "H": "♥", "S": "♠"}
 const SUIT_NAMES := {"C": "trèfle", "D": "carreau", "H": "cœur", "S": "pique"}
@@ -140,13 +140,13 @@ func check_order() -> bool:
 	rounds_completed += 1
 	var earned := maxi(30, 100 - _round_mistakes * 10 - _round_hints * 5)
 	score += earned
-	_progress.text = "MANCHE %d / 3  ·  %d CARTES  ·  %d PTS" % [current_round + 1, cards.size(), score]
+	_progress.text = "Manche %d/3 · %d cartes · %d points" % [current_round + 1, cards.size(), score]
 	selected_index = -1
 	_render_cards()
 	if current_round == ROUND_SIZES.size() - 1:
 		_finish_challenge()
 	else:
-		_verify_button.text = "Manche suivante →"
+		_verify_button.text = "Manche suivante"
 		_hint_button.disabled = true
 		_set_feedback("Bien joué ! L’ordre est correct : +%d points. Passez à la manche suivante quand vous êtes prêt." % earned, GOLD)
 	return true
@@ -190,10 +190,10 @@ func _build_interface() -> void:
 	theme.set_color("font_color", "Button", INK)
 	theme.set_color("font_hover_color", "Button", GOLD)
 	theme.set_color("font_disabled_color", "Button", Color("627c78"))
-	theme.set_stylebox("normal", "Button", _style(Color("163b3c"), Color("345653"), 10, 14))
-	theme.set_stylebox("hover", "Button", _style(Color("245653"), GOLD, 10, 14))
-	theme.set_stylebox("pressed", "Button", _style(Color("32685d"), GOLD, 10, 14))
-	theme.set_stylebox("disabled", "Button", _style(Color("152e31"), Color("27413f"), 10, 14))
+	theme.set_stylebox("normal", "Button", _style(Color("29372f"), Color("526052"), 10, 14))
+	theme.set_stylebox("hover", "Button", _style(Color("3c4e40"), GOLD, 10, 14))
+	theme.set_stylebox("pressed", "Button", _style(Color("4e6050"), GOLD, 10, 14))
+	theme.set_stylebox("disabled", "Button", _style(Color("232c25"), Color("3c483f"), 10, 14))
 	self.theme = theme
 	var background := ColorRect.new()
 	background.color = Color(0.025, 0.09, 0.10, 0.97)
@@ -254,9 +254,9 @@ func _render_round() -> void:
 	if not _built:
 		return
 	_title.text = "Exercice de rangement"
-	_progress.text = "MANCHE %d / 3  ·  %d CARTES  ·  %d PTS" % [current_round + 1, cards.size(), score]
+	_progress.text = "Manche %d/3 · %d cartes · %d points" % [current_round + 1, cards.size(), score]
 	_instruction.text = "Touchez deux cartes pour les échanger. Lisez de gauche à droite, puis de haut en bas."
-	_criterion.text = "Par couleur, puis par valeur : ♣ TRÈFLES → ♦ CARREAUX → ♥ CŒURS → ♠ PIQUES · as vers roi" if current_round == 1 else "Par valeur croissante : AS → 2 → 3 → … → 10 → VALET → DAME → ROI · couleurs libres"
+	_criterion.text = "Par couleur, puis par valeur : ♣ trèfles, ♦ carreaux, ♥ cœurs, ♠ piques. De l’as au roi." if current_round == 1 else "Par valeur : as, 2, 3… 10, valet, dame, roi. L’ordre des couleurs est libre."
 	_verify_button.text = "Vérifier"
 	_hint_button.disabled = false
 	_set_feedback("Les valeurs identiques peuvent rester dans n’importe quel ordre. Aucun chronomètre ne vous presse.", MUTED)
@@ -342,16 +342,16 @@ func _finish_challenge() -> void:
 	selected_index = -1
 	_bad_indices.clear()
 	_title.text = "Bien joué !"
-	_progress.text = "3 MANCHES TERMINÉES"
+	_progress.text = "3 manches terminées"
 	_instruction.text = "Vous avez travaillé les deux façons de ranger une main de cartes. Ces repères vous aideront aussi au rami."
-	_criterion.text = "VOTRE SCORE : %d / 300 POINTS" % score
+	_criterion.text = "Votre score : %d/300" % score
 	_clear_children(_grid)
 	_card_buttons.clear()
 	_grid.columns = 1
 	var result_box := VBoxContainer.new()
 	result_box.add_theme_constant_override("separation", 14)
 	_grid.add_child(result_box)
-	var headline := _label("Un peu d’ordre, beaucoup de progrès.", 28, INK, result_box)
+	var headline := _label("Exercice terminé", 28, INK, result_box)
 	headline.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var result: Dictionary = get_results()
 	var elapsed: int = result.elapsed_seconds
@@ -378,12 +378,7 @@ func _card_name(card_id: String) -> String:
 	return "%s de %s" % [RANK_NAMES[rank], SUIT_NAMES.get(parts[1], parts[1])]
 
 func _texture_for(card_id: String) -> Texture2D:
-	if not _texture_cache.has(card_id):
-		var image := Image.new()
-		if image.load_svg_from_string(CardArt._front_svg(card_id)) != OK:
-			return null
-		_texture_cache[card_id] = ImageTexture.create_from_image(image)
-	return _texture_cache[card_id]
+	return CardArt.texture_for(card_id)
 
 func _set_feedback(text: String, color: Color) -> void:
 	if is_instance_valid(_feedback):

@@ -128,7 +128,7 @@ func _run() -> void:
 	app.match_length = 3
 	app.difficulty = 1
 	app.solo_select.select(0)
-	_press("Jouer contre l’ordinateur   →")
+	_press("Jouer au rami")
 	_check(app.game_mode == "solo" and int(app.snapshot.winner) < 0, "real solo game begins before leave checks")
 	var before_menu: Dictionary = app.engine.export_game()
 	app._leave_to_menu()
@@ -153,7 +153,7 @@ func _run() -> void:
 	# Abandonment during the opponent's delayed turn must cancel that coroutine.
 	app._leave_to_menu()
 	app.solo_select.select(0)
-	_press("Jouer contre l’ordinateur   →")
+	_press("Jouer au rami")
 	app._act({"type":"draw", "source":"deck"})
 	app._act({"type":"discard", "card":app.snapshot.hand[0]})
 	_check(app.busy, "opponent delay is active before abandonment")

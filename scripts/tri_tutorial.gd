@@ -8,10 +8,10 @@ signal completed
 
 const Rules = preload("res://scripts/rami_engine.gd")
 const CardArt = preload("res://scripts/card_3d.gd")
-const INK := Color("ecede3")
-const MUTED := Color("91aba7")
-const GOLD := Color("dfbd78")
-const DEEP := Color("0a2428")
+const INK := Color("f2eee4")
+const MUTED := Color("b2bbb1")
+const GOLD := Color("d1b581")
+const DEEP := Color("1d2520")
 const DRAW_CARD := "0:D:8"
 const DISCARD_CARD := "0:S:13"
 const INITIAL_SIX := ["0:H:7", "1:H:7", "0:C:7", "0:S:8", "0:C:8", DISCARD_CARD]
@@ -162,10 +162,10 @@ func _build_interface() -> void:
 	local_theme.set_color("font_hover_color", "Button", GOLD)
 	local_theme.set_color("font_disabled_color", "Button", Color("7f9b95"))
 	for style_name in ["normal", "hover", "pressed", "disabled"]:
-		local_theme.set_stylebox(style_name, "Button", _style(Color("163b3c"), GOLD if style_name == "hover" else Color("345653"), 12))
+		local_theme.set_stylebox(style_name, "Button", _style(Color("29372f"), GOLD if style_name == "hover" else Color("526052"), 12))
 	theme = local_theme
 	var background := ColorRect.new()
-	background.color = Color("071e23")
+	background.color = Color("1a251e")
 	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(background)
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -182,7 +182,7 @@ func _build_interface() -> void:
 	margin.add_child(box)
 	var row := HBoxContainer.new()
 	box.add_child(row)
-	_heading = _label("Votre première victoire au Tri", 30, INK, row)
+	_heading = _label("Apprendre le Tri", 30, INK, row)
 	_heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_progress = _label("", 15, GOLD, row)
 	_progress.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -232,11 +232,11 @@ func _refresh() -> void:
 		"Le jeu vérifie votre victoire après la défausse. Vous gagnez avec %d tris distincts, tout en gardant vos %d cartes en main." % [goal,hand_size]
 	]
 	_heading.text = headings[stage]
-	_progress.text = "%d CARTES · OBJECTIF %d TRIS" % [hand_size,goal]
+	_progress.text = "%d cartes · %d tris à former" % [hand_size,goal]
 	_explanation.text = descriptions[stage]
-	_example.text = "7♥ + 7♥ + 7♣ : un tri valable. Les deux 7♥ sont deux cartes physiques différentes."
+	_example.text = "7♥ + 7♥ + 7♣ : un tri valable. Les deux 7♥ peuvent appartenir au même tri."
 	if stage >= 1:
-		_example.text = "VOS TRIS : 7♥–7♥–7♣ et 8♠–8♣–8♦" + (", ainsi que 9♠–9♣–9♦." if hand_size == 12 else ".")
+		_example.text = "Vos tris : 7♥–7♥–7♣ et 8♠–8♣–8♦" + (", ainsi que 9♠–9♣–9♦." if hand_size == 12 else ".")
 	if hand_size == 12:
 		_example.text += " Avec 12 cartes, 3 tris utilisent 9 cartes ; les 3 autres cartes restent libres."
 	_action.text = ["Piocher une carte", "Mes tris", "Défausser la carte choisie", "Exercice terminé"][stage]
@@ -303,11 +303,7 @@ func _card_label(id: String) -> String:
 	return str(info.get("label", id)) + str(SUITS.get(info.get("suit", ""), ""))
 
 func _texture(id: String) -> Texture2D:
-	if not _textures.has(id):
-		var image := Image.new()
-		if image.load_svg_from_string(CardArt._front_svg(id)) == OK:
-			_textures[id] = ImageTexture.create_from_image(image)
-	return _textures.get(id)
+	return CardArt.texture_for(id)
 
 func _feedback_text(message: String, color: Color) -> void:
 	if is_instance_valid(_feedback):
