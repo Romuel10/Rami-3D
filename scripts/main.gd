@@ -1,5 +1,6 @@
 extends Node3D
 
+const CardText = preload("res://scripts/card_labels.gd")
 const EngineRules = preload("res://scripts/rami_engine.gd")
 const TableSalon = preload("res://scripts/table_scene.gd")
 const CardView = preload("res://scripts/card_3d.gd")
@@ -830,9 +831,7 @@ func _extend_selected() -> void:
 	for i in range(melds.size()):
 		var names: Array = []
 		for id in melds[i].get("cards", []):
-			var info: Dictionary = EngineRules.new().card_info(str(id))
-			var suits := {"S":"♠", "H":"♥", "D":"♦", "C":"♣", "J":""}
-			names.append(str(info.get("label", id)) + str(suits.get(info.get("suit", ""), "")))
+			names.append(CardText.short_label(str(id)))
 		var idx := i
 		var preview: Dictionary = EngineRules.new().selection_preview(snapshot, selected, suggested)
 		var button := _button(str(i+1) + " · " + "  ".join(names), func(): _close_overlay(); _extend_at(idx), box, i in preview.targets)
@@ -934,8 +933,7 @@ func _show_winner() -> void:
 		for group in snapshot.get("winning_tris",[]):
 			var labels: Array[String] = []
 			for id in group:
-				var info: Dictionary = EngineRules.new().card_info(id)
-				labels.append(str(info.label) + str({"H":"♥","S":"♠","C":"♣","D":"♦"}.get(info.suit,"")))
+				labels.append(CardText.short_label(str(id)))
 			_long_text("  ·  ".join(labels),box)
 	if not scores.is_empty() and not _is_tri():
 		_label("Manche %d / %d · le plus petit total gagne" % [int(scores.get("round",1)),int(scores.get("length",1))],17,INK,box)

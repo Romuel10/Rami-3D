@@ -6,6 +6,7 @@ extends Control
 signal exit_requested
 signal completed
 
+const CardText = preload("res://scripts/card_labels.gd")
 const Rules = preload("res://scripts/rami_engine.gd")
 const CardArt = preload("res://scripts/card_3d.gd")
 const INK := Color("f2eee4")
@@ -299,8 +300,7 @@ func _primary_action() -> void:
 		2: discard_selected()
 
 func _card_label(id: String) -> String:
-	var info: Dictionary = engine.card_info(id)
-	return str(info.get("label", id)) + str(SUITS.get(info.get("suit", ""), ""))
+	return CardText.full_name(id)
 
 func _texture(id: String) -> Texture2D:
 	return CardArt.texture_for(id)

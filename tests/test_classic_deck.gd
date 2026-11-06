@@ -2,6 +2,7 @@ extends SceneTree
 ## Imported illustrations, shared 2D/3D identity, privacy and physical layering.
 const Card = preload("res://scripts/card_3d.gd")
 const Main = preload("res://main.tscn")
+const CardText = preload("res://scripts/card_labels.gd")
 var checks := 0
 var failures := 0
 
@@ -13,6 +14,8 @@ func check(value: bool, message: String) -> void:
 		push_error(message)
 
 func _run() -> void:
+	check(CardText.short_label("0:S:11")=="J♠" and CardText.short_label("0:H:12")=="Q♥" and CardText.short_label("0:C:13")=="K♣","display indices agree with the imported court cards")
+	check(CardText.full_name("0:S:11")=="Valet de pique","tooltips explain the figure in French")
 	var atlas := Card.atlas_texture()
 	check(atlas.get_width()<=4096 and atlas.get_height()<=4096,"atlas fits the supported mobile texture bound")
 	var regions: Array[Rect2] = []

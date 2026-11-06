@@ -11,7 +11,7 @@ func _initialize() -> void:
 	for lesson: Dictionary in coach.lessons():
 		_check(not str(lesson.get("title", "")).is_empty() and not str(lesson.get("body", "")).is_empty() and not str(lesson.get("example", "")).is_empty() and not lesson.get("tips", []).is_empty(), "complete lesson")
 		all_lessons += str(lesson)
-	_check(all_lessons.contains("33") and all_lessons.contains("R♥ A♥ 2♥") and all_lessons.contains("couleur"), "practical opening, ace and suit examples")
+	_check(all_lessons.contains("33") and all_lessons.contains("K♥ A♥ 2♥") and all_lessons.contains("couleur"), "practical opening, ace and suit examples")
 	_check(_complete(coach.advice({})), "welcome response schema")
 	var snapshot := _snapshot(["0:H:7", "0:H:8", "0:H:9", "0:C:2", "0:C:3", "0:C:4", "0:S:13"])
 	var before := snapshot.duplicate(true)
@@ -69,7 +69,7 @@ func _initialize() -> void:
 	_check(coach.advice(last).action.contains("dernière"), "last card can win by discard")
 	var isolated := _snapshot(["0:H:7", "0:H:8", "0:C:13", "J:0"])
 	advice = coach.advice(isolated)
-	_check(advice.title.contains("Préparez") and advice.example.contains("R♣") and not advice.example.begins_with("Carte à envisager pour la défausse : Joker"), "isolated discard considered without sacrificing joker")
+	_check(advice.title.contains("Préparez") and advice.example.contains("K♣") and not advice.example.begins_with("Carte à envisager pour la défausse : Joker"), "isolated discard considered without sacrificing joker")
 	for case in [snapshot, short_opening, ace_low, ace_high, joker, extend, draw, under_draw, inactive, last, isolated]:
 		_check(_complete(coach.advice(case)), "all situations return useful structured advice")
 	print("PASS: %d beginner-coach checks" % checks)
