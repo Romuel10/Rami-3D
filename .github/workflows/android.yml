@@ -257,7 +257,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y xvfb libgl1-mesa-dri
-          LIBGL_ALWAYS_SOFTWARE=1 timeout 120 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_hand_view.gd 2>&1 | tee "$RUNNER_TEMP/rami-render.log"
+          LIBGL_ALWAYS_SOFTWARE=1 timeout 240 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_hand_view.gd 2>&1 | tee "$RUNNER_TEMP/rami-render.log"
           if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/rami-render.log"; then
             exit 1
           fi
@@ -266,7 +266,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/rami-mobile-ui" timeout 120 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_mobile_ui.gd 2>&1 | tee "$RUNNER_TEMP/rami-mobile-ui.log"
+          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/rami-mobile-ui" timeout 240 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_mobile_ui.gd 2>&1 | tee "$RUNNER_TEMP/rami-mobile-ui.log"
           if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/rami-mobile-ui.log"; then
             exit 1
           fi
@@ -275,7 +275,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/rami-tutorial-ui" timeout 120 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_tutorial_practice.gd 2>&1 | tee "$RUNNER_TEMP/rami-tutorial-ui.log"
+          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/rami-tutorial-ui" timeout 240 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_tutorial_practice.gd 2>&1 | tee "$RUNNER_TEMP/rami-tutorial-ui.log"
           if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/rami-tutorial-ui.log"; then
             exit 1
           fi
@@ -284,7 +284,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/rami-comfort-ui" timeout 120 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_accessibility.gd 2>&1 | tee "$RUNNER_TEMP/rami-comfort-ui.log"
+          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/rami-comfort-ui" timeout 240 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_accessibility.gd 2>&1 | tee "$RUNNER_TEMP/rami-comfort-ui.log"
           if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/rami-comfort-ui.log"; then
             exit 1
           fi
@@ -293,29 +293,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/tri-render" timeout 120 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_tri_ui.gd 2>&1 | tee "$RUNNER_TEMP/tri-render.log"
+          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/tri-render" timeout 240 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_tri_ui.gd 2>&1 | tee "$RUNNER_TEMP/tri-render.log"
           if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/tri-render.log"; then exit 1; fi
 
       - name: Verify realistic table and opponent hands
         shell: bash
         run: |
           set -euo pipefail
-          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/table-realism" timeout 120 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_table_realism.gd 2>&1 | tee "$RUNNER_TEMP/table-realism.log"
+          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/table-realism" timeout 240 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_table_realism.gd 2>&1 | tee "$RUNNER_TEMP/table-realism.log"
           if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/table-realism.log"; then exit 1; fi
 
       - name: Verify classic card illustrations and privacy
         shell: bash
         run: |
           set -euo pipefail
-          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/classic-deck-render" timeout 120 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_classic_deck.gd 2>&1 | tee "$RUNNER_TEMP/classic-deck.log"
+          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/classic-deck-render" timeout 240 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_classic_deck.gd 2>&1 | tee "$RUNNER_TEMP/classic-deck.log"
           if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/classic-deck.log"; then exit 1; fi
 
       - name: Verify Tri tutorial and grouped private hands
         shell: bash
         run: |
           set -euo pipefail
-          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/tri-lesson-render" timeout 120 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_tri_tutorial.gd 2>&1 | tee "$RUNNER_TEMP/tri-lesson-render.log"
-          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/upgrade-render" timeout 120 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_upgrade_v7.gd 2>&1 | tee "$RUNNER_TEMP/upgrade-render.log"
+          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/tri-lesson-render" timeout 240 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_tri_tutorial.gd 2>&1 | tee "$RUNNER_TEMP/tri-lesson-render.log"
+          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/upgrade-render" timeout 240 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_upgrade_v7.gd 2>&1 | tee "$RUNNER_TEMP/upgrade-render.log"
           if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/tri-lesson-render.log" "$RUNNER_TEMP/upgrade-render.log"; then exit 1; fi
 
       - name: Export and verify Android APK

@@ -67,9 +67,9 @@ func _surface(kind: String) -> StandardMaterial3D:
 	mat.normal_texture = ImageTexture.create_from_image(relief)
 	mat.roughness_texture = ImageTexture.create_from_image(roughness_map)
 	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
-	mat.uv1_triplanar = true
-	mat.uv1_triplanar_sharpness = 2.0
-	mat.uv1_scale = Vector3.ONE * (5.0 if kind=="felt" else 0.6)
+	# These primitives already have UVs. Sampling their UVs once avoids the
+	# three-axis normal/colour/roughness blend on every mobile fragment.
+	mat.uv1_scale = Vector3(15,15,1) if kind=="felt" else Vector3(2,4,1)
 	if kind=="wood": mat.roughness = 0.42
 	if kind=="leather": mat.roughness = 0.65
 	_materials[kind] = mat

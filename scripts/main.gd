@@ -191,6 +191,7 @@ func _make_world() -> void:
 	key.shadow_bias = .10
 	key.shadow_normal_bias = 1.5
 	key.directional_shadow_max_distance = 32
+	key.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 	add_child(key)
 	var light := OmniLight3D.new()
 	light.position = Vector3(0, 7, -3)
