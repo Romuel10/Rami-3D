@@ -84,18 +84,14 @@ func _run() -> void:
 	app._leave_to_menu()
 	app.saved_address = "https://table.vercel.app"
 	app._show_friends(true)
-	check(not app.address_input.visible and app.address_input.text=="wss://table.vercel.app/api/ws","remembered server enables code-only entry")
-	find_button(app.overlay,"Changer de serveur").pressed.emit()
-	check(app.address_input.visible,"public server can be changed")
-	app._close_overlay()
-	app.saved_address = ""
-	app._show_friends(true)
-	check(not app.address_input.visible and app.address_input.text==Profile.configured_url(),"hosted default enables code-only entry")
+	check(app.address_input==null and app.invitation_input==null,"multiplayer only asks for the shared six-digit room code")
+	check(find_button(app.overlay,"Changer de serveur")==null,"technical server settings removed from player menu")
+	check(app.code_input.max_length==6 and app.room_count_select.item_count==3,"six-digit entry and 2/3/4 player choice")
 	app._close_overlay()
 	var hosted_default: String = Profile.configured_url()
 	ProjectSettings.set_setting("network/default_server_url", "")
 	app._show_friends(true)
-	check(app.address_input.visible,"custom builds without hosting request an endpoint")
+	check(app.address_input==null,"missing configuration never asks players for an address")
 	ProjectSettings.set_setting("network/default_server_url", hosted_default)
 	app._close_overlay()
 	app.tri_choice = 12

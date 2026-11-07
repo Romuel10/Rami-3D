@@ -7,6 +7,8 @@ signal lobby_updated(data: Dictionary)
 signal game_updated(view: Dictionary)
 signal notice(message: String)
 signal connection_changed(connected: bool)
+signal voice_received(player: int, stream: String, sequence: int, data: String)
+signal voice_status(available: bool)
 
 const PORT := 7357
 const MAX_PLAYERS := 4
@@ -20,6 +22,10 @@ const LEAVE_FLUSH_MS := 250
 const EngineScript = preload("res://scripts/rami_engine.gd")
 
 var tri_cards: int = 0
+var player_count: int = 0
+var supports_rematch := false
+var voice_available := false
+var _session_id := ""
 var room_code: String = ""
 var local_player: int = -1
 var is_host: bool = false
@@ -82,7 +88,7 @@ func join_room(address: String, player_name: String, code: String = "") -> bool:
 	leave_room()
 	var url := _normalise_address(address)
 	if url.is_empty():
-		notice.emit("Indiquez l’adresse IP de l’hôte, par exemple 192.168.1.20.")
+		notice.emit("Impossible de contacter le salon. Réessayez.")
 		return false
 	if code.length() != 6 or not code.is_valid_int():
 		notice.emit("Saisissez le code de salon à six chiffres.")
@@ -94,12 +100,13 @@ func join_room(address: String, player_name: String, code: String = "") -> bool:
 	local_address = address.strip_edges()
 	return _connect_client()
 
-func create_remote_room(address: String, player_name: String, hand_size: int = 0) -> bool:
+func create_remote_room(address: String, player_name: String, hand_size: int = 0, count: int = 0) -> bool:
 	leave_room()
 	tri_cards = hand_size if hand_size in [6,12] else 0
+	player_count = 2 if tri_cards > 0 else count
 	var url := _normalise_address(address)
 	if url.is_empty():
-		notice.emit("Indiquez l’adresse du serveur Internet.")
+		notice.emit("Le service en ligne est indisponible.")
 		return false
 	_client_mode = "create"
 	_client_url = url
@@ -141,9 +148,28 @@ func send_action(action: Dictionary) -> void:
 	if _hosting_locally:
 		_apply_action(0, action)
 	elif connected and _client != null and _client.get_ready_state() == WebSocketPeer.STATE_OPEN:
-		_send(_client, {"type": "action", "action": action})
+		_send(_client, {"type": "action", "action": action, "session_id": _session_id})
 	else:
 		notice.emit("La connexion au salon est interrompue.")
+
+func configure_players(count: int) -> void:
+	if connected and is_host and not match_started and _client != null:
+		_send(_client, {"type":"configure", "player_count":count})
+
+func request_rematch() -> void:
+	if connected and supports_rematch and _match_finished and _client != null:
+		_send(_client, {"type":"rematch", "session_id":_session_id})
+	else:
+		notice.emit("Attendez la reconnexion au salon pour rejouer.")
+
+func send_voice(sequence: int, data: String) -> void:
+	# Drop audio under congestion rather than queueing old speech behind moves.
+	if connected and voice_available and _client != null and _client.get_current_outbound_buffered_amount() < 4096:
+		_send(_client, {"type":"voice", "seq":sequence, "data":data})
+
+func _voice_disconnected() -> void:
+	voice_available = false
+	voice_status.emit(false)
 
 func reconnect() -> bool:
 	if _hosting_locally:
@@ -253,7 +279,7 @@ func _read_session() -> Dictionary:
 	return value
 
 func _persist_session() -> void:
-	if _hosting_locally or _match_finished or _session_token.is_empty() or _client_url.is_empty() or room_code.length() != 6 or local_player < 0:
+	if _hosting_locally or (_match_finished and not supports_rematch) or _session_token.is_empty() or _client_url.is_empty() or room_code.length() != 6 or local_player < 0:
 		return
 	var saved := {"version": 1, "url": _client_url, "name": _client_name, "code": room_code, "token": _session_token, "player": local_player, "updated_at": int(Time.get_unix_time_from_system())}
 	var file := FileAccess.open(session_path + ".tmp", FileAccess.WRITE)
@@ -277,6 +303,10 @@ func _clear_current(emit_change: bool) -> void:
 	local_address = ""
 	match_started = false
 	tri_cards = 0
+	player_count = 0
+	supports_rematch = false
+	_session_id = ""
+	_voice_disconnected()
 	_match_finished = false
 	_engine = null
 	_players.clear()
@@ -592,7 +622,7 @@ func _connect_client() -> bool:
 	if error != OK:
 		_client = null
 		_retry_at = Time.get_ticks_msec() + RECONNECT_DELAY_MS
-		notice.emit("Connexion impossible. Vérifiez l’adresse et le réseau Wi-Fi.")
+		notice.emit("Connexion impossible. Vérifiez votre connexion Internet.")
 		return false
 	return true
 
@@ -606,7 +636,7 @@ func _poll_client() -> void:
 	if state == WebSocketPeer.STATE_OPEN:
 		if not _auth_sent:
 			if _client_mode == "create":
-				_send(_client, {"type": "create", "name": _client_name, "tri_cards":tri_cards})
+				_send(_client, {"type": "create", "name": _client_name, "tri_cards":tri_cards, "player_count":player_count})
 			else:
 				_send(_client, {"type": "join", "name": _client_name, "code": room_code, "token": _session_token})
 			_auth_sent = true
@@ -619,11 +649,12 @@ func _poll_client() -> void:
 				_client_message(value)
 	elif state == WebSocketPeer.STATE_CLOSED:
 		_client = null
-		if connected and not _match_finished:
+		_voice_disconnected()
+		if connected and (not _match_finished or supports_rematch):
 			connected = false
 			connection_changed.emit(false)
 			notice.emit("Connexion interrompue. Reconnexion en cours…")
-		if _match_finished:
+		if _match_finished and not supports_rematch:
 			connected = false
 			_wants_connection = false
 		else:
@@ -638,6 +669,8 @@ func _client_message(message: Dictionary) -> void:
 			_session_token = str(message.get("token", ""))
 			room_code = str(message.get("code", room_code))
 			is_host = bool(message.get("is_host", false))
+			var features: Dictionary = message.get("features", {})
+			supports_rematch = bool(features.get("rematch", false))
 			_client_mode = "join"
 			connected = true
 			_match_finished = false
@@ -651,9 +684,13 @@ func _client_message(message: Dictionary) -> void:
 					notice.emit("Ce serveur ne prend pas en charge le Tri choisi. Mettez le serveur à jour.")
 					return
 				tri_cards = int(data.get("tri_cards",0))
+				player_count = int(data.get("player_count",0))
 				_known_lobby = data
 				is_host = bool(data.get("host", is_host))
 				match_started = bool(data.get("started", false))
+				if not match_started:
+					_match_finished = false
+					_session_id = ""
 				local_player = int(data.get("your_index", local_player))
 				_persist_session()
 				lobby_updated.emit(data)
@@ -661,17 +698,27 @@ func _client_message(message: Dictionary) -> void:
 			var data: Variant = message.get("data")
 			if data is Dictionary:
 				match_started = true
+				_session_id = str(data.get("session_id", ""))
 				var summaries: Array = data.get("players", [])
 				var own_forfeit: bool = local_player >= 0 and local_player < summaries.size() and bool(summaries[local_player].get("forfeited", false))
 				_match_finished = int(data.get("winner", -1)) >= 0 or own_forfeit
-				if _match_finished:
+				if _match_finished and (not supports_rematch or own_forfeit):
 					forget_session()
 				else:
 					_persist_session()
 				game_updated.emit(data)
+		"voice_status":
+			voice_available = connected and bool(message.get("available",false))
+			voice_status.emit(voice_available)
+		"voice":
+			var index := int(message.get("player",-1))
+			var data := str(message.get("data",""))
+			if voice_available and index >= 0 and index < MAX_PLAYERS and index != local_player and data.length() == 860:
+				voice_received.emit(index, str(message.get("stream", "")), int(message.get("seq",-1)), data)
 		"error":
 			notice.emit(str(message.get("message", "Connexion impossible.")))
 			if bool(message.get("fatal", false)):
+				_voice_disconnected()
 				_wants_connection = false
 				forget_session()
 				if _client != null:

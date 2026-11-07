@@ -250,3 +250,98 @@ test('atomic room updates across clients never lose concurrent commits',async t=
   await Promise.all(Array.from({length:24},(_,index)=>(index%2?a:b).update(room.code,value=>{value.counter++;})));
   assert.equal((await a.read(room.code)).counter,24);
 });
+
+class TestVoiceBus {
+  constructor() { this.topics = new Map(); this.sent = 0; }
+  subscribe(topic, receive, status) {
+    if (!this.topics.has(topic)) this.topics.set(topic,new Set());
+    const listeners=this.topics.get(topic); listeners.add(receive);
+    queueMicrotask(()=>status(true));
+    return {send: payload=>{ this.sent++; for (const fn of listeners) queueMicrotask(()=>fn(payload)); },close:()=>listeners.delete(receive)};
+  }
+}
+async function completeRound(f,code) {
+  const {validateState}=await import('../lib/engine.mjs');
+  const room=JSON.parse(await f.probe.get(`${f.prefix}room:${code}`));
+  room.game.deck.push(...room.game.players[0].hand.splice(0));
+  room.game.winner=0; room.game.revision++;
+  room.game.match.totals=room.players.map(()=>0);
+  room.game.match.results=[{winner:0,points:room.players.map(()=>0)}];
+  assert.ok(validateState(room.game),'controlled completed deal obeys state invariants');
+  room.version++;
+  await f.probe.set(`${f.prefix}room:${code}`,JSON.stringify(room));
+  await f.probe.publish(`${f.prefix}updates`,code);
+  return room.game.session_id;
+}
+
+test('chosen capacity is enforced and only the lobby owner can change it',async t=>{
+  const f=await fixture(t); const one=await f.app(),two=await f.app();
+  const a=await f.connect(one),b=await f.connect(two),c=await f.connect(two);
+  a.send({type:'create',name:'Alice',player_count:4}); const aw=await a.until('welcome');
+  assert.equal((await a.until('lobby')).data.player_count,4);
+  await join(b,aw.code); a.send({type:'start'}); assert.match((await a.until('error')).message,/4 joueurs/);
+  b.send({type:'configure',player_count:2}); assert.match((await b.until('error')).message,/hôte/);
+  await join(c,aw.code); a.send({type:'configure',player_count:2}); assert.match((await a.until('error')).message,/trop petit/);
+  a.send({type:'configure',player_count:3}); await a.until('lobby',m=>m.data.player_count===3);
+  const extra=await f.connect(two); extra.send({type:'join',code:aw.code}); assert.equal((await extra.until('error')).fatal,true);
+  a.send({type:'start'}); assert.equal((await c.until('state')).data.players.length,3);
+  for(const count of [1,5,'3',2.5]) { const bad=await f.connect(one); bad.send({type:'create',player_count:count}); assert.equal((await bad.until('error')).fatal,true); }
+  const bad=await f.connect(one); bad.send({type:'create',tri_cards:6,player_count:3}); assert.equal((await bad.until('error')).fatal,true);
+});
+
+test('unanimous rematch keeps private seats and survives a postgame reconnect; stale votes/moves are rejected',async t=>{
+  const f=await fixture(t,{preserveLobby:true}); const one=await f.app(),two=await f.app();
+  const a=await f.connect(one),b=await f.connect(two); a.send({type:'create',name:'Alice',player_count:2}); const aw=await a.until('welcome'); await a.until('lobby');
+  const bw=await join(b,aw.code); const [first]=await start(a,b); const old=await completeRound(f,aw.code);
+  await a.until('state',m=>m.data.winner===0); await b.until('state',m=>m.data.winner===0);
+  a.send({type:'rematch',session_id:old}); await a.until('lobby',m=>m.data.players[0].rematch_ready);
+  a.close(); const restored=await f.connect(two); const rw=await join(restored,aw.code,aw.token);
+  assert.equal(rw.token,aw.token); assert.equal((await restored.until('state')).data.session_id,old);
+  b.send({type:'rematch',session_id:old});
+  const fresh=(await restored.until('state',m=>m.data.winner<0)).data;
+  const other=(await b.until('state',m=>m.data.session_id!==old)).data;
+  assert.notEqual(fresh.session_id,first.session_id); assert.equal(fresh.hand.length,13); assert.notDeepEqual(fresh.hand,other.hand);
+  assert.equal(rw.code,aw.code); assert.equal(bw.code,aw.code); assert.ok(!JSON.stringify(fresh).includes(bw.token));
+  restored.send({type:'rematch',session_id:old}); assert.match((await restored.until('error')).message,/fin du match/);
+  restored.send({type:'action',session_id:old,action:{type:'draw',source:'deck'}}); assert.match((await restored.until('error')).message,/précédent/);
+  restored.send({type:'action',session_id:fresh.session_id,action:{type:'draw',source:'deck'}}); assert.equal((await restored.until('state',m=>m.data.phase==='play')).data.hand.length,14);
+});
+
+test('a declined rematch returns remaining players to the same lobby without leaking a reindexed hand',async t=>{
+  const f=await fixture(t); const one=await f.app(),two=await f.app();
+  const a=await f.connect(one),b=await f.connect(two),c=await f.connect(two);
+  a.send({type:'create',name:'Alice',player_count:3}); const aw=await a.until('welcome'); await a.until('lobby');
+  const bw=await join(b,aw.code); await join(c,aw.code); a.send({type:'start'}); await a.until('state'); await b.until('state'); await c.until('state');
+  const old=await completeRound(f,aw.code); await a.until('state',m=>m.data.winner===0);
+  b.send({type:'rematch',session_id:old}); await b.until('lobby',m=>m.data.players[1].rematch_ready);
+  c.send({type:'rematch',session_id:old}); await c.until('lobby',m=>m.data.players[2].rematch_ready);
+  const count=a.all.filter(m=>m.type==='state').length;
+  a.send({type:'leave'});
+  const transfer=await b.until('welcome',m=>m.player===0); assert.equal(transfer.token,bw.token);
+  const lobby=(await b.until('lobby',m=>!m.data.started && m.data.host && m.data.players[0].name==='Bob')).data;
+  assert.equal(lobby.code,aw.code); assert.equal(lobby.players.length,2); assert.equal(lobby.player_count,3);
+  await delay(80);
+  assert.ok(a.all.filter(m=>m.type==='state').slice(count).every(m=>m.data.hand.length===0 && m.data.your_index===0 && m.data.session_id===old),'departing seat receives no reindexed private hand');
+  const d=await f.connect(one); await join(d,aw.code); b.send({type:'start'});
+  assert.equal((await d.until('state')).data.players.length,3);
+});
+
+test('voice crosses workers only for authenticated members, is transient, bounded, and excludes replaced seats',async t=>{
+  const voice=new TestVoiceBus(); const f=await fixture(t,{voice}); const one=await f.app(),two=await f.app();
+  const a=await f.connect(one),b=await f.connect(two),outside=await f.connect(two);
+  const aw=await create(a); await join(b,aw.code); await create(outside);
+  await a.until('voice_status',m=>m.available); await b.until('voice_status',m=>m.available);
+  const data=Buffer.alloc(645); data[2]=32; data.writeUInt16LE(1280,3); const encoded=data.toString('base64');
+  const before=await f.probe.get(`${f.prefix}room:${aw.code}`);
+  a.send({type:'voice',seq:1,data:encoded,player:3});
+  const received=await b.until('voice'); assert.equal(received.player,0); assert.equal(received.data,encoded);
+  assert.ok(!JSON.stringify(received).includes(aw.token)); assert.ok(!before.includes(encoded));
+  assert.ok(!outside.all.some(m=>m.type==='voice')); assert.ok(!a.all.some(m=>m.type==='voice'));
+  await delay(60); const sent=voice.sent;
+  a.send({type:'voice',seq:1,data:encoded}); a.send({type:'voice',seq:2,data:'bad'});
+  await delay(70); assert.equal(voice.sent,sent);
+  const replacement=await f.connect(two); await join(replacement,aw.code,aw.token); await replacement.until('voice_status',m=>m.available); await a.until('error',m=>m.fatal);
+  replacement.send({type:'voice',seq:0,data:encoded}); const next=await b.until('voice',m=>m.stream!==received.stream);
+  assert.equal(next.player,0); assert.equal(next.seq,0);
+  const stored=JSON.parse(await f.probe.get(`${f.prefix}room:${aw.code}`)); assert.ok(!('voice' in stored)); assert.ok(!JSON.stringify(stored).includes(encoded));
+});

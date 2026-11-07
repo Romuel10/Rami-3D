@@ -5,6 +5,7 @@ const EngineRules = preload("res://scripts/rami_engine.gd")
 const TableSalon = preload("res://scripts/table_scene.gd")
 const CardView = preload("res://scripts/card_3d.gd")
 const NetworkRoom = preload("res://scripts/network_manager.gd")
+const VoiceChat = preload("res://scripts/voice_chat.gd")
 const MusicPlayer = preload("res://scripts/music_manager.gd")
 const Coach = preload("res://scripts/beginner_coach.gd")
 const SortingChallenge = preload("res://scripts/sorting_challenge.gd")
@@ -41,6 +42,15 @@ var _key_light: DirectionalLight3D
 var _heading_font: FontVariation
 var tri_choice := 6
 var friends_tri_cards := 0
+var friends_player_count := 2
+var room_count_select: OptionButton
+var voice: Node
+var voice_panel: PanelContainer
+var mic_button: Button
+var listen_button: Button
+var voice_label: Label
+var rematch_button: Button
+var rematch_status: Label
 var bot_count := 1
 var table_scene: Node3D
 var camera: Camera3D
@@ -132,6 +142,12 @@ func _ready() -> void:
 	network.game_updated.connect(_network_game_updated)
 	network.notice.connect(_toast)
 	network.connection_changed.connect(_connection_changed)
+	voice = VoiceChat.new()
+	add_child(voice)
+	voice.setup(network)
+	voice.changed.connect(_update_voice_controls)
+	voice.notice.connect(_toast)
+	_make_voice_controls()
 	_show_menu()
 	# Reproducible visual checks can start an offline table without network access.
 	if "--demo" in OS.get_cmdline_user_args():
@@ -148,6 +164,7 @@ func _notification(what: int) -> void:
 	if what in [NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_WM_CLOSE_REQUEST, NOTIFICATION_APPLICATION_FOCUS_OUT]:
 		_autosave()
 		_cancel_drag()
+		if voice != null: voice.stop_talk()
 	if what == NOTIFICATION_APPLICATION_PAUSED: Engine.max_fps = 5
 	if what == NOTIFICATION_APPLICATION_RESUMED: _apply_performance()
 	if what == NOTIFICATION_APPLICATION_RESUMED and OS.has_feature("android") and fullscreen_enabled:
@@ -428,7 +445,7 @@ func _show_menu() -> void:
 	var footer := HBoxContainer.new()
 	_place(footer, content, Vector2(68,-72), Vector2(-68,-30), Vector2(0,1), Vector2(1,1))
 	footer.add_theme_constant_override("separation", 32)
-	_label("Solo · Wi-Fi · Internet", 14, MUTED, footer)
+	_label("Solo · Entre amis", 14, MUTED, footer)
 	_button("Crédits", _show_credits, footer)
 	_label("Sans publicité", 14, MUTED, footer)
 	var menu_ids := ["0:H:1", "0:S:13", "0:D:12", "0:C:11", "0:H:10"]
@@ -953,123 +970,164 @@ func _show_winner() -> void:
 	if game_mode == "solo":
 		SoloStore.record_round(engine.state)
 		if not result.finished: _button("Manche suivante",_next_round,box,true)
-		_button("Nouvelle partie",func(): _start_solo(int(snapshot.get("tri_hand_size",0))),box,true)
-	_button("Retour à l’accueil",_leave_to_menu,box)
+		if result.finished:
+			_label("Une autre partie ?",22,INK,box)
+			_button("Rejouer",func(): _start_solo(int(snapshot.get("tri_hand_size",0))),box,true)
+	elif game_mode == "online" and network.supports_rematch:
+		_label("On rejoue ?",22,INK,box)
+		rematch_status = _label("",17,MUTED,box)
+		rematch_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		rematch_button = _button("Oui, rejouer",_request_rematch,box,true)
+		_update_rematch_controls()
+	_button("Quitter le salon" if game_mode == "online" else "Retour à l’accueil",_leave_to_menu,box)
 
 func _open_friends() -> void:
 	friends_tri_cards = 0
 	_save_profile()
 	_show_friends(false)
 
-func _show_friends(internet: bool) -> void:
-	online_tab = internet
-	var box := _modal("Tri en duel" if friends_tri_cards > 0 else "Jouer avec des amis", "Chacun joue avec son téléphone et garde sa main privée.")
-	var tabs := HBoxContainer.new()
-	tabs.add_theme_constant_override("separation", 12)
-	box.add_child(tabs)
-	_button("Même Wi-Fi", func(): _show_friends(false), tabs, not internet)
-	_button("Internet", func(): _show_friends(true), tabs, internet)
-	if internet:
-		var endpoint := ServerProfile.normalise(saved_address)
-		if endpoint.is_empty(): endpoint = ServerProfile.configured_url()
-		address_input = _field("https://votre-serveur/…", endpoint, box)
-		address_input.visible = endpoint.is_empty()
-		if endpoint.is_empty():
-			_long_text("Renseignez l’adresse Internet de votre jeu. Vous pourrez ensuite rejoindre vos amis avec leur code.",box)
-			_button("Guide du mode Internet",func(): OS.shell_open("https://github.com/Romuel10/Rami-3D/blob/main/supabase/README.md"),box)
-		else:
-			_label("Entrez le code de votre ami pour le rejoindre.",14,MUTED,box)
-			_button("Changer de serveur",func(): address_input.show(); address_input.grab_focus(),box)
+func _show_friends(_internet: bool = true) -> void:
+	online_tab = true
+	address_input = null
+	invitation_input = null
+	var box := _modal("Tri avec un ami" if friends_tri_cards > 0 else "Jouer avec des amis", "Créez un salon ou entrez le code de votre ami. Chacun garde sa main privée.")
+	_label("Créer un salon",22,INK,box)
+	if friends_tri_cards > 0:
+		_label("Tri · %d cartes · 2 joueurs" % friends_tri_cards,17,MUTED,box)
 	else:
-		var info := _label("Connectez tous les téléphones au même Wi-Fi.\nL’un crée le salon ; les autres le rejoignent.", 16, MUTED, box)
-		info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_label("Nombre de joueurs",16,MUTED,box)
+		room_count_select = _player_count_picker(box,friends_player_count)
+		room_count_select.item_selected.connect(func(index: int): friends_player_count = index+2)
 	_button("Créer un salon", _create_room, box, true)
-	var sep := HSeparator.new()
-	box.add_child(sep)
-	if not internet:
-		_label("Adresse de l’hôte", 13, GOLD, box)
-		address_input = _field("192.168.1.20:7357", "", box)
-	_label("Invitation", 13, GOLD, box)
-	invitation_input = _field("Collez ici l’invitation rami3d://…", "", box)
-	invitation_input.max_length = 2048
-	_button("Rejoindre avec l’invitation", _join_invitation, box, true)
-	_label("Code du salon", 13, GOLD, box)
+	box.add_child(HSeparator.new())
+	_label("Rejoindre un salon",22,INK,box)
 	code_input = _field("Code à 6 chiffres", "", box)
 	code_input.max_length = 6
 	code_input.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
+	code_input.text_submitted.connect(func(_value: String): _join_room())
 	_button("Rejoindre le salon", _join_room, box)
 	_button("Retour", _close_overlay, box)
 
+func _player_count_picker(parent: Node, count: int) -> OptionButton:
+	var picker := OptionButton.new()
+	picker.custom_minimum_size.y = 56
+	for number in [2,3,4]: picker.add_item("%d joueurs" % number)
+	picker.select(clampi(count-2,0,2))
+	parent.add_child(picker)
+	return picker
+
 func _create_room() -> void:
-	if online_tab:
-		var address := ServerProfile.normalise(address_input.text)
-		if address.is_empty():
-			_toast("Saisissez une adresse HTTPS ou WSS valide.")
-			return
-		saved_address = address
-		_save_preferences()
-		network.create_remote_room(address, player_name, friends_tri_cards)
-		_toast("Connexion au serveur…")
-	else:
-		network.host_room(player_name,network.PORT,friends_tri_cards)
+	var address := ServerProfile.configured_url()
+	if address.is_empty():
+		_toast("Le service en ligne est indisponible dans cette version.")
+		return
+	var count := 2 if friends_tri_cards > 0 else friends_player_count
+	network.create_remote_room(address, player_name, friends_tri_cards, count)
+	_toast("Création du salon…")
 
 func _join_room() -> void:
-	var address := address_input.text.strip_edges()
-	if online_tab: address = ServerProfile.normalise(address)
 	var code := code_input.text.strip_edges()
-	if address.is_empty() or code.length() != 6 or not code.is_valid_int():
-		_toast("Renseignez l’adresse de l’hôte et le code à 6 chiffres.")
+	var digits_only := code.length() == 6
+	for digit in code:
+		if digit not in "0123456789": digits_only = false
+	if not digits_only:
+		_toast("Entrez le code à 6 chiffres de votre ami.")
 		return
-	if online_tab:
-		saved_address = address
-		_save_preferences()
+	var address := ServerProfile.configured_url()
+	if address.is_empty():
+		_toast("Le service en ligne est indisponible dans cette version.")
+		return
 	network.join_room(address, player_name, code)
 	_toast("Connexion au salon…")
 
 func _lobby_updated(data: Dictionary) -> void:
 	current_lobby = data
 	friends_tri_cards = int(data.get("tri_cards",0))
-	if game_mode == "online" and not snapshot.is_empty():
+	if voice != null: voice.sync_players(data.get("players",[]))
+	_update_voice_controls()
+	if game_mode == "online" and not snapshot.is_empty() and data.get("started",false):
+		_update_rematch_controls()
 		return
+	if game_mode != "lobby":
+		toast_label.hide()
+		toast_time = 0.0
+	snapshot.clear()
 	game_mode = "lobby"
 	_close_overlay()
 	_clear_content()
 	header_status.text = "Salon · " + str(data.get("code", network.room_code))
 	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", _style(Color("0b292d"), Color("456551"), 22, 30))
-	_place(panel, content, Vector2(-330,160), Vector2(330,760), Vector2(0.5,0), Vector2(0.5,0))
+	panel.add_theme_stylebox_override("panel", _style(Color("222e26"), Color("657461"), 16, 26))
+	_place(panel, content, Vector2(-330,125), Vector2(330,-35), Vector2(0.5,0), Vector2(0.5,1))
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	panel.add_child(scroll)
 	lobby_box = VBoxContainer.new()
-	lobby_box.add_theme_constant_override("separation", 16)
-	panel.add_child(lobby_box)
-	_label("Votre salon est prêt", 30, INK, lobby_box)
-	_label("Code à partager avec vos amis", 12, GOLD, lobby_box)
+	lobby_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lobby_box.add_theme_constant_override("separation", 12)
+	scroll.add_child(lobby_box)
+	_label("Votre salon", 30, INK, lobby_box)
+	_label("Partagez ce code avec vos amis", 16, MUTED, lobby_box)
 	var code := _label(str(data.get("code", network.room_code)), 52, GOLD, lobby_box)
 	code.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	if network.is_host:
-		var addr := str(data.get("address", network.local_address))
-		if not addr.is_empty():
-			var txt := _label("Adresse de l’hôte : " + addr + ":" + str(data.get("port",7357)), 16, MUTED, lobby_box)
-			txt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_button("Copier l’invitation", _copy_invitation, lobby_box)
+	_button("Copier le code", _copy_invitation, lobby_box)
 	var players: Array = data.get("players", [])
+	var target := int(data.get("player_count",0))
+	if target == 0: target = 2 if friends_tri_cards > 0 else players.size()
+	_label("%d / %d joueurs" % [players.size(),target],20,GOLD,lobby_box)
 	for i in range(players.size()):
 		var p: Dictionary = players[i]
-		_label(("●  " if p.get("connected",true) else "○  ") + str(p.get("name","Joueur")) + (" · hôte" if i == 0 else ""), 21, INK, lobby_box)
-	if players.size() < (2 if friends_tri_cards > 0 else 4):
-		_label("En attente d’un ami…", 18, MUTED, lobby_box)
-	_label(("Tri · %d cartes · duel" % friends_tri_cards) if friends_tri_cards > 0 else "2 à 4 joueurs · la partie commence quand l’hôte est prêt.", 14, MUTED, lobby_box)
+		_label(("●  " if p.get("connected",true) else "○  ") + str(p.get("name","Joueur")) + (" · vous" if i == network.local_player else ""), 21, INK, lobby_box)
+	if network.is_host and friends_tri_cards == 0:
+		room_count_select = _player_count_picker(lobby_box,maxi(2,target))
+		for i in range(3): room_count_select.set_item_disabled(i,i+2 < players.size())
+		room_count_select.item_selected.connect(func(index: int): network.configure_players(index+2))
+	if friends_tri_cards > 0: _label("Tri · %d cartes · duel" % friends_tri_cards,16,MUTED,lobby_box)
+	var all_connected := true
+	for player in players:
+		if not player.get("connected",false): all_connected = false
+	if players.size() < target: _label("En attente de %d joueur(s)…" % (target-players.size()),17,MUTED,lobby_box)
 	if network.is_host:
 		lobby_start = _button("Commencer la partie", func(): network.start_match(), lobby_box, true)
-		lobby_start.disabled = players.size() < 2
+		lobby_start.disabled = players.size() < 2 or players.size() != target or not all_connected
 	else:
 		_label("L’hôte lancera la partie.", 18, GOLD, lobby_box)
 	_button("Quitter le salon", _leave_to_menu, lobby_box)
+	_update_voice_controls()
+
+func _request_rematch() -> void:
+	network.request_rematch()
+
+func _update_rematch_controls() -> void:
+	if not is_instance_valid(rematch_button) or not is_instance_valid(rematch_status) or overlay_kind != "winner": return
+	var ready := 0
+	var count := 0
+	var own_ready := false
+	for i in range(current_lobby.get("players",[]).size()):
+		var player: Dictionary = current_lobby.players[i]
+		if player.get("departed",false) or player.get("forfeited",false): continue
+		count += 1
+		if player.get("rematch_ready",false):
+			ready += 1
+			if i == network.local_player: own_ready = true
+	rematch_button.disabled = own_ready or not network.connected
+	rematch_button.text = "Vous êtes prêt" if own_ready else "Oui, rejouer"
+	rematch_status.text = "%d / %d prêts · même salon, même code." % [ready,count]
+	if not network.connected: rematch_status.text = "Reconnexion au salon… Vous pourrez ensuite rejouer."
+	elif own_ready: rematch_status.text += " En attente de vos amis…"
 
 func _network_game_updated(data: Dictionary) -> void:
 	if network.local_player < 0: return
 	if overlay_kind == "connection" or game_mode != "online":
 		_close_overlay()
-	var entering := game_mode != "online"
+	var entering: bool = game_mode != "online" or snapshot.get("session_id","") != data.get("session_id","")
+	if entering:
+		_close_overlay()
+		_winner_key = ""
+		_sound_revision = ""
+		selected.clear()
+		hand_order.clear()
+		busy = false
 	snapshot = data
 	if entering:
 		game_mode = "online"
@@ -1078,6 +1136,8 @@ func _network_game_updated(data: Dictionary) -> void:
 	_render_snapshot()
 
 func _connection_changed(connected: bool) -> void:
+	_update_voice_controls()
+	_update_rematch_controls()
 	if not connected and game_mode == "online" and int(snapshot.get("winner",-1)) >= 0:
 		return
 	if not connected and (game_mode == "lobby" or game_mode == "online"):
@@ -1526,13 +1586,8 @@ func _render_opponents(initial: bool) -> void:
 			card.move_to(Transform3D(basis,pos),.35 if animations_enabled else 0.0,j*.025 if initial else 0.0,.35)
 
 func _copy_invitation() -> void:
-	var address: String = network.local_address
-	if network._hosting_locally:
-		address = "ws://" + address + ":" + str(network.server_port)
-	else:
-		address = network._client_url
-	DisplayServer.clipboard_set(Invitation.make(address,network.room_code))
-	_toast("Invitation copiée. Envoyez-la à votre ami ; il la collera dans Rejoindre avec l’invitation.")
+	DisplayServer.clipboard_set(network.room_code)
+	_toast("Code copié. Envoyez ces 6 chiffres à vos amis.")
 
 func _join_invitation() -> void:
 	var invite: Dictionary = Invitation.parse(invitation_input.text)
@@ -1821,3 +1876,40 @@ func _start_tri_tutorial() -> void:
 	practice.exit_requested.connect(_leave_to_menu)
 	practice.completed.connect(func(): _toast("Premier Tri réussi ! Vous pouvez jouer un duel."))
 	practice.start_lesson(tri_choice)
+
+func _make_voice_controls() -> void:
+	voice_panel = PanelContainer.new()
+	voice_panel.add_theme_stylebox_override("panel",_style(Color("222e26"),Color("657461"),12,12))
+	_place(voice_panel,ui,Vector2(24,105),Vector2(262,265))
+	var box := VBoxContainer.new()
+	voice_panel.add_child(box)
+	voice_label = _label("Micro coupé",15,MUTED,box)
+	voice_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	mic_button = _button("Maintenir pour parler",func(): pass,box)
+	mic_button.icon = load("res://assets/microphone.svg")
+	mic_button.expand_icon = true
+	mic_button.add_theme_constant_override("icon_max_width",18)
+	mic_button.add_theme_font_size_override("font_size",14)
+	mic_button.button_down.connect(func(): voice.begin_talk())
+	mic_button.button_up.connect(func(): voice.stop_talk())
+	mic_button.mouse_exited.connect(func(): voice.stop_talk())
+	listen_button = _button("Son des amis : activé",func(): voice.toggle_listening(),box)
+	listen_button.add_theme_font_size_override("font_size",14)
+	_update_voice_controls()
+
+func _update_voice_controls() -> void:
+	if not is_instance_valid(voice_panel) or network == null or voice == null: return
+	voice_panel.visible = not network.room_code.is_empty() and game_mode in ["lobby","online"]
+	mic_button.disabled = not voice.available or not network.connected
+	listen_button.text = "Son des amis : activé" if voice.listening else "Son des amis : coupé"
+	mic_button.text = "Vous parlez…" if voice.transmitting else "Maintenir pour parler"
+	if not voice.available: voice_label.text = "Vocal indisponible" if network.connected else "Vocal déconnecté"
+	elif voice.transmitting: voice_label.text = "Micro ouvert · relâchez pour couper"
+	elif not voice.listening: voice_label.text = "Micro coupé · écoute désactivée"
+	elif not voice.speakers.is_empty():
+		var names: Array[String] = []
+		for index in voice.speakers:
+			var players: Array = current_lobby.get("players",[])
+			if index < players.size(): names.append(str(players[index].name))
+		voice_label.text = ", ".join(names) + " parle…"
+	else: voice_label.text = "Micro coupé · amis à l’écoute"

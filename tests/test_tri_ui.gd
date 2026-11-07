@@ -93,7 +93,7 @@ func _run() -> void:
 	check(app.snapshot.winner==0 and app.overlay_kind=="winner","real discard opens Tri victory modal")
 	check(app._winner_result().title=="Tri : victoire !" and app.snapshot.winning_tris.size()==2,"result explains actual Tri victory")
 	check(app.hand_cards.size()==6 and app.engine.state.melds.is_empty(),"winner keeps cards in hand")
-	button(app.overlay,"Nouvelle partie").pressed.emit()
+	button(app.overlay,"Rejouer").pressed.emit()
 	check(app._is_tri() and app.snapshot.tri_hand_size==6,"new game keeps Tri format")
 	app._leave_to_menu()
 	await create_timer(1.0).timeout

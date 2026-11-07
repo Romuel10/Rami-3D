@@ -2,6 +2,10 @@
 
 Jeu Android de rami en français : une table et des cartes en 3D, un mode solo contre 1 à 3 ordinateurs, et des parties privées à 2–4 joueurs où chacun utilise son téléphone. Projet réalisé avec Godot 4.6.3, sans publicité, compte ni achat intégré.
 
+## Salons simplifiés et discussion vocale — version 0.10.0
+
+Rejoindre un ami demande uniquement son code à six chiffres. L’hôte choisit 2, 3 ou 4 joueurs au rami (2 au Tri). Après le match, les joueurs peuvent accepter une revanche dans le même salon. Le bouton micro se maintient pour parler ; il est coupé au départ et en arrière-plan. [Mode d’emploi](#avec-des-amis).
+
 ## Cartes classiques et présentation revue — version 0.9.0
 
 - **Cartes illustrées** : vrais portraits de valets, dames et rois, avec les indices classiques J/Q/K. Les 52 faces proviennent du jeu public SVGCards ; deux illustrations de joker servent aux quatre jokers physiques du rami.
@@ -148,27 +152,19 @@ Depuis l’accueil, choisir **Exercice de rangement**. Touchez une carte, puis u
 
 **Vérifier** contrôle l’ordre, **Indice** explique une correction possible et **Recommencer** relance une nouvelle série. Les cartes de même valeur peuvent être échangées librement lorsque la couleur n’est pas un critère. Le score retire des points pour les erreurs et les indices, avec un minimum par manche. Le temps est affiché à titre indicatif ; aucune limite ni pénalité de vitesse n’est imposée.
 
-## Avec des amis sur le même Wi-Fi
+## Avec des amis
 
-Tous les téléphones doivent être connectés au même Wi-Fi ou au même point d’accès, avec les communications entre appareils autorisées.
+Le serveur Supabase est déjà intégré à l’application. Tous les joueurs utilisent la version 0.10.0 ou suivante ; aucune adresse IP n’est demandée.
 
-- Sur le premier téléphone : **Jouer avec des amis → Même Wi-Fi → Créer un salon**.
-- Transmettre l’adresse affichée (par exemple `192.168.1.20:7357`) et le code à six chiffres.
-- Sur chaque autre téléphone : **Même Wi-Fi**, saisir cette adresse et ce code, puis **Rejoindre le salon**.
-- L’hôte touche **Commencer la partie** quand les joueurs sont présents.
+1. Choisir **Jouer avec des amis**. L’hôte choisit **2, 3 ou 4 joueurs**, puis **Créer un salon**. Le Tri reste un duel à 2, avec 6 ou 12 cartes.
+2. L’hôte touche **Copier le code** et transmet les six chiffres à ses amis. Les zéros au début du code doivent être conservés.
+3. Les amis saisissent uniquement ce code dans **Rejoindre un salon**. L’hôte peut ajuster le nombre de joueurs avant le départ, sans retirer un joueur déjà présent.
+4. Quand le nombre choisi est atteint et tous les joueurs sont connectés, l’hôte touche **Commencer la partie**.
+5. À la fin, chaque joueur choisit **Oui, rejouer** ou **Quitter le salon**. Une nouvelle partie commence lorsque tous les joueurs restants sont prêts. Si quelqu’un quitte, les autres restent dans le même salon pour attendre un remplaçant ou ajuster le nombre prévu.
 
-L’hôte garde le jeu ouvert pendant la partie. Les adresses et codes figurant dans ce guide sont des exemples. Si le salon reste inaccessible, vérifier que le réseau Wi-Fi ne bloque pas les communications entre appareils ; les réseaux invités les bloquent souvent.
+**Discussion vocale :** maintenez **Maintenir pour parler**, puis relâchez pour couper le micro. Android demande l’autorisation au premier usage ; après l’avoir accordée, maintenez de nouveau le bouton. Le micro reste coupé au départ, après une reconnexion et lorsque l’application passe en arrière-plan. Le bouton **Son des amis** permet de couper l’écoute. Pendant que vous parlez, l’écoute est suspendue pour limiter l’écho. La voix est transmise aux membres du salon et n’est pas enregistrée. Un casque améliore le confort d’écoute.
 
-## Avec des amis par Internet
-
-Le serveur est hébergé dans le projet Supabase `mppunkypxdqyazoojksv`. L’adresse est intégrée à l’application : aucune clé API ni configuration technique n’est demandée aux joueurs. [Détails du serveur](supabase/README.md).
-
-1. Tous les joueurs choisissent **Jouer avec des amis → Internet**. Le serveur Supabase est déjà sélectionné si aucune adresse personnalisée n’a été mémorisée.
-2. Le premier crée un salon et partage son code.
-3. Les autres saisissent le code et rejoignent le salon.
-4. Le créateur commence la partie.
-
-Chaque connexion reçoit uniquement sa propre main. Le serveur valide les actions et suspend la partie pendant une coupure réseau, pendant 60 secondes au maximum. La reconnexion automatique, **Se reconnecter** ou **Retrouver mon salon** récupère la même place dans ce délai, y compris après une fermeture du jeu. Un abandon volontaire transmis au serveur est définitif et efface le jeton local. Après expiration du délai, le joueur absent perd. Les salons sont enregistrés dans Postgres à chaque action ; ils expirent après 24 heures sans activité de jeu. Pour rejouer après un match terminé, créer un nouveau salon.
+Le mode entre amis fonctionne sur Internet, même si tous les téléphones utilisent le même Wi-Fi. Le moteur Wi-Fi historique reste couvert par les tests internes ; son écran technique n’est plus présenté aux joueurs. [Détails du serveur Supabase](supabase/README.md).
 
 ## Règles de cette version
 
