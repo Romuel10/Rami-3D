@@ -91,10 +91,8 @@ func _measure(label: String) -> void:
 	_check(stage.size() == 16, label + ": deck/discard plus only latest four three-card melds rendered")
 	for card in stage:
 		_check(not _card_rect(card).intersects(hand), label + ": public table cards do not overlap held hand")
-	var header: HBoxContainer = app.ui.get_child(0)
-	for control in header.get_children():
-		if control is Control:
-			_check(viewport.encloses(control.get_global_rect()), label + ": header control fits viewport")
+	for control in app._header.find_children("*", "Control", true, false):
+		_check(viewport.encloses(control.get_global_rect()), label + ": header control fits viewport")
 	print("MEASURE ", label, " shortest_card=", shortest, " hand=", hand, " actions=", app.action_row.get_global_rect())
 
 func _rank_corners(label: String) -> void:
