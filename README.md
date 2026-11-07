@@ -2,6 +2,10 @@
 
 Jeu Android de rami en français : une table et des cartes en 3D, un mode solo contre 1 à 3 ordinateurs, et des parties privées à 2–4 joueurs où chacun utilise son téléphone. Projet réalisé avec Godot 4.6.3, sans publicité, compte ni achat intégré.
 
+## Accueil et Tri entre amis — version 0.11.0
+
+L’accueil présente les trois modes devant la table. Le prénom et les réglages du solo se trouvent dans **Options**. Pendant la partie, la pioche et la défausse ressortent au moment où elles sont disponibles. En ligne, le Rami et le Tri accueillent 2, 3 ou 4 joueurs par salon.
+
 ## Salons simplifiés et discussion vocale — version 0.10.0
 
 Rejoindre un ami demande uniquement son code à six chiffres. L’hôte choisit 2, 3 ou 4 joueurs au rami (2 au Tri). Après le match, les joueurs peuvent accepter une revanche dans le même salon. Le bouton micro se maintient pour parler ; il est coupé au départ et en arrière-plan. [Mode d’emploi](#avec-des-amis).
@@ -154,9 +158,9 @@ Depuis l’accueil, choisir **Exercice de rangement**. Touchez une carte, puis u
 
 ## Avec des amis
 
-Le serveur Supabase est déjà intégré à l’application. Tous les joueurs utilisent la version 0.10.0 ou suivante ; aucune adresse IP n’est demandée.
+Le serveur Supabase est déjà intégré à l’application. Pour le Tri à trois ou quatre, utilisez la version 0.11.0 ou suivante.
 
-1. Choisir **Jouer avec des amis**. L’hôte choisit **2, 3 ou 4 joueurs**, puis **Créer un salon**. Le Tri reste un duel à 2, avec 6 ou 12 cartes.
+1. Pour le Rami, choisir **Jouer avec des amis**. Pour le Tri, choisir **Jouer au Tri**, **6 ou 12 cartes**, puis **Tri avec des amis**. L’hôte choisit **2, 3 ou 4 joueurs**, puis **Créer un salon**.
 2. L’hôte touche **Copier le code** et transmet les six chiffres à ses amis. Les zéros au début du code doivent être conservés.
 3. Les amis saisissent uniquement ce code dans **Rejoindre un salon**. L’hôte peut ajuster le nombre de joueurs avant le départ, sans retirer un joueur déjà présent.
 4. Quand le nombre choisi est atteint et tous les joueurs sont connectés, l’hôte touche **Commencer la partie**.

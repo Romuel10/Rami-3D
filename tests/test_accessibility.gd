@@ -59,7 +59,7 @@ func _run() -> void:
 	app._close_overlay()
 	app._render_snapshot()
 	_check(app.play_buttons.all(func(button): return button.disabled), "draw phase disables play controls even after reversing the button order")
-	_check(not _find_text(app.action_row,"Trier ♠").disabled, "sorting remains available in draw phase for a left-handed player")
+	_check(not _find_text(app.action_row,"Trier").disabled, "sorting remains available in draw phase for a left-handed player")
 	app._act({"type":"draw","source":"deck"})
 	_check(app.snapshot.hand.size() == 14 and not app.card_nodes.any(func(card): return card.is_moving()), "newly drawn card also respects reduced motion")
 	_check(app.play_buttons.all(func(button): return not button.disabled), "play phase enables the correct controls with reversed actions")

@@ -28,7 +28,7 @@ func inventory(game) -> void:
 	check(game.state.melds.is_empty(),"tris never leave the hand")
 func _run() -> void:
 	var game := Rules.new()
-	check(not game.start_tri_game(["A","B","C"],6).ok,"duel only")
+	check(not game.start_tri_game(["A","B","C","D","E"],6).ok,"fifth player rejected")
 	check(not game.start_tri_game(["A","B"],9).ok,"only6or12")
 	check(game.tri_groups(["0:H:7","1:H:7","0:C:7"]).size()==1,"double suit legal")
 	check(game.tri_groups(["0:H:7","0:H:7","0:C:7"]).is_empty(),"same physical card not reused")
@@ -69,6 +69,14 @@ func _run() -> void:
 		check(restored.state.phase=="play" and restored.state.players[0].hand.size()==size+1,"resume cannot draw twice")
 		check(game.forfeit_player(0).ok and game.match_result().winners==[1],"abandon loses Tri duel")
 		check(restored.restore_game(JSON.parse_string(JSON.stringify(game.export_game()))),"forfeit Tri restores")
+	for size in [6,12]:
+		check(game.start_tri_game(["A","B","C","D"],size,17).ok,"four-player Tri deal")
+		check(game.apply_action(0,{"type":"draw"}).ok,"first player draws")
+		check(game.forfeit_player(0).ok and game.state.turn==1 and game.state.winner==-1,"others continue after a player leaves mid-turn")
+		check(game.view_for(2).hand.size()==size and not game.view_for(2).players[0].has("hand"),"third seat receives its own hand only")
+		var continued := Rules.new()
+		check(continued.restore_game(JSON.parse_string(JSON.stringify(game.export_game()))),"restore after a four-player Tri departure")
+		inventory(continued)
 	for size in [6,12]:
 		for seed_value in range(1,5):
 			game = Rules.new()

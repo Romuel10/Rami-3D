@@ -48,7 +48,7 @@ function shuffle(cards, state) {
 
 export function createGame(names, { triCards = 0, seed = 0 } = {}) {
   if (!Array.isArray(names) || names.length < 2 || names.length > 4) throw new TypeError('Une partie accueille de 2 à 4 joueurs.');
-  if (![0, 6, 12].includes(triCards) || (triCards > 0 && names.length !== 2)) throw new TypeError('Le Tri se joue en duel, avec 6 ou 12 cartes par joueur.');
+  if (![0, 6, 12].includes(triCards)) throw new TypeError('Le Tri se joue avec 6 ou 12 cartes par joueur.');
   if (!Number.isSafeInteger(seed)) throw new TypeError('Graine invalide.');
   const state = {
     players: names.map((name, i) => ({ name: Array.from(String(name).trim()).slice(0, 24).join('') || `Joueur ${i + 1}`, hand: [], opened: false, forfeited: false })),
@@ -335,7 +335,8 @@ export function validateState(state) {
       cards.push(...p.hand);
       if (tri) {
         const expected = state.tri_hand_size + (i === state.turn && state.phase === 'play' && state.winner === -1 ? 1 : 0);
-        if (p.opened || (!state.win_by_forfeit && p.hand.length !== expected)) return false;
+        const abandonedAfterDraw = p.forfeited && p.hand.length === state.tri_hand_size + 1;
+        if (p.opened || (!state.win_by_forfeit && p.hand.length !== expected && !abandonedAfterDraw)) return false;
       }
     }
     for (const group of state.melds) {
@@ -343,7 +344,7 @@ export function validateState(state) {
       cards.push(...group.cards);
     }
     if (cards.length !== (tri ? 104 : 108) || !unique(cards) || cards.some(id => !cardInfo(id) || (tri && cardInfo(id).joker))) return false;
-    if (tri && (state.players.length !== 2 || ![6, 12].includes(state.tri_hand_size) || state.tri_goal !== (state.tri_hand_size === 6 ? 2 : 3) || state.melds.length)) return false;
+    if (tri && (![6, 12].includes(state.tri_hand_size) || state.tri_goal !== (state.tri_hand_size === 6 ? 2 : 3) || state.melds.length)) return false;
     if (state.forfeit_winners.some(i => !integer(i, 0, state.players.length - 1) || state.players[i].forfeited)) return false;
     if (state.win_by_forfeit) {
       if (state.winner < 0 || !state.forfeit_winners.includes(state.winner) || !state.end_reason || !state.players.some(p => p.forfeited)) return false;

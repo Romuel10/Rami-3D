@@ -14,9 +14,12 @@ func _run() -> void:
 	app = MainScene.instantiate()
 	root.add_child(app)
 	await process_frame
-	_check(app.game_mode == "menu" and app.card_nodes.size() == 5, "menu starts with decorative cards")
+	_check(app.game_mode == "menu" and app.card_nodes.size() == 9, "menu starts with decorative cards")
+	_press("Options")
 	app.name_input.text = "Test UI"
-	app.solo_select.select(0)
+	app.name_input.text_changed.emit("Test UI")
+	_press("Fermer")
+	app.bot_count = 1
 	_press("Jouer au rami")
 	_check(app.game_mode == "solo" and app.snapshot.hand.size() == 13 and app.snapshot.players.size() == 2, "menu button starts a solo match")
 	_check(app.snapshot.phase == "draw" and app.snapshot.turn == 0 and app._my_turn(), "player starts at draw phase")
@@ -29,7 +32,7 @@ func _run() -> void:
 
 	_fixture(["0:H:7", "0:H:8", "0:H:9", "0:S:2", "0:D:2", "0:C:2", "0:S:13", "0:C:13"])
 	var old_sort: bool = app.sort_suit
-	_press("Trier ♠")
+	_press("Trier")
 	_check(app.sort_suit != old_sort, "sort button switches ordering")
 	var previous_key := -1
 	for node in app.hand_cards:

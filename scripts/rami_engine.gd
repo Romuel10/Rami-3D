@@ -55,8 +55,10 @@ func start_game(names: Array, seed_value: int = 0, rounds: int = 1) -> Dictionar
 	return {"ok": true, "error": ""}
 
 func start_tri_game(names: Array, hand_size: int = 6, seed_value: int = 0) -> Dictionary:
-	if names.size() != 2 or not hand_size in [6,12]:
-		return _fail("Le Tri se joue en duel, avec 6 ou 12 cartes par joueur.")
+	if names.size() < 2 or names.size() > 4:
+		return _fail("Le Tri accueille de 2 à 4 joueurs.")
+	if not hand_size in [6,12]:
+		return _fail("Choisissez 6 ou 12 cartes par joueur.")
 	start_game(names, seed_value, 1)
 	var cards: Array = state.deck + state.discard
 	for player in state.players:
@@ -824,14 +826,16 @@ func restore_game(saved: Variant) -> bool:
 	var tri: bool = candidate.get("variant","rami") == "tri"
 	if not candidate.get("variant","rami") in ["rami","tri"]: return false
 	if tri:
-		if candidate.players.size() != 2 or not _saved_integer(candidate.get("tri_hand_size"),6,12) or not int(candidate.tri_hand_size) in [6,12]: return false
+		if not _saved_integer(candidate.get("tri_hand_size"),6,12) or not int(candidate.tri_hand_size) in [6,12]: return false
 		candidate.tri_hand_size = int(candidate.tri_hand_size)
 		if candidate.get("tri_goal") != (2 if candidate.tri_hand_size == 6 else 3) or not candidate.melds.is_empty(): return false
 		candidate.tri_goal = int(candidate.tri_goal)
 		for i in range(candidate.players.size()):
 			if candidate.players[i].opened: return false
 			var expected_count: int = candidate.tri_hand_size + (1 if i == candidate.get("turn") and candidate.get("phase") == "play" and candidate.get("winner") == -1 else 0)
-			if candidate.players[i].hand.size() != expected_count and not candidate.get("win_by_forfeit",false): return false
+			var player: Dictionary = candidate.players[i]
+			var abandoned_after_draw: bool = player.forfeited and player.hand.size() == candidate.tri_hand_size + 1
+			if player.hand.size() != expected_count and not abandoned_after_draw and not candidate.get("win_by_forfeit",false): return false
 	if all_cards.size() != (104 if tri else 108) or not _unique(all_cards):
 		return false
 	for id in all_cards:

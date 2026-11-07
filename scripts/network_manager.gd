@@ -103,7 +103,7 @@ func join_room(address: String, player_name: String, code: String = "") -> bool:
 func create_remote_room(address: String, player_name: String, hand_size: int = 0, count: int = 0) -> bool:
 	leave_room()
 	tri_cards = hand_size if hand_size in [6,12] else 0
-	player_count = 2 if tri_cards > 0 else count
+	player_count = 2 if tri_cards > 0 and count == 0 else count
 	var url := _normalise_address(address)
 	if url.is_empty():
 		notice.emit("Le service en ligne est indisponible.")

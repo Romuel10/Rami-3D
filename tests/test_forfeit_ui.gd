@@ -124,10 +124,10 @@ func _run() -> void:
 	var departed_snapshot: Dictionary = app.snapshot.duplicate(true)
 	_check(app.network.local_player == -1, "leaving clears the authenticated local seat")
 	app._network_game_updated(shared.duplicate(true))
-	_check(app.game_mode == "menu" and app.snapshot == departed_snapshot and app.hand_cards.is_empty() and app.card_nodes.size() == 5, "late game packet cannot reopen the departed match or replace menu cards")
+	_check(app.game_mode == "menu" and app.snapshot == departed_snapshot and app.hand_cards.is_empty() and app.card_nodes.size() == 9, "late game packet cannot reopen the departed match or replace menu cards")
 	app.match_length = 3
 	app.difficulty = 1
-	app.solo_select.select(0)
+	app.bot_count = 1
 	_press("Jouer au rami")
 	_check(app.game_mode == "solo" and int(app.snapshot.winner) < 0, "real solo game begins before leave checks")
 	var before_menu: Dictionary = app.engine.export_game()
@@ -152,7 +152,7 @@ func _run() -> void:
 
 	# Abandonment during the opponent's delayed turn must cancel that coroutine.
 	app._leave_to_menu()
-	app.solo_select.select(0)
+	app.bot_count = 1
 	_press("Jouer au rami")
 	app._act({"type":"draw", "source":"deck"})
 	app._act({"type":"discard", "card":app.snapshot.hand[0]})

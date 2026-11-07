@@ -10,7 +10,7 @@ wss://mppunkypxdqyazoojksv.supabase.co/functions/v1/rami-online
 
 ## Jouer
 
-Tous les joueurs installent la même version, choisissent **Jouer avec des amis**, puis créent ou rejoignent un salon avec son code à six chiffres. Pour le Tri, choisir d’abord le duel 6/12 cartes. L’hôte lance la partie quand tout le monde est présent. Le téléphone de l’hôte ne fait pas fonctionner le serveur Internet.
+Tous les joueurs installent la même version, choisissent **Jouer avec des amis**, puis créent ou rejoignent un salon avec son code à six chiffres. Pour le Tri, choisir d’abord 6 ou 12 cartes par joueur. L’hôte lance la partie quand tout le monde est présent. Le téléphone de l’hôte ne fait pas fonctionner le serveur Internet.
 
 Depuis la version 0.10.0, l’application utilise toujours ce serveur pour le menu entre amis. Les joueurs saisissent uniquement le code ; aucun réglage d’adresse n’est affiché.
 
@@ -55,7 +55,7 @@ Il crée des salons QA pour Rami à quatre et Tri 6/12, vérifie les mains priv�
 
 ## Salons et vocal (0.10.0)
 
-Le nombre `player_count` choisi par l’hôte est contrôlé à chaque entrée et au lancement : 2/3/4 au rami, 2 au Tri. Les anciens clients sans ce champ restent compatibles avec leurs salons flexibles. Les votes `rematch` sont liés au `session_id` terminé ; les codes et jetons privés sont conservés pour la revanche. Les départs libèrent les places dans le salon suivant, avec une nouvelle annonce d’index avant toute main privée.
+Le nombre `player_count` choisi par l’hôte est contrôlé à chaque entrée et au lancement : 2, 3 ou 4 au Rami et au Tri. Sans ce champ, un ancien salon garde sa capacité habituelle, jusqu’à quatre joueurs au Rami et deux au Tri. Les votes `rematch` sont liés au `session_id` terminé ; les codes et jetons privés sont conservés pour la revanche. Les départs libèrent les places dans le salon suivant, avec une nouvelle annonce d’index avant toute main privée.
 
 Le vocal utilise des canaux **Realtime Broadcast privés**, exclusivement entre workers Supabase. Le secret de serveur et le nom aléatoire du canal ne sont jamais envoyés aux téléphones. Aucun droit `anon`/`authenticated` supplémentaire n’est créé. Les paquets audio IMA ADPCM indépendants de 80 ms / 16 kHz passent par la connexion WSS authentifiée du jeu ; le serveur impose le véritable émetteur, valide taille/format/séquence et limite le débit. L’audio ne passe jamais par les RPC Postgres et n’est ni stocké ni journalisé. Les files sont bornées et les données anciennes sont abandonnées en cas de congestion. Le canal est fermé lorsque le worker n’a plus de joueur dans ce salon. Le bouton vocal est désactivé si Realtime n’est pas prêt.
 

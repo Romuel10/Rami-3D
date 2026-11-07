@@ -60,6 +60,7 @@ var overlay: Control
 var toast_label: Label
 var toast_time := 0.0
 var header_status: Label
+var _header: PanelContainer
 var game_status: Label
 var hand_status: Label
 var players_row: HBoxContainer
@@ -71,7 +72,6 @@ var current_lobby: Dictionary = {}
 var name_input: LineEdit
 var address_input: LineEdit
 var code_input: LineEdit
-var solo_select: OptionButton
 var online_tab := false
 var last_click := 0
 var music: Node
@@ -131,7 +131,6 @@ func _ready() -> void:
 	music.apply_settings(music_settings)
 	add_child(music)
 	music.settings_changed.connect(_music_settings_changed)
-	music_button.text = "Musique" if music.enabled else "Musique coupée"
 	get_viewport().size_changed.connect(_screen_changed)
 	_screen_changed()
 	if OS.has_feature("android"):
@@ -268,40 +267,45 @@ func _make_interface() -> void:
 	theme.set_color("font_placeholder_color", "LineEdit", MUTED)
 	theme.set_stylebox("panel", "PopupMenu", _style(DEEP, Color("526253"), 8, 10))
 	ui.theme = theme
+	_header = PanelContainer.new()
+	var header_style := _style(Color(0.07,0.10,0.08,0.94), Color("3d473d"), 0, 0)
+	header_style.content_margin_left = 30
+	header_style.content_margin_right = 30
+	header_style.content_margin_top = 10
+	header_style.content_margin_bottom = 10
+	_header.add_theme_stylebox_override("panel", header_style)
+	_place(_header, ui, Vector2.ZERO, Vector2(0,72), Vector2.ZERO, Vector2(1,0))
 	var header := HBoxContainer.new()
-	_place(header, ui, Vector2(36, 22), Vector2(-36, 78), Vector2(0,0), Vector2(1,0))
-	header.add_theme_constant_override("separation", 12)
+	header.add_theme_constant_override("separation", 10)
+	_header.add_child(header)
 	var logo := TextureRect.new()
 	logo.texture = load("res://assets/icon.svg")
-	logo.custom_minimum_size = Vector2(46, 46)
+	logo.custom_minimum_size = Vector2(40, 40)
 	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	header.add_child(logo)
-	var brand := VBoxContainer.new()
-	brand.alignment = BoxContainer.ALIGNMENT_CENTER
-	header.add_child(brand)
-	_label("Rami", 24, INK, brand)
+	var wordmark := _label("Rami", 27, INK, header)
+	wordmark.add_theme_font_override("font", load("res://assets/serif.ttf"))
+	wordmark.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(spacer)
-	header_status = _label("Solo ou entre amis", 13, MUTED, header)
+	header_status = _label("", 14, MUTED, header)
 	header_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_button("Règles", _show_rules, header)
-	_button("Confort", _show_comfort_settings, header)
-	music_button = _button("Musique", _show_music_settings, header)
-	fullscreen_button = _button("Plein écran", _toggle_fullscreen, header)
-	_button("Accueil", _confirm_leave, header)
+	_command_button("Règles", _show_rules, header).custom_minimum_size.y = 44
+	_command_button("Options", _show_options, header).custom_minimum_size.y = 44
+	_command_button("Accueil", _confirm_leave, header).custom_minimum_size.y = 44
 	content = Control.new()
 	_place(content, ui, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ONE)
 	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay = Control.new()
 	_place(overlay, ui, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ONE)
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	toast_label = _label("", 19, INK, ui)
-	_place(toast_label, ui, Vector2(-400,-192), Vector2(400,-140), Vector2(0.5,1), Vector2(0.5,1))
+	toast_label = _label("", 16, INK, ui)
+	_place(toast_label, ui, Vector2(-550,-36), Vector2(550,-6), Vector2(0.5,1), Vector2(0.5,1))
 	toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	toast_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	toast_label.add_theme_stylebox_override("normal", _style(Color("29382e"), GOLD, 12, 14))
+	toast_label.add_theme_stylebox_override("normal", _style(Color("202a23"), Color("766646"), 5, 5))
 	toast_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	toast_label.hide()
 
@@ -356,6 +360,28 @@ func _button(text: String, callback: Callable, parent: Node, primary: bool = fal
 	parent.add_child(button)
 	return button
 
+func _command_button(text: String, callback: Callable, parent: Node, primary: bool = false) -> Button:
+	var button := _button(text, callback, parent, primary)
+	button.add_theme_font_size_override("font_size", 17)
+	var colors := {
+		"normal": [Color("d2b980"), Color("edd6a3")] if primary else [Color("24312a"), Color("626a53")],
+		"hover": [Color("ecd099"), Color("ffe5b2")] if primary else [Color("374638"), GOLD],
+		"pressed": [Color("b89a5d"), Color("9b804c")] if primary else [Color("18251e"), GOLD],
+		"disabled": [Color("1b241f"), Color("343e34")],
+	}
+	for state in colors:
+		var style := _style(colors[state][0], colors[state][1], 6, 15)
+		style.content_margin_top = 6
+		style.content_margin_bottom = 6
+		if state in ["normal", "hover"]:
+			style.shadow_color = Color(0,0,0,0.34)
+			style.shadow_size = 3
+			style.shadow_offset = Vector2(0,3)
+		button.add_theme_stylebox_override(state, style)
+	button.add_theme_stylebox_override("focus", _style(Color.TRANSPARENT, GOLD, 6, 0))
+	button.add_theme_color_override("font_disabled_color", Color("829084"))
+	return button
+
 func _field(placeholder: String, value: String, parent: Node) -> LineEdit:
 	var input := LineEdit.new()
 	input.placeholder_text = placeholder
@@ -366,6 +392,8 @@ func _field(placeholder: String, value: String, parent: Node) -> LineEdit:
 	return input
 
 func _clear_content() -> void:
+	_header.visible = game_mode != "menu"
+	camera.h_offset = -2.0 if game_mode == "menu" else 0.0
 	for node in content.get_children():
 		node.get_parent().remove_child(node)
 		node.queue_free()
@@ -392,71 +420,90 @@ func _show_menu() -> void:
 	game_mode = "menu"
 	snapshot = {}
 	_clear_content()
-	header_status.text = "Solo ou entre amis"
-	var shade := ColorRect.new()
-	shade.color = Color(0.015, 0.03, 0.02, 0.12)
-	_place(shade, content, Vector2(0, 96), Vector2.ZERO, Vector2.ZERO, Vector2.ONE)
-	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var hero := VBoxContainer.new()
-	_place(hero, content, Vector2(68, 148), Vector2(670, 460))
-	hero.add_theme_constant_override("separation", 12)
-	_label("Rami et Tri", 18, MUTED, hero)
-	var title := _label("Une partie ?", 58, INK, hero)
-	title.add_theme_constant_override("line_spacing", 0)
-	_label("Contre l’ordinateur ou avec vos amis.", 21, INK, hero)
-	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", _style(Color("222e26"), Color("657461"), 10, 26))
-	_place(panel, content, Vector2(-470, 120), Vector2(-48, -40), Vector2(1,0), Vector2(1,1))
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 12)
-	var menu_scroll := ScrollContainer.new()
-	menu_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	panel.add_child(menu_scroll)
-	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	menu_scroll.add_child(box)
-	_label("Nouvelle partie", 27, INK, box)
-	_label("Votre prénom", 15, MUTED, box)
-	name_input = _field("Votre prénom", saved_name, box)
-	name_input.max_length = 18
-	var divider := HSeparator.new()
-	box.add_child(divider)
-	_label("Rami", 18, INK, box)
-	solo_select = OptionButton.new()
-	solo_select.custom_minimum_size.y = 45
-	solo_select.add_item("Face à 1 ordinateur", 1)
-	solo_select.add_item("Face à 2 ordinateurs", 2)
-	solo_select.add_item("Face à 3 ordinateurs", 3)
-	box.add_child(solo_select)
+	var gradient := Gradient.new()
+	gradient.offsets = PackedFloat32Array([0.0, 0.30, 0.53, 0.79, 1.0])
+	gradient.colors = PackedColorArray([Color("101813"), Color(0.06,0.095,0.075,0.98), Color(0.06,0.095,0.075,0.65), Color(0.05,0.07,0.05,0.08), Color(0.05,0.07,0.05,0.13)])
+	var wash := GradientTexture2D.new()
+	wash.gradient = gradient
+	wash.width = 512
+	wash.height = 2
+	var backdrop := TextureRect.new()
+	backdrop.texture = wash
+	backdrop.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_place(backdrop, content, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ONE)
+
+	var brand := VBoxContainer.new()
+	brand.add_theme_constant_override("separation", -8)
+	_place(brand, content, Vector2(70,74), Vector2(500,254))
+	var title := _label("Rami", 110, Color("f1e5c6"), brand)
+	title.add_theme_font_override("font", load("res://assets/serif.ttf"))
+	_label("Salon 3D", 24, GOLD, brand)
+	var rule := ColorRect.new()
+	rule.color = Color("967a48")
+	rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_place(rule, content, Vector2(72,268), Vector2(156,270))
+
+	var choices := VBoxContainer.new()
+	choices.add_theme_constant_override("separation", 11)
+	_place(choices, content, Vector2(72,304), Vector2(442,680))
+	var solo := _command_button("Jouer au rami", _start_solo, choices, true)
+	solo.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	solo.custom_minimum_size.y = 64
+	solo.add_theme_font_size_override("font_size", 22)
+	var friends := _command_button("Jouer avec des amis", _open_friends, choices)
+	friends.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	friends.custom_minimum_size.y = 60
+	friends.add_theme_font_size_override("font_size", 20)
+	var tri := _command_button("Jouer au Tri", _show_tri_setup, choices)
+	tri.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	tri.custom_minimum_size.y = 60
+	tri.add_theme_font_size_override("font_size", 20)
 	if not SoloStore.load_game().is_empty():
-		_button("Reprendre ma partie solo", _resume_solo, box, true)
-	_button("Jouer au rami", _start_solo, box, true)
-	_label("Entre amis", 18, INK, box)
-	_button("Jouer avec des amis", _open_friends, box)
+		_command_button("Reprendre ma partie solo", _resume_solo, choices).alignment = HORIZONTAL_ALIGNMENT_LEFT
 	if network.has_saved_session():
-		_button("Retrouver mon salon", _resume_network, box)
-	_label("2 à 4 joueurs · un téléphone par personne", 12, MUTED, box)
-	_label("Tri", 18, INK, box)
-	_button("Jouer au Tri", _show_tri_setup, box)
-	_label("Duel à 6 ou 12 cartes", 12, MUTED, box)
-	_button("Exercice de rangement", _start_sorting, box)
-	_button("Apprendre à jouer", _start_tutorial, hero)
-	_button("Règles du jeu", _show_rules, hero)
-	_button("Options du solo", _show_solo_settings, hero)
+		_command_button("Retrouver mon salon", _resume_network, choices).alignment = HORIZONTAL_ALIGNMENT_LEFT
+
+	var practice := HBoxContainer.new()
+	practice.add_theme_constant_override("separation", 10)
+	_place(practice, content, Vector2(72,-158), Vector2(442,-106), Vector2(0,1), Vector2(0,1))
+	_command_button("Apprendre à jouer", _start_tutorial, practice).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_command_button("Rangement", _start_sorting, practice).size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var footer := HBoxContainer.new()
-	_place(footer, content, Vector2(68,-72), Vector2(-68,-30), Vector2(0,1), Vector2(1,1))
-	footer.add_theme_constant_override("separation", 32)
-	_label("Solo · Entre amis", 14, MUTED, footer)
-	_button("Crédits", _show_credits, footer)
-	_label("Sans publicité", 14, MUTED, footer)
-	var menu_ids := ["0:H:1", "0:S:13", "0:D:12", "0:C:11", "0:H:10"]
+	footer.add_theme_constant_override("separation", 8)
+	_place(footer, content, Vector2(72,-89), Vector2(442,-41), Vector2(0,1), Vector2(0,1))
+	_command_button("Options", _show_options, footer).custom_minimum_size.y = 46
+	_command_button("Règles du jeu", _show_rules, footer).custom_minimum_size.y = 46
+	_command_button("Crédits", _show_credits, footer).custom_minimum_size.y = 46
+
+	for i in range(4):
+		var back = _card("0:S:1", false, Vector3(3.8+i*0.024,0.16+i*0.035,-1.65))
+		back.rotation_degrees.y = -14.0
+		back.scale = Vector3.ONE * 1.72
+		back.move_to(back.transform, 0.0)
+	var menu_ids := ["0:C:11", "0:D:12", "0:S:13", "0:H:1", "0:S:1"]
 	for i in range(menu_ids.size()):
-		var card = _card(menu_ids[i], true, Vector3(-4.3 + i * 1.0, 0.22 + i * 0.035, 3.85 - absf(i - 2) * 0.1))
-		card.rotation_degrees.y = (i - 2) * -9.0
-		card.scale = Vector3.ONE * 1.8
+		var card = _card(menu_ids[i], true, Vector3(1.25+i*0.79,0.26+i*0.048,1.3+absf(i-2)*0.15))
+		card.rotation_degrees.y = (2-i)*10.0
+		card.scale = Vector3.ONE * 2.50
 		var target: Transform3D = card.transform
-		card.position += Vector3(-0.65, -0.4, 0.7)
-		card.rotation_degrees.y -= 12.0
-		card.move_to(target, 0.50, i * 0.055, 0.16)
+		if animations_enabled:
+			card.position += Vector3(0.2,0.4,-0.6)
+		card.move_to(target, 0.42 if animations_enabled else 0.0, i*0.045, 0.12)
+
+func _show_options() -> void:
+	var box := _modal("Options", "")
+	if game_mode == "menu":
+		_label("Votre prénom", 16, MUTED, box)
+		name_input = _field("Votre prénom", saved_name, box)
+		name_input.max_length = 18
+		name_input.text_changed.connect(func(_value: String): _save_profile())
+	if game_mode in ["menu", "solo"]:
+		_button("Options du solo", _show_solo_settings, box)
+	_button("Affichage et confort", _show_comfort_settings, box)
+	music_button = _button("Musique" if music.enabled else "Musique coupée", _show_music_settings, box)
+	fullscreen_button = _button("Fenêtre" if fullscreen_enabled else "Plein écran", _toggle_fullscreen, box)
+	_button("Fermer", _close_overlay, box, true)
 
 func _save_profile() -> void:
 	if is_instance_valid(name_input):
@@ -470,66 +517,81 @@ func _start_solo(tri_size: int = 0) -> void:
 	turn_token += 1
 	busy = false
 	_save_profile()
-	bot_count = solo_select.selected + 1 if is_instance_valid(solo_select) else bot_count
 	network.leave_room()
 	_close_overlay()
 	engine = EngineRules.new()
-	var names: Array = [player_name]
-	var bots := ["Camille", "Alex", "Charlie"]
-	for i in range(bot_count):
-		names.append(bots[i])
 	hand_order.clear()
 	_winner_key = ""
 	_sound_revision = ""
 	if tri_size in [6,12]:
-		names = [player_name,"Camille"]
-		bot_count = 1
-		engine.start_tri_game(names,tri_size)
-	else: engine.start_game(names, 0, match_length)
+		engine.start_tri_game([player_name, "Camille"], tri_size)
+	else:
+		var names := [player_name] + ["Camille", "Alex", "Charlie"].slice(0, bot_count)
+		engine.start_game(names, 0, match_length)
 	game_mode = "solo"
 	_show_game()
 	_refresh_snapshot()
-	_toast("Piochez une carte pour commencer.")
 
 func _show_game() -> void:
 	_clear_content()
 	header_status.text = "Solo · " + ["facile","normal","difficile"][difficulty] if game_mode == "solo" else "Salon · " + network.room_code
 	players_row = HBoxContainer.new()
 	players_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	players_row.add_theme_constant_override("separation", 18)
-	_place(players_row, content, Vector2(0,98), Vector2(0,136), Vector2(0,0), Vector2(1,0))
-	game_status = _label("", 17, INK, content)
-	_place(game_status, content, Vector2(38,364), Vector2(565,414))
-	game_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	game_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	game_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	players_row.add_theme_constant_override("separation", 10)
+	_place(players_row, content, Vector2(0,87), Vector2(0,138), Vector2(0,0), Vector2(1,0))
+
+	var table_status := PanelContainer.new()
+	table_status.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	table_status.add_theme_stylebox_override("panel", _style(Color(0.08,0.13,0.10,0.92), Color("5b644d"), 6, 10))
+	_place(table_status, content, Vector2(30,365), Vector2(380,461))
+	var status_box := VBoxContainer.new()
+	status_box.add_theme_constant_override("separation", 4)
+	table_status.add_child(status_box)
+	game_status = _label("", 18, INK, status_box)
+	game_status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	hand_status = _label("", 13, GOLD, status_box)
+	hand_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+
 	var draw_row := HBoxContainer.new()
 	draw_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	draw_row.add_theme_constant_override("separation", 16)
-	_place(draw_row, content, Vector2(-270,420), Vector2(270,470), Vector2(0.5,0), Vector2(0.5,0))
+	draw_row.add_theme_constant_override("separation", 8)
+	_place(draw_row, content, Vector2(-215,410), Vector2(215,460), Vector2(0.5,0), Vector2(0.5,0))
 	draw_buttons = []
-	draw_buttons.append(_button("Piocher", func(): _act({"type":"draw", "source":"deck"}), draw_row))
-	draw_buttons.append(_button("Prendre la défausse", func(): _act({"type":"draw", "source":"discard"}), draw_row))
-	hand_status = _label("Votre main", 14, GOLD, content)
-	_place(hand_status, content, Vector2(38,424), Vector2(410,470))
-	hand_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	coach_button = _button("Conseils", _show_coach, content, true)
-	_place(coach_button, content, Vector2(-300,420), Vector2(-38,472), Vector2(1,0), Vector2(1,0))
+	draw_buttons.append(_command_button("Piocher", func(): _act({"type":"draw", "source":"deck"}), draw_row, true))
+	draw_buttons.append(_command_button("Prendre la défausse", func(): _act({"type":"draw", "source":"discard"}), draw_row))
+	for button in draw_buttons:
+		button.custom_minimum_size = Vector2(172,50)
+	coach_button = _command_button("Conseils", _show_coach, content)
+	coach_button.custom_minimum_size.y = 50
+	_place(coach_button, content, Vector2(-160,410), Vector2(-30,460), Vector2(1,0), Vector2(1,0))
+
+	var tray := PanelContainer.new()
+	tray.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var tray_style := _style(Color(0.07,0.105,0.08,0.97), Color("635740"), 9, 8)
+	tray_style.shadow_color = Color(0,0,0,0.42)
+	tray_style.shadow_size = 6
+	tray_style.shadow_offset = Vector2(0,4)
+	tray.add_theme_stylebox_override("panel", tray_style)
+	var tray_half_width := 375 if _is_tri() else 430
+	_place(tray, content, Vector2(-tray_half_width,-106), Vector2(tray_half_width,-37), Vector2(0.5,1), Vector2(0.5,1))
 	action_row = HBoxContainer.new()
-	action_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	action_row.add_theme_constant_override("separation", 12)
-	_place(action_row, content, Vector2(24,-94), Vector2(-24,-35), Vector2(0,1), Vector2(1,1))
-	_button("Trier ♠", _sort_hand, action_row)
+	action_row.add_theme_constant_override("separation", 8)
+	tray.add_child(action_row)
+	_command_button("Trier", _sort_hand, action_row)
 	play_buttons = []
+	_group_button = null
 	if _is_tri():
-		_button("Mes tris", _suggest, action_row)
-		_group_button = _button("Regrouper mes tris", _toggle_tri_groups, action_row)
+		_command_button("Mes tris", _suggest, action_row)
+		_group_button = _command_button("Regrouper mes tris", _toggle_tri_groups, action_row)
+		_group_button.toggle_mode = true
 	else:
-		play_buttons.append(_button("Suggestion", _suggest, action_row))
-		play_buttons.append(_button("Poser", _meld_selected, action_row, true))
-		play_buttons.append(_button("Compléter", _extend_selected, action_row))
-	play_buttons.append(_button("Défausser", _discard_selected, action_row))
+		play_buttons.append(_command_button("Suggestion", _suggest, action_row))
+		play_buttons.append(_command_button("Compléter", _extend_selected, action_row))
+		play_buttons.append(_command_button("Poser", _meld_selected, action_row))
+	play_buttons.append(_command_button("Défausser", _discard_selected, action_row, true))
 	action_buttons_base = action_row.get_children()
+	for button in action_buttons_base:
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_apply_comfort()
 
 func _refresh_snapshot() -> void:
@@ -562,19 +624,23 @@ func _render_snapshot() -> void:
 		header_status.text = "Solo · %s · manche %d/%d" % [["facile","normal","difficile"][difficulty],int(snapshot.get("match",{}).get("round",1)),int(snapshot.get("match",{}).get("length",1))]
 	for i in range(players.size()):
 		var panel := PanelContainer.new()
-		panel.custom_minimum_size = Vector2(172, 32)
-		panel.add_theme_stylebox_override("panel", _style(Color("123c38") if i == turn else Color("0c292d"), GOLD if i == turn else Color("30504b"), 12, 6))
+		panel.custom_minimum_size = Vector2(184, 50)
+		panel.add_theme_stylebox_override("panel", _style(Color("26382d") if i == turn else Color("1b261f"), GOLD if i == turn else Color("465346"), 6, 5))
 		players_row.add_child(panel)
-		var column := HBoxContainer.new()
-		column.add_theme_constant_override("separation", 8)
+		var column := VBoxContainer.new()
+		column.add_theme_constant_override("separation", 0)
 		panel.add_child(column)
 		var p: Dictionary = players[i]
-		var name_text := str(p.get("name", "Joueur")) + (" · vous" if i == own and p.get("name", "") != "Vous" else "")
-		var l := _label(("●  " if i == turn else "○  ") + name_text, 15, GOLD if i == turn else INK, column)
-		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		var name_text := "Vous" if i == own else str(p.get("name", "Joueur"))
+		panel.tooltip_text = str(p.get("name", "Joueur"))
+		var name_label := _label(name_text, 15, GOLD if i == turn else INK, column)
+		name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		var count := int(p.get("count", p.get("hand_count", 13)))
-		l = _label("Abandon · éliminé" if p.get("forfeited",false) else str(count) + " cartes" + (" · ouvert" if p.get("opened",false) else ""), 11, MUTED, column)
-		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		var detail := "Forfait" if p.get("forfeited", false) else "%d cartes" % count
+		if p.get("opened", false) and not p.get("forfeited", false): detail += " · ouvert"
+		var detail_label := _label(detail, 12, MUTED, column)
+		detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	if _is_tri(): header_status.text = "Tri · %d cartes · %d tris à former" % [int(snapshot.tri_hand_size),int(snapshot.tri_goal)]
 	var phase: String = snapshot.get("phase", "draw")
 	var can_act: bool = turn == own and not snapshot.get("paused", false) and int(snapshot.get("winner", -1)) < 0 and own < players.size() and not players[own].get("forfeited",false)
@@ -582,6 +648,8 @@ func _render_snapshot() -> void:
 		button.disabled = not can_act or phase != "draw"
 	if not draw_buttons.is_empty():
 		draw_buttons[0].text = "Piocher · " + str(snapshot.get("deck_count", 0))
+		var discard: Variant = snapshot.get("discard_top", "")
+		draw_buttons[1].disabled = draw_buttons[1].disabled or discard == null or discard == ""
 	for button in play_buttons:
 		if is_instance_valid(button): button.disabled = not can_act or phase != "play"
 	if int(snapshot.get("winner",-1)) >= 0:
@@ -589,13 +657,13 @@ func _render_snapshot() -> void:
 	elif own < players.size() and players[own].get("forfeited",false):
 		game_status.text = "Vous avez abandonné cette partie."
 	elif snapshot.get("paused", false):
-		game_status.text = "Reconnexion en cours · 60 s avant défaite par forfait"
+		game_status.text = "Reconnexion en cours…"
 	elif turn == own:
-		game_status.text = ("Étape 1/3 · prenez une carte" if phase == "draw" else "Étapes 2–3 · posez si possible, puis défaussez") if beginner_enabled else "À vous · " + ("piochez une carte" if phase == "draw" else "posez vos combinaisons, puis défaussez")
+		game_status.text = "À vous de piocher" if phase == "draw" else ("À vous de défausser" if _is_tri() else "À vous de jouer")
+		if beginner_enabled and not _is_tri():
+			game_status.text = "1. Piochez une carte" if phase == "draw" else "2. Posez ou défaussez"
 	else:
 		game_status.text = str(players[turn].get("name", "L’adversaire")) + " joue…" if turn < players.size() else "En attente…"
-	if _is_tri() and can_act:
-		game_status.text = "Piochez une carte" if phase == "draw" else "Choisissez une carte à défausser · vos tris restent en main"
 	var hand: Array = snapshot.get("hand", []).duplicate()
 	if hand_order.is_empty():
 		hand.sort_custom(func(a, b): return _sort_key(str(a)) < _sort_key(str(b)))
@@ -611,7 +679,9 @@ func _render_snapshot() -> void:
 		var grouped: Dictionary = HandGroups.arrange(hand,true)
 		hand = grouped.cards
 		_tri_boundaries = grouped.boundaries
-	if is_instance_valid(_group_button): _group_button.text = "Groupes ✓" if tri_grouping_enabled else "Regrouper mes tris"
+	if is_instance_valid(_group_button):
+		_group_button.set_pressed_no_signal(tri_grouping_enabled)
+		_group_button.text = "Tris regroupés" if tri_grouping_enabled else "Regrouper mes tris"
 	hand_order = hand.duplicate()
 	var revealed_discard := false
 	for id in hand:
@@ -925,7 +995,7 @@ func _winner_result() -> Dictionary:
 			body = "Vous gagnez le match au total des points." if own in winners else ", ".join(names) + " gagne le match au total des points."
 	if _is_tri() and finished and not forfeit:
 		title = "Tri : victoire !" if own in winners else "Tri : partie terminée"
-		body = ("Vous remportez le duel" if own in winners else ", ".join(names) + " remporte le duel") + " avec %d tris, après la défausse." % int(snapshot.get("tri_goal",2))
+		body = ("Vous remportez la partie" if own in winners else ", ".join(names) + " remporte la partie") + " avec %d tris, après la défausse." % int(snapshot.get("tri_goal",2))
 	return {"title":title,"body":body,"winners":winners,"finished":finished,"forfeit":forfeit,"round_winner":round_winner}
 
 func _show_winner() -> void:
@@ -990,14 +1060,13 @@ func _show_friends(_internet: bool = true) -> void:
 	online_tab = true
 	address_input = null
 	invitation_input = null
-	var box := _modal("Tri avec un ami" if friends_tri_cards > 0 else "Jouer avec des amis", "Créez un salon ou entrez le code de votre ami. Chacun garde sa main privée.")
+	var box := _modal("Tri entre amis" if friends_tri_cards > 0 else "Rami entre amis", "Créez un salon ou rejoignez vos amis avec leur code.")
 	_label("Créer un salon",22,INK,box)
 	if friends_tri_cards > 0:
-		_label("Tri · %d cartes · 2 joueurs" % friends_tri_cards,17,MUTED,box)
-	else:
-		_label("Nombre de joueurs",16,MUTED,box)
-		room_count_select = _player_count_picker(box,friends_player_count)
-		room_count_select.item_selected.connect(func(index: int): friends_player_count = index+2)
+		_label("%d cartes par joueur" % friends_tri_cards,17,MUTED,box)
+	_label("Nombre de joueurs",16,MUTED,box)
+	room_count_select = _player_count_picker(box,friends_player_count)
+	room_count_select.item_selected.connect(func(index: int): friends_player_count = index+2)
 	_button("Créer un salon", _create_room, box, true)
 	box.add_child(HSeparator.new())
 	_label("Rejoindre un salon",22,INK,box)
@@ -1021,8 +1090,7 @@ func _create_room() -> void:
 	if address.is_empty():
 		_toast("Le service en ligne est indisponible dans cette version.")
 		return
-	var count := 2 if friends_tri_cards > 0 else friends_player_count
-	network.create_remote_room(address, player_name, friends_tri_cards, count)
+	network.create_remote_room(address, player_name, friends_tri_cards, friends_player_count)
 	_toast("Création du salon…")
 
 func _join_room() -> void:
@@ -1076,16 +1144,16 @@ func _lobby_updated(data: Dictionary) -> void:
 	_button("Copier le code", _copy_invitation, lobby_box)
 	var players: Array = data.get("players", [])
 	var target := int(data.get("player_count",0))
-	if target == 0: target = 2 if friends_tri_cards > 0 else players.size()
+	if target == 0: target = maxi(2, players.size())
 	_label("%d / %d joueurs" % [players.size(),target],20,GOLD,lobby_box)
 	for i in range(players.size()):
 		var p: Dictionary = players[i]
 		_label(("●  " if p.get("connected",true) else "○  ") + str(p.get("name","Joueur")) + (" · vous" if i == network.local_player else ""), 21, INK, lobby_box)
-	if network.is_host and friends_tri_cards == 0:
+	if network.is_host:
 		room_count_select = _player_count_picker(lobby_box,maxi(2,target))
 		for i in range(3): room_count_select.set_item_disabled(i,i+2 < players.size())
 		room_count_select.item_selected.connect(func(index: int): network.configure_players(index+2))
-	if friends_tri_cards > 0: _label("Tri · %d cartes · duel" % friends_tri_cards,16,MUTED,lobby_box)
+	if friends_tri_cards > 0: _label("Tri · %d cartes par joueur" % friends_tri_cards,16,MUTED,lobby_box)
 	var all_connected := true
 	for player in players:
 		if not player.get("connected",false): all_connected = false
@@ -1177,8 +1245,9 @@ func _modal(title: String, subtitle: String) -> VBoxContainer:
 	box.add_theme_constant_override("separation", 15)
 	scroll.add_child(box)
 	_label(title, 30, INK, box)
-	var sub := _label(subtitle, 17, MUTED, box)
-	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	if not subtitle.is_empty():
+		var sub := _label(subtitle, 17, MUTED, box)
+		sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	return box
 
 func _close_overlay() -> void:
@@ -1321,7 +1390,8 @@ func _show_music_settings() -> void:
 
 func _music_settings_changed() -> void:
 	music_settings = music.get_settings()
-	music_button.text = "Musique" if music.enabled else "Musique coupée"
+	if is_instance_valid(music_button):
+		music_button.text = "Musique" if music.enabled else "Musique coupée"
 	_save_preferences()
 
 func _toggle_fullscreen() -> void:
@@ -1439,6 +1509,7 @@ func _load_preferences() -> void:
 		saved_name = str(cfg.get_value("player", "name", "Vous"))
 		saved_address = str(cfg.get_value("network", "server", ""))
 		difficulty = clampi(int(cfg.get_value("solo","difficulty",1)),0,2)
+		bot_count = clampi(int(cfg.get_value("solo","opponents",1)),1,3)
 		match_length = int(cfg.get_value("solo","rounds",1))
 		if not match_length in [1,3,5]: match_length = 1
 		effects_volume = clampf(float(cfg.get_value("effects","volume",0.55)),0,1)
@@ -1462,6 +1533,7 @@ func _save_preferences() -> void:
 	cfg.set_value("music", "settings", music_settings)
 	cfg.set_value("solo","difficulty",difficulty)
 	cfg.set_value("solo","rounds",match_length)
+	cfg.set_value("solo","opponents",bot_count)
 	cfg.set_value("effects","volume",effects_volume)
 	cfg.set_value("effects","enabled",effects_enabled)
 	cfg.set_value("comfort","animations",animations_enabled)
@@ -1489,7 +1561,8 @@ func _resume_solo() -> void:
 	engine = restored
 	difficulty = clampi(int(saved.get("difficulty",1)),0,2)
 	match_length = int(engine.state.match.length)
-	bot_count = engine.state.players.size() - 1
+	if engine.state.get("variant", "rami") == "rami":
+		bot_count = engine.state.players.size() - 1
 	player_name = str(engine.state.players[0].name)
 	hand_order = saved.get("order",[]).duplicate() if saved.get("order") is Array else []
 	_winner_key = ""
@@ -1501,7 +1574,17 @@ func _resume_solo() -> void:
 
 func _show_solo_settings() -> void:
 	var box := _modal("Votre partie solo", "Ces réglages s’appliquent à la prochaine partie. Une reprise conserve sa difficulté.")
-	_label("Difficulté", 13, GOLD, box)
+	_label("Adversaires au rami", 15, MUTED, box)
+	var opponents := OptionButton.new()
+	for count in [1,2,3]: opponents.add_item("%d adversaire%s" % [count, "s" if count > 1 else ""])
+	opponents.selected = bot_count-1
+	opponents.custom_minimum_size.y = 52
+	opponents.item_selected.connect(func(index: int):
+		bot_count = index+1
+		_save_preferences()
+	)
+	box.add_child(opponents)
+	_label("Difficulté", 15, MUTED, box)
 	var choice := OptionButton.new()
 	for title in ["Facile · pour apprendre", "Normal · équilibré", "Difficile · anticipe les combinaisons"]:
 		choice.add_item(title)
@@ -1826,7 +1909,7 @@ func _is_tri() -> bool:
 
 func _show_tri_setup() -> void:
 	_save_profile()
-	var box := _modal("Tri en duel","Contre l’ordinateur ou un ami, chacun avec sa main privée.")
+	var box := _modal("Tri", "Choisissez le nombre de cartes et votre mode de jeu.")
 	var choice := OptionButton.new()
 	choice.add_item("6 cartes · objectif 2 tris",6)
 	choice.add_item("12 cartes · objectif 3 tris",12)
@@ -1834,10 +1917,9 @@ func _show_tri_setup() -> void:
 	choice.custom_minimum_size.y = 52
 	choice.item_selected.connect(func(index: int): tri_choice = [6,12][index])
 	box.add_child(choice)
-	_long_text("Un tri : trois cartes de même valeur, au maximum deux de la même couleur (♣ ♦ ♥ ♠). Les tris restent dans la main. Piochez puis défaussez ; la victoire est vérifiée après la défausse. À 12 cartes, trois tris suffisent, les trois autres cartes restent libres.",box)
-	_button("Apprendre le Tri",_start_tri_tutorial,box)
 	_button("Tri contre l’ordinateur",func(): _start_solo(tri_choice),box,true)
-	_button("Tri avec un ami",func(): friends_tri_cards = tri_choice; _show_friends(false),box)
+	_button("Tri avec des amis",func(): friends_tri_cards = tri_choice; _show_friends(),box)
+	_button("Apprendre le Tri",_start_tri_tutorial,box)
 	_button("Retour",_close_overlay,box)
 
 func _show_tri_rules() -> void:
@@ -1877,18 +1959,18 @@ func _start_tri_tutorial() -> void:
 	var practice := TriPractice.new()
 	_place(practice,content,Vector2.ZERO,Vector2.ZERO,Vector2.ZERO,Vector2.ONE)
 	practice.exit_requested.connect(_leave_to_menu)
-	practice.completed.connect(func(): _toast("Premier Tri réussi ! Vous pouvez jouer un duel."))
+	practice.completed.connect(func(): _toast("Premier Tri réussi ! Vous pouvez lancer une partie."))
 	practice.start_lesson(tri_choice)
 
 func _make_voice_controls() -> void:
 	voice_panel = PanelContainer.new()
-	voice_panel.add_theme_stylebox_override("panel",_style(Color("222e26"),Color("657461"),12,12))
+	voice_panel.add_theme_stylebox_override("panel",_style(Color("1b281f"),Color("5b644d"),6,12))
 	_place(voice_panel,ui,Vector2(24,105),Vector2(262,265))
 	var box := VBoxContainer.new()
 	voice_panel.add_child(box)
 	voice_label = _label("Micro coupé",15,MUTED,box)
 	voice_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	mic_button = _button("Maintenir pour parler",func(): pass,box)
+	mic_button = _command_button("Maintenir pour parler",func(): pass,box)
 	mic_button.icon = load("res://assets/microphone.svg")
 	mic_button.expand_icon = true
 	mic_button.add_theme_constant_override("icon_max_width",18)
@@ -1896,7 +1978,7 @@ func _make_voice_controls() -> void:
 	mic_button.button_down.connect(func(): voice.begin_talk())
 	mic_button.button_up.connect(func(): voice.stop_talk())
 	mic_button.mouse_exited.connect(func(): voice.stop_talk())
-	listen_button = _button("Son des amis : activé",func(): voice.toggle_listening(),box)
+	listen_button = _command_button("Son des amis : activé",func(): voice.toggle_listening(),box)
 	listen_button.add_theme_font_size_override("font_size",14)
 	_update_voice_controls()
 
@@ -1915,4 +1997,4 @@ func _update_voice_controls() -> void:
 			var players: Array = current_lobby.get("players",[])
 			if index < players.size(): names.append(str(players[index].name))
 		voice_label.text = ", ".join(names) + " parle…"
-	else: voice_label.text = "Micro coupé · amis à l’écoute"
+	else: voice_label.text = "Micro coupé · écoute activée"

@@ -26,7 +26,7 @@ func _run() -> void:
 	await process_frame
 	_check(app.game_mode == "menu" and app.music.enabled and is_equal_approx(app.music.volume, 0.28), "application starts with configured music")
 
-	_press("Règles")
+	_press("Règles du jeu")
 	_check(app.lesson_index == -1 and _find_text(app.overlay, "Apprendre le rami") != null, "header opens lesson overview")
 	var first_chapter = _find_button_prefix(app.overlay, "1. ")
 	_check(first_chapter is Button, "first chapter is actionable")
@@ -45,7 +45,7 @@ func _run() -> void:
 	_check(not _find_type(app.overlay, "CheckButton").button_pressed, "lesson overview reflects saved beginner choice")
 	_press("C’est compris")
 
-	app.solo_select.select(0)
+	app.bot_count = 1
 	_press("Jouer au rami")
 	await create_timer(1.05).timeout
 	_check(app.hand_cards.size() == 13 and app.hand_root.get_parent() == app.camera, "own hand lives under camera")
@@ -71,13 +71,14 @@ func _run() -> void:
 	_check(is_equal_approx(app.hand_cards[0].position.y, selected_y), "closing help preserves raised hand card")
 
 	var music_before: Dictionary = app.snapshot.duplicate(true)
+	_press("Options")
 	_press("Musique")
 	var toggle = _find_type(app.overlay, "CheckButton")
 	var tracks = _find_type(app.overlay, "OptionButton")
 	var volume = _find_type(app.overlay, "HSlider")
 	_check(toggle != null and tracks != null and volume != null and tracks.item_count == 3, "music dialog exposes enabled state, three tracks and volume")
 	toggle.button_pressed = false
-	_check(not app.music.enabled and app.music_button.text == "Musique coupée", "mute updates live player and header")
+	_check(not app.music.enabled, "mute updates the live player")
 	tracks.select(2)
 	tracks.item_selected.emit(2)
 	volume.value = 61
@@ -97,14 +98,17 @@ func _run() -> void:
 	root.add_child(app)
 	await process_frame
 	_check(not app.music.enabled and app.music.track_index == 2 and is_equal_approx(app.music.volume, 0.61), "new application instance restores music preferences")
-	_check(not app.beginner_enabled and app.music_button.text == "Musique coupée", "reopened application reflects restored toggles")
+	_press("Options")
+	_check(not app.beginner_enabled and app.music_button.text == "Musique coupée", "reopened options reflect saved toggles")
 	_press("Musique coupée")
 	_check(not _find_type(app.overlay, "CheckButton").button_pressed and _find_type(app.overlay, "OptionButton").selected == 2 and is_equal_approx(_find_type(app.overlay, "HSlider").value, 61), "reopened music controls reflect persisted settings")
 	_press("Revenir au jeu")
+	_press("Options")
 	_press("Plein écran")
 	_check(app.fullscreen_enabled and app.fullscreen_button.text == "Fenêtre", "fullscreen button changes application state safely in headless mode")
 	_press("Fenêtre")
 	_check(not app.fullscreen_enabled, "fullscreen can return to windowed state")
+	_press("Fermer")
 
 	# A real online update arrives while readers have guides/settings open.
 	# Exercise that signal handler with a public-only snapshot and no sockets.
@@ -122,6 +126,7 @@ func _run() -> void:
 	app._network_game_updated(remote_view.duplicate(true))
 	_check(app.overlay_kind == "lessons" and app.lesson_index == 0 and app.overlay.get_child(1).get_instance_id() == lesson_panel_id, "online update preserves opened chapter and panel")
 	_press("C’est compris")
+	_press("Options")
 	_press("Musique coupée")
 	var music_panel_id: int = app.overlay.get_child(1).get_instance_id()
 	remote_view.turn = 1
@@ -141,16 +146,16 @@ func _run() -> void:
 	_press("Accueil")
 	_press("Abandonner la partie")
 
-	_press("Exercice de rangement")
+	_press("Rangement")
 	var challenge = _find_sorting()
 	_check(app.game_mode == "sorting" and challenge != null and challenge.cards.size() == 8, "menu launches first sorting round")
 	_check(app.snapshot.is_empty() and app.hand_cards.is_empty() and app.card_nodes.is_empty(), "sorting mode clears the rummy table")
 	_press("Retour")
-	_check(app.game_mode == "menu" and app.card_nodes.size() == 5 and _find_sorting() == null, "sorting return signal restores menu")
+	_check(app.game_mode == "menu" and app.card_nodes.size() == 9 and _find_sorting() == null, "sorting return signal restores menu")
 
 	# Real navigation while the opponent is thinking must invalidate that
 	# coroutine before the separate sorting practice is mounted.
-	app.solo_select.select(0)
+	app.bot_count = 1
 	_press("Jouer au rami")
 	_press_draw()
 	app.hand_cards[0].tapped.emit(app.hand_cards[0])
@@ -158,7 +163,7 @@ func _run() -> void:
 	_check(app.busy, "opponent thinking delay is pending")
 	_press("Accueil")
 	_press("Abandonner la partie")
-	_press("Exercice de rangement")
+	_press("Rangement")
 	challenge = _find_sorting()
 	var sorting_hand: Array = challenge.cards.duplicate()
 	await create_timer(1.15).timeout

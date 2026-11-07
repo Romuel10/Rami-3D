@@ -9,7 +9,7 @@ const secretEquals = (a, b) => typeof a === 'string' && typeof b === 'string' &&
 const finished = room => room.started && room.game?.winner >= 0;
 const forfeited = (room, index) => room.started && !!room.game?.players[index]?.forfeited;
 const owner = room => Math.max(0, room.players.findIndex((p, i) => !p.departed && !forfeited(room, i)));
-const capacity = room => room.tri_cards ? 2 : (room.player_count || 4);
+const capacity = room => room.player_count || (room.tri_cards ? 2 : 4);
 
 export class GameHub {
   constructor(store, { graceMs = 60000, leaseMs = 15000, heartbeatMs = 5000, sweepMs = 1000, authMs = 8000, preserveLobby = false, voice = null } = {}) {
@@ -191,7 +191,7 @@ export class GameHub {
         if (message.type === 'configure') {
           if (room.started || index !== owner(room)) throw new ClientError('Seul l’hôte peut régler un salon en attente.');
           const count = message.player_count;
-          if (!Number.isInteger(count) || ![2,3,4].includes(count) || (room.tri_cards && count !== 2)) throw new ClientError('Choisissez 2, 3 ou 4 joueurs ; le Tri se joue à deux.');
+          if (!Number.isInteger(count) || ![2,3,4].includes(count)) throw new ClientError('Choisissez 2, 3 ou 4 joueurs.');
           if (count < room.players.length) throw new ClientError('Des joueurs sont déjà présents : ce nombre est trop petit.');
           room.player_count = count;
           return;
@@ -242,8 +242,8 @@ export class GameHub {
     const tri = message.tri_cards ?? 0;
     if (!Number.isInteger(tri) || ![0, 6, 12].includes(tri)) throw new ClientError('Choisissez 6 ou 12 cartes pour le Tri.', true);
     const token = randomBytes(24).toString('hex');
-    const count = message.player_count ?? 0; // Older clients keep their flexible 2–4 player lobby.
-    if (!Number.isInteger(count) || ![0,2,3,4].includes(count) || (tri && count && count !== 2)) throw new ClientError('Nombre de joueurs incorrect.', true);
+    const count = message.player_count ?? 0; // Legacy rooms keep their original default capacity.
+    if (!Number.isInteger(count) || ![0,2,3,4].includes(count)) throw new ClientError('Nombre de joueurs incorrect.', true);
     const room = await this.store.create({ players: [this.connectedPlayer(entry, message.name, token)], tri_cards: tri, player_count: count, voice_topic: randomBytes(24).toString('hex'), started: false, game: null });
     this.authenticate(entry, room, 0, token);
     await this.deliver(room.code);

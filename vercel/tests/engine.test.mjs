@@ -47,7 +47,7 @@ test('physical cards are strict; seeded deals are reproducible and disjoint', ()
     inventory(a);
   }
   assert.throws(() => createGame(['one']), TypeError);
-  assert.throws(() => createGame(['a', 'b', 'c'], { triCards: 6 }), TypeError);
+  assert.throws(() => createGame(['a', 'b', 'c', 'd', 'e'], { triCards: 6 }), TypeError);
   assert.throws(() => createGame(['a', 'b'], { triCards: 9 }), TypeError);
   const state = createGame(['  ', '😀'.repeat(30)], { seed: 1 });
   assert.equal(state.players[0].name, 'Joueur 1');

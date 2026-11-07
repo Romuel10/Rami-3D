@@ -137,7 +137,7 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	_check(old_cards.all(func(card): return not is_instance_valid(card)), "leaving frees every old card and its bound motion")
-	_check(app.hand_cards.is_empty() and app._view_cards.is_empty() and app.card_nodes.size() == 5, "menu has no stale game card state")
+	_check(app.hand_cards.is_empty() and app._view_cards.is_empty() and app.card_nodes.size() == 9, "menu has no stale game card state")
 	app.queue_free()
 	await process_frame
 	await create_timer(0.25).timeout

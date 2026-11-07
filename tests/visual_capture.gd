@@ -13,7 +13,6 @@ func _capture() -> void:
 	scene = load("res://main.tscn").instantiate()
 	root.add_child(scene)
 	scene.saved_name = "Vous"
-	scene.name_input.text = "Vous"
 	await _frames()
 	_save("menu")
 	scene._start_solo()

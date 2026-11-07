@@ -286,7 +286,54 @@ test('chosen capacity is enforced and only the lobby owner can change it',async 
   const extra=await f.connect(two); extra.send({type:'join',code:aw.code}); assert.equal((await extra.until('error')).fatal,true);
   a.send({type:'start'}); assert.equal((await c.until('state')).data.players.length,3);
   for(const count of [1,5,'3',2.5]) { const bad=await f.connect(one); bad.send({type:'create',player_count:count}); assert.equal((await bad.until('error')).fatal,true); }
-  const bad=await f.connect(one); bad.send({type:'create',tri_cards:6,player_count:3}); assert.equal((await bad.until('error')).fatal,true);
+});
+
+test('Tri at three and four seats enforces the selected roster and continues after a player leaves with a drawn card', async t => {
+  const f = await fixture(t, { preserveLobby: true });
+  const first = await f.app(), second = await f.app();
+  for (const [size, count] of [[6, 3], [12, 4]]) {
+    const host = await f.connect(first);
+    host.send({ type: 'create', name: 'Tri host', tri_cards: size, player_count: count });
+    const { code } = await host.until('welcome');
+    const room = (await host.until('lobby')).data;
+    assert.equal(room.capacity, count);
+    assert.equal(room.player_count, count);
+    const guest = await f.connect(second);
+    const joined = await join(guest, code);
+    host.send({ type: 'start' });
+    assert.match((await host.until('error')).message, new RegExp(`${count} joueurs`));
+    host.send({ type: 'configure', player_count: 2 });
+    await host.until('lobby', m => m.data.player_count === 2);
+    host.queue = host.queue.filter(m => m.type !== 'lobby');
+    host.send({ type: 'configure', player_count: count });
+    await host.until('lobby', m => m.data.player_count === count);
+    const members = [host, guest];
+    for (let i = 2; i < count; i++) {
+      const player = await f.connect(i % 2 ? first : second);
+      await join(player, code);
+      members.push(player);
+    }
+    const extra = await f.connect(second);
+    extra.send({ type: 'join', code });
+    assert.match((await extra.until('error')).message, /complet/);
+    host.send({ type: 'start' });
+    const views = await Promise.all(members.map(async player => (await player.until('state')).data));
+    assert.ok(views.every(view => view.variant === 'tri' && view.hand.length === size && view.players.length === count));
+    assert.ok(views.every(view => view.players.every(player => !('hand' in player))));
+    assert.equal(new Set(views.flatMap(view => view.hand)).size, size * count);
+    host.send({ type: 'action', action: { type: 'draw', source: 'deck' } });
+    await host.until('state', m => m.data.hand.length === size + 1);
+    host.send({ type: 'leave' });
+    const continued = (await guest.until('state', m => m.data.players[0].forfeited)).data;
+    assert.equal(continued.turn, 1);
+    assert.equal(continued.winner, -1);
+    assert.equal(continued.paused, false);
+    const recovered = await f.connect(first);
+    await join(recovered, code, joined.token);
+    assert.deepEqual((await recovered.until('state')).data.hand, views[1].hand);
+    recovered.send({ type: 'action', action: { type: 'draw', source: 'deck' } });
+    await recovered.until('state', m => m.data.hand.length === size + 1);
+  }
 });
 
 test('unanimous rematch keeps private seats and survives a postgame reconnect; stale votes/moves are rejected',async t=>{
