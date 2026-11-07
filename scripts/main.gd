@@ -1041,13 +1041,16 @@ func _join_room() -> void:
 	_toast("Connexion au salon…")
 
 func _lobby_updated(data: Dictionary) -> void:
-	current_lobby = data
+	var unchanged: bool = current_lobby == data
+	current_lobby = data.duplicate(true)
 	friends_tri_cards = int(data.get("tri_cards",0))
 	if voice != null: voice.sync_players(data.get("players",[]))
 	_update_voice_controls()
 	if game_mode == "online" and not snapshot.is_empty() and data.get("started",false):
 		_update_rematch_controls()
 		return
+	# Presence heartbeats must not recreate an open player-count picker.
+	if unchanged and game_mode == "lobby": return
 	if game_mode != "lobby":
 		toast_label.hide()
 		toast_time = 0.0

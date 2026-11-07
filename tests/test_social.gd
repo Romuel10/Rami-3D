@@ -70,6 +70,9 @@ func _run() -> void:
 	check(button(app.content,"Copier le code")!=null,"lobby shares just the six-digit code")
 	lobby.player_count=2; app._lobby_updated(lobby)
 	check(not app.lobby_start.disabled,"exact connected roster can start")
+	var picker: OptionButton = app.room_count_select
+	app._lobby_updated(lobby.duplicate(true))
+	check(app.room_count_select==picker,"unchanged presence update preserves open room controls")
 	await capture(app,"lobby")
 	players[1].connected=false; app._lobby_updated(lobby)
 	check(app.lobby_start.disabled,"disconnected player prevents start")
@@ -117,6 +120,8 @@ func _run() -> void:
 	net._client_message({"type":"welcome","player":0,"token":"a".repeat(48),"code":"001234","features":{"rematch":true}})
 	net._client_message({"type":"state","data":{"session_id":"completed","winner":0,"players":[{}]}})
 	check(net.has_saved_session(),"new server retains seat token after a completed match")
+	net._client_message({"type":"welcome","player":0,"token":"a".repeat(48),"code":"001234","features":{"rematch":true}})
+	check(net._match_finished and net._session_id=="completed","postgame welcome cannot discard completed result before replay click")
 	net.leave_room()
 	check(not net.has_saved_session(),"intentional leave removes recovery token")
 	net.queue_free()

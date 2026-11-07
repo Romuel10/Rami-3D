@@ -673,7 +673,8 @@ func _client_message(message: Dictionary) -> void:
 			supports_rematch = bool(features.get("rematch", false))
 			_client_mode = "join"
 			connected = true
-			_match_finished = false
+			# Welcome authenticates a seat, not a new match. Preserve a completed
+			# result across reconnect until the authoritative lobby/state replaces it.
 			_persist_session()
 			connection_changed.emit(true)
 		"lobby":
