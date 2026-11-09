@@ -137,7 +137,9 @@ func _run() -> void:
 	# A remote telephone can be player two while still seeing its own hand in
 	# the foreground; fans are associated with public player indices correctly.
 	app.network.local_player = 2
-	app._network_game_updated(_view())
+	var remote_view := _view()
+	remote_view.your_index = 2
+	app._network_game_updated(remote_view)
 	await _settle()
 	var remote_fans: Array = app.card_nodes.filter(func(card): return card.get_meta("zone","")=="opponent")
 	_check(remote_fans.size()==39 and app.hand_cards.size()==13,"a non-host telephone retains its private foreground hand and three opponents")
@@ -155,10 +157,14 @@ func _run() -> void:
 		_check(remaining_backs.filter(func(card): return int(card.get_meta("seat_index",-1))==player).size()==13,"forfeit leaves the other opponents' card counts intact")
 	var sleeves: Node3D = app.get_node("TableScene/Seating/PlayerSeat1/Sleeves")
 	_check(not sleeves.visible,"the forfeited opponent's arms are hidden with its card fan")
-	# A duel must remove the other seats' card fans without importing private data.
-	app._network_game_updated(_view(2))
+	# A tournament entrant can be fourth in the lobby and second in the duel.
+	app.network.local_player = 3
+	var duel := _view(2)
+	duel.your_index = 1
+	app._network_game_updated(duel)
 	await _settle()
 	_check(app.card_nodes.filter(func(card): return card.get_meta("zone","")=="opponent").size()==13,"switching to a duel leaves exactly one hidden fan")
+	_check(app.snapshot.your_index==1 and app.table_scene._seats.has(0),"tournament uses the duel's seat mapping")
 	_check(not app.snapshot.players.any(func(player): return player.has("hand")),"opponents are represented by public summaries only")
 	app._leave_to_menu()
 	app.queue_free()
