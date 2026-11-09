@@ -46,17 +46,18 @@ function shuffle(cards, state) {
   }
 }
 
-export function createGame(names, { triCards = 0, seed = 0 } = {}) {
+export function createGame(names, { triCards = 0, seed = 0, rounds = 1 } = {}) {
   if (!Array.isArray(names) || names.length < 2 || names.length > 4) throw new TypeError('Une partie accueille de 2 à 4 joueurs.');
   if (![0, 6, 12].includes(triCards)) throw new TypeError('Le Tri se joue avec 6 ou 12 cartes par joueur.');
   if (!Number.isSafeInteger(seed)) throw new TypeError('Graine invalide.');
+  if (![1, 3, 5].includes(rounds)) throw new TypeError('Choisissez 1, 3 ou 5 manches.');
   const state = {
     players: names.map((name, i) => ({ name: Array.from(String(name).trim()).slice(0, 24).join('') || `Joueur ${i + 1}`, hand: [], opened: false, forfeited: false })),
     deck: physicalDeck(triCards === 0), discard: [], melds: [], turn: 0, phase: 'draw', winner: -1,
     log: '', turn_count: 1, revision: 0, last_action: {},
     session_id: seed ? `seed-${seed}` : randomBytes(16).toString('hex'),
     win_by_forfeit: false, end_reason: '', forfeit_winners: [],
-    match: { round: 1, length: 1, totals: names.map(() => 0), results: [] },
+    match: { round: 1, length: rounds, totals: names.map(() => 0), results: [] },
     _rng_state: seed ? seed >>> 0 : randomBytes(4).readUInt32LE(),
   };
   shuffle(state.deck, state);
@@ -69,6 +70,19 @@ export function createGame(names, { triCards = 0, seed = 0 } = {}) {
     state.log = 'Tri : gardez vos combinaisons en main. Piochez, puis défaussez.';
   }
   return state;
+}
+
+export function nextRound(state) {
+  if (state.winner < 0 || matchResult(state).finished) return fail('La manche suivante n’est pas disponible.');
+  const fresh = createGame(state.players.map(p => p.name), { triCards: state.tri_hand_size ?? 0, rounds: state.match.length });
+  fresh.players.forEach((p, i) => { p.forfeited = state.players[i].forfeited; });
+  fresh.turn = nextActive(fresh, (state.match.round - 1) % fresh.players.length);
+  fresh.log = `${fresh.players[fresh.turn].name} commence la manche ${state.match.round + 1}.`;
+  fresh.match = { ...state.match, round: state.match.round + 1 };
+  fresh.session_id = state.session_id;
+  fresh.revision = state.revision + 1;
+  Object.assign(state, fresh);
+  return ok();
 }
 
 export function validateMeld(cards) {
@@ -357,9 +371,8 @@ export function validateState(state) {
     if ((state.winner >= 0 && state.players[state.winner].forfeited) || (state.winner < 0 && state.players[state.turn].forfeited)) return false;
     if (Object.keys(state.last_action).length && (!integer(state.last_action.player, 0, state.players.length - 1) || !['draw', 'meld', 'extend', 'discard', 'forfeit'].includes(state.last_action.type))) return false;
     const data = state.match;
-    // Internet rooms currently play one round, as does the Godot dedicated server.
-    if (!object(data) || data.round !== 1 || data.length !== 1 || !Array.isArray(data.totals) || data.totals.length !== state.players.length || !Array.isArray(data.results)) return false;
-    if (data.results.length !== (state.winner < 0 ? 0 : 1)) return false;
+    if (!object(data) || ![1, 3, 5].includes(data.length) || !integer(data.round, 1, data.length) || !Array.isArray(data.totals) || data.totals.length !== state.players.length || !Array.isArray(data.results)) return false;
+    if (data.results.length !== data.round - (state.winner < 0 ? 1 : 0)) return false;
     const sums = state.players.map(() => 0);
     for (const row of data.results) {
       if (!object(row) || !integer(row.winner, 0, sums.length - 1) || !Array.isArray(row.points) || row.points.length !== sums.length) return false;

@@ -15,10 +15,14 @@ func _run() -> void:
 	root.add_child(app)
 	await process_frame
 	_check(app.game_mode == "menu" and app.card_nodes.size() == 9, "menu starts with decorative cards")
-	_press("Options")
+	if app.overlay_kind != "profile_setup":
+		_press("Options")
+		_press("Profil du joueur")
 	app.name_input.text = "Test UI"
-	app.name_input.text_changed.emit("Test UI")
-	_press("Fermer")
+	_check(app.province_input.item_count == 7, "profile shows all six provinces")
+	app.province_input.select(5)
+	_press("Enregistrer le profil")
+	_check(app.player_province == "Toamasina", "profile saves the selected province")
 	app.bot_count = 1
 	_press("Jouer au rami")
 	_check(app.game_mode == "solo" and app.snapshot.hand.size() == 13 and app.snapshot.players.size() == 2, "menu button starts a solo match")

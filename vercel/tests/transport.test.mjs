@@ -274,6 +274,114 @@ async function completeRound(f,code) {
   return room.game.session_id;
 }
 
+async function finishRummyTurn(app, client, code, seat) {
+  const { validateState } = await import('../lib/engine.mjs');
+  const { room } = await app.hub.store.update(code, room => {
+    const game = room.game;
+    game.deck.push(...game.players[seat].hand.splice(1));
+    game.turn = seat;
+    game.phase = 'play';
+    game.revision++;
+    assert.ok(validateState(game));
+  });
+  const game = room.game;
+  await client.until('state', m => m.data.session_id === game.session_id && m.data.revision === game.revision);
+  client.send({ type: 'action', session_id: game.session_id, round: game.match.round, action: { type: 'discard', card: game.players[seat].hand[0] } });
+  return (await client.until('state', m => m.data.session_id === game.session_id && m.data.revision === game.revision + 1)).data;
+}
+
+test('the owner removes a guest and runs a persistent series without heartbeat state duplicates', async t => {
+  const f = await fixture(t, { preserveLobby: true });
+  const first = await f.app(), second = await f.app();
+  const host = await f.connect(first), removed = await f.connect(second), guest = await f.connect(second);
+  host.send({ type: 'create', name: 'Alice', province: 'Toliara', player_count: 2, rounds: 3 });
+  const { code } = await host.until('welcome');
+  removed.send({ type: 'join', name: 'Invité', code, series: true });
+  await removed.until('welcome');
+  const roster = (await host.until('lobby', m => m.data.players.length === 2)).data.players;
+  removed.send({ type: 'kick', seat_id: roster[0].seat_id });
+  assert.match((await removed.until('error')).message, /hôte/);
+  host.send({ type: 'kick', seat_id: roster[1].seat_id });
+  assert.match((await removed.until('error')).message, /retiré/);
+  guest.send({ type: 'join', name: 'Bob', province: 'Mahajanga', code, series: true });
+  await guest.until('welcome');
+  const [firstHand, otherHand] = await start(host, guest);
+  assert.deepEqual(otherHand.players.map(p => p.province), ['Toliara', 'Mahajanga']);
+  const count = host.all.filter(m => m.type === 'state').length;
+  await first.hub.store.update(code, () => {}); // Same state, newer room version.
+  await delay(120);
+  assert.equal(host.all.filter(m => m.type === 'state').length, count);
+  const roundOne = await finishRummyTurn(first, host, code, 0);
+  assert.equal(roundOne.match_result.finished, false);
+  guest.send({ type: 'next_round', session_id: firstHand.session_id, round: 1 });
+  assert.match((await guest.until('error')).message, /hôte/);
+  for (const round of [2, 3]) {
+    host.send({ type: 'next_round', session_id: firstHand.session_id, round: round - 1 });
+    const fresh = (await guest.until('state', m => m.data.match.round === round && m.data.winner < 0)).data;
+    assert.equal(fresh.session_id, firstHand.session_id);
+    assert.equal(fresh.match.results.length, round - 1);
+    assert.equal(fresh.turn, (round - 1) % 2);
+    guest.send({ type: 'action', session_id: firstHand.session_id, round: round - 1, action: { type: 'draw' } });
+    assert.match((await guest.until('error')).message, /autre manche/);
+    const result = await finishRummyTurn(first, guest, code, 1);
+    assert.equal(result.match_result.finished, round === 3);
+    assert.equal(result.match.totals[1], roundOne.match.totals[1]);
+  }
+});
+
+test('four-seat tournament separates duels, advances a finalist, and frees the room at the last departure', async t => {
+  const f = await fixture(t, { preserveLobby: true });
+  const first = await f.app(), second = await f.app();
+  const members = await Promise.all([first, second, first, second].map(app => f.connect(app)));
+  const [host, b, c, d] = members;
+  host.send({ type: 'create', name: 'Alice', province: 'Antananarivo', tournament: true, tournament_name: 'Coupe de Rami' });
+  const { code } = await host.until('welcome');
+  const legacy = await f.connect(first);
+  legacy.send({ type: 'join', name: 'Ancien jeu', code });
+  assert.match((await legacy.until('error')).message, /jour/);
+  for (const [i, player] of members.slice(1).entries()) {
+    player.send({ type: 'join', name: ['Bob', 'Caro', 'Dina'][i], province: ['Toliara', 'Toamasina', 'Antsiranana'][i], code, series: true });
+    await player.until('welcome');
+  }
+  host.send({ type: 'start' });
+  const initial = (await b.until('state')).data;
+  assert.equal(initial.your_index, 1);
+  assert.equal(initial.players.length, 2);
+  const bracket = (await d.until('lobby', m => m.data.started)).data;
+  assert.equal(bracket.tournament.name, 'Coupe de Rami');
+  assert.equal(bracket.playing, false);
+  assert.equal(d.all.filter(m => m.type === 'state').length, 0);
+  assert.ok(bracket.players.every(p => !('hand' in p) && !('token' in p)));
+  c.send({ type: 'action', session_id: initial.session_id, action: { type: 'draw' } });
+  assert.match((await c.until('error')).message, /duel/);
+  await finishRummyTurn(first, b, code, 1);
+  await host.until('lobby', m => m.data.tournament.duels[0].winner === 1);
+  b.send({ type: 'advance_tournament', stage: 0 });
+  assert.match((await b.until('error')).message, /hôte/);
+  host.send({ type: 'advance_tournament', stage: 0 });
+  const semi = (await d.until('state')).data;
+  assert.equal(semi.your_index, 1);
+  assert.deepEqual(semi.players.map(p => p.name), ['Caro', 'Dina']);
+  assert.notEqual(semi.session_id, initial.session_id);
+  await finishRummyTurn(first, d, code, 1);
+  await host.until('lobby', m => m.data.tournament.duels[1].winner === 3);
+  host.send({ type: 'advance_tournament', stage: 1 });
+  const final = (await b.until('state', m => m.data.session_id !== initial.session_id)).data;
+  assert.deepEqual(final.players.map(p => p.name), ['Bob', 'Dina']);
+  assert.equal(final.your_index, 0);
+  await finishRummyTurn(first, b, code, 0);
+  const ended = (await c.until('lobby', m => m.data.finished)).data;
+  assert.equal(ended.tournament.champion, 1);
+  assert.equal(ended.playing, false);
+  for (const player of members) {
+    const closed = once(player.socket, 'close');
+    player.send({ type: 'leave' });
+    await closed;
+  }
+  assert.equal(await first.hub.store.read(code), null);
+  assert.equal(await f.probe.zcard(`${f.prefix}rooms`), 0);
+});
+
 test('chosen capacity is enforced and only the lobby owner can change it',async t=>{
   const f=await fixture(t); const one=await f.app(),two=await f.app();
   const a=await f.connect(one),b=await f.connect(two),c=await f.connect(two);

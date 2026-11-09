@@ -245,14 +245,18 @@ func _build_player(seat: Node3D, style: int) -> void:
 		var hand: Vector3 = wrist-elbow
 		_limb(arm,"Forearm",Vector3.ZERO,hand,.20,cloth)
 		_limb(arm,"Cuff",hand-Vector3(0,0,.11),hand+Vector3(0,0,.06),.205,_plain(clothing[style%3].lightened(.10)))
-		_ellipsoid(arm,"Palm",hand+Vector3(0,-.02,.21),Vector3(.22,.105,.32),skin)
-		_limb(arm,"Thumb",hand+Vector3(side*.17,.06,.15),hand+Vector3(side*.23,.10,.34),.066,skin)
+		var wrist_joint := Node3D.new()
+		wrist_joint.name = "Wrist"
+		wrist_joint.position = hand
+		arm.add_child(wrist_joint)
+		_ellipsoid(wrist_joint,"Palm",Vector3(0,-.02,.21),Vector3(.22,.105,.32),skin)
+		_limb(wrist_joint,"Thumb",Vector3(side*.17,.06,.15),Vector3(side*.23,.10,.34),.066,skin)
 		# Four distinct, curled fingers replace the old mitten silhouette.
 		# Their geometry follows the public arm gesture, never hidden cards.
 		var grip := Node3D.new()
 		grip.name = "FingerGrip"
-		grip.position = hand+Vector3(0,-.02,.39)
-		arm.add_child(grip)
+		grip.position = Vector3(0,-.02,.39)
+		wrist_joint.add_child(grip)
 		if not _finger_meshes.has(side):
 			var lengths := [.27,.33,.30,.23]
 			for finger in range(4):
@@ -310,6 +314,10 @@ func animate_action(player: int, kind: String, source: String = "deck") -> void:
 	var local: Vector3 = seat.to_local(target)
 	var primary: Node3D = seat.get_node("Sleeves/LeftArm" if local.x<0 else "Sleeves/RightArm")
 	var support: Node3D = seat.get_node("Sleeves/RightArm" if local.x<0 else "Sleeves/LeftArm")
+	var wrist: Node3D = primary.get_node("Wrist")
+	var fingers: Node3D = wrist.get_node("FingerGrip")
+	var other_wrist: Node3D = support.get_node("Wrist")
+	var other_fingers: Node3D = other_wrist.get_node("FingerGrip")
 	var direction: Vector3 = local-primary.position
 	var yaw := clampf(atan2(direction.x,direction.z),-.32,.32)
 	var pitch := .16 if kind=="draw" else .11
@@ -335,9 +343,15 @@ func animate_action(player: int, kind: String, source: String = "deck") -> void:
 	tween.set_parallel(true)
 	tween.tween_property(primary,"rotation",Vector3(pitch,yaw,roll),outward)
 	tween.tween_property(support,"rotation",Vector3(-.018,-yaw*.16,-roll*.35),outward)
-	tween.chain().tween_interval(pause)
+	tween.tween_property(wrist,"rotation",Vector3(.16 if kind == "draw" else -.10,yaw*.3,roll),outward)
+	tween.tween_property(other_wrist,"rotation",Vector3(-.07 if kind in ["meld","extend"] else 0,0,-roll),outward)
+	tween.tween_property(other_fingers,"rotation:x",0.0,outward)
+	tween.chain().tween_property(fingers,"rotation:x",-.34 if kind == "draw" else .16,pause)
 	tween.chain().tween_property(primary,"rotation",Vector3.ZERO,returning)
 	tween.parallel().tween_property(support,"rotation",Vector3.ZERO,returning)
+	tween.parallel().tween_property(wrist,"rotation",Vector3.ZERO,returning)
+	tween.parallel().tween_property(other_wrist,"rotation",Vector3.ZERO,returning)
+	tween.parallel().tween_property(fingers,"rotation",Vector3.ZERO,returning)
 	tween.chain().tween_callback(_finish_gesture.bind(player,serial))
 
 func _finish_gesture(player: int, serial: int) -> void:
@@ -351,7 +365,10 @@ func _restore_pose(player: int) -> void:
 	if not is_instance_valid(seat): return
 	for name_value in ["LeftArm","RightArm"]:
 		var arm: Node3D = seat.get_node_or_null("Sleeves/"+name_value)
-		if is_instance_valid(arm): arm.transform = arm.get_meta("rest_transform",Transform3D.IDENTITY)
+		if is_instance_valid(arm):
+			arm.transform = arm.get_meta("rest_transform",Transform3D.IDENTITY)
+			arm.get_node("Wrist").rotation = Vector3.ZERO
+			arm.get_node("Wrist/FingerGrip").rotation = Vector3.ZERO
 
 func _stop_gesture(player: int, restore: bool = true) -> void:
 	var tween: Tween = _gestures.get(player)

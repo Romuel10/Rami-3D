@@ -1,13 +1,18 @@
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { Buffer } from 'node:buffer';
-import { createGame, applyAction, forfeitPlayer, viewFor } from './engine.mjs';
+import { createGame, applyAction, forfeitPlayer, matchResult, nextRound, viewFor } from './engine.mjs';
 import { validVoiceFrame } from './voice.mjs';
 
 class ClientError extends Error { constructor(message, fatal = false) { super(message); this.fatal = fatal; } }
-const cleanName = value => String(value || 'Joueur').replace(/[\n\r\t]/g, ' ').trim().slice(0, 20) || 'Joueur';
+const cleanText = (value, length) => typeof value === 'string' ? Array.from(value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim()).slice(0, length).join('') : '';
+const PROVINCES = ['Antananarivo', 'Antsiranana', 'Fianarantsoa', 'Mahajanga', 'Toamasina', 'Toliara'];
 const secretEquals = (a, b) => typeof a === 'string' && typeof b === 'string' && /^[0-9a-f]{48}$/.test(a) && /^[0-9a-f]{48}$/.test(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
-const finished = room => room.started && room.game?.winner >= 0;
-const forfeited = (room, index) => room.started && !!room.game?.players[index]?.forfeited;
+const currentDuel = room => room.tournament?.duels[room.tournament.stage];
+const gameSeat = (room, index) => currentDuel(room)?.seats.indexOf(index) ?? index;
+const matchFinished = room => !!room.game && matchResult(room.game).finished;
+const finished = room => room.started && (room.tournament ? room.tournament.champion !== null : matchFinished(room));
+const forfeited = (room, index) => !!room.game?.players[gameSeat(room, index)]?.forfeited;
+const active = (room, index) => !room.players[index].departed && !forfeited(room, index);
 const owner = room => Math.max(0, room.players.findIndex((p, i) => !p.departed && !forfeited(room, i)));
 const capacity = room => room.player_count || (room.tri_cards ? 2 : 4);
 
@@ -103,33 +108,63 @@ export class GameHub {
         changed = true;
       }
       if (!room.started && !player.connection && (!this.preserveLobby || player.deadline <= now)) { room.players.splice(i, 1); changed = true; }
-    }
-    if (room.started && !finished(room)) {
-      for (let i = 0; i < room.players.length; i++) {
-        const player = room.players[i];
-        if (!player.connection && !forfeited(room, i) && player.deadline > 0 && player.deadline <= now) {
-          if (forfeitPlayer(room.game, i, 'déconnexion prolongée').ok) { player.deadline = 0; changed = true; }
-        }
+      if (room.started && !player.connection && !player.departed && player.deadline > 0 && player.deadline <= now) {
+        this.abandon(room, i, 'déconnexion prolongée');
+        changed = true;
       }
     }
-    if (finished(room)) {
-      for (const player of room.players) {
-        if (!player.connection && !player.departed && player.deadline > 0 && player.deadline <= now) {
-          player.departed = true; changed = true;
-        }
-      }
-      changed = this.maybeRematch(room) || changed;
-    }
-    return changed;
+    return this.maybeRematch(room) || changed;
   }
   beginMatch(room) {
-    room.game = createGame(room.players.map(p => p.name), { triCards: room.tri_cards });
     room.started = true;
     for (const p of room.players) { p.rematch_ready = false; p.departed = false; }
+    if (room.tournament) this.beginDuel(room, 0);
+    else room.game = createGame(room.players.map(p => p.name), { triCards: room.tri_cards, rounds: room.rounds ?? 1 });
+  }
+  beginDuel(room, stage) {
+    const tournament = room.tournament;
+    const seats = stage === 2 ? tournament.duels.slice(0, 2).map(duel => duel.winner).filter(i => Number.isInteger(i) && i >= 0) : tournament.duels[stage].seats;
+    const available = seats.filter(i => !room.players[i].departed);
+    if (available.some(i => !room.players[i].connection)) throw new ClientError('Attendez la reconnexion des joueurs de ce duel.');
+    tournament.stage = stage;
+    const duel = tournament.duels[stage];
+    duel.seats = seats;
+    if (available.length < 2) {
+      duel.winner = available[0] ?? -1;
+      room.game = null;
+      if (stage === 2) tournament.champion = duel.winner;
+    } else room.game = createGame(seats.map(i => room.players[i].name), { triCards: room.tri_cards, rounds: room.rounds });
+  }
+  settleDuel(room) {
+    const duel = currentDuel(room);
+    if (!duel || duel.winner !== null || !matchFinished(room)) return;
+    const winners = matchResult(room.game).winners;
+    // In a tied two-player series, the odd number of rounds breaks the tie.
+    const wins = room.game.match.results.reduce((total, round) => total + (round.winner === 0 ? 1 : -1), 0);
+    duel.winner = duel.seats[winners.length === 1 ? winners[0] : (wins > 0 ? 0 : 1)];
+    if (room.tournament.stage === 2) room.tournament.champion = duel.winner;
+  }
+  advanceRound(room) {
+    const result = nextRound(room.game);
+    if (!result.ok) throw new ClientError(result.error);
+    room.players.forEach((p, i) => {
+      const seat = gameSeat(room, i);
+      if (p.departed && seat >= 0 && !forfeited(room, i) && room.game.winner < 0) forfeitPlayer(room.game, seat, 'abandon');
+    });
+    this.settleDuel(room);
+  }
+  abandon(room, index, reason) {
+    const player = room.players[index];
+    const seat = gameSeat(room, index);
+    player.connection = ''; player.deadline = 0; player.departed = true;
+    if (seat < 0 || !room.game || matchFinished(room) || forfeited(room, index)) return;
+    if (room.game.winner < 0) forfeitPlayer(room.game, seat, reason);
+    else if (room.players.filter((_p, i) => gameSeat(room, i) >= 0 && active(room, i)).length === 1) this.advanceRound(room);
+    this.settleDuel(room);
   }
   maybeRematch(room) {
-    if (!finished(room)) return false;
-    const remaining = room.players.filter((p, i) => !p.departed && !forfeited(room, i));
+    if (room.tournament || !finished(room)) return false;
+    const remaining = room.players.filter((_p, i) => active(room, i));
     if (!remaining.length || !remaining.every(p => p.rematch_ready)) return false;
     room.players = remaining;
     room.game = null; room.started = false;
@@ -137,10 +172,11 @@ export class GameHub {
     else for (const p of remaining) p.rematch_ready = false;
     return true;
   }
-  paused(room) { return room.started && !finished(room) && room.players.some((p, i) => !p.connection && !forfeited(room, i)); }
+  waiting(room) { return room.players.filter((p, i) => gameSeat(room, i) >= 0 && active(room, i) && !p.connection); }
+  paused(room) { return !!room.game && room.game.winner < 0 && this.waiting(room).length > 0; }
   remaining(room) {
     if (!this.paused(room)) return 0;
-    return Math.max(0, Math.min(this.graceMs, ...room.players.filter((p, i) => !p.connection && !forfeited(room, i)).map(p => p.deadline - Date.now())));
+    return Math.max(0, Math.min(this.graceMs, ...this.waiting(room).map(p => p.deadline - Date.now())));
   }
   async transact(code, operation, publish = true) {
     return this.store.update(code, room => {
@@ -149,6 +185,8 @@ export class GameHub {
       catch (error) {
         if (error instanceof ClientError) return { changed, error };
         throw error;
+      } finally {
+        if (room.started && room.players.every((_p, i) => !active(room, i))) room.players = [];
       }
     }, { publish });
   }
@@ -158,6 +196,7 @@ export class GameHub {
     return index;
   }
   async message(entry, message) {
+    if (entry.leaving) return;
     try {
       if (!entry.code) {
         if (message.type === 'create') return await this.create(entry, message);
@@ -172,11 +211,9 @@ export class GameHub {
         player.leaseUntil = Date.now() + this.leaseMs;
         if (message.type === 'leave') {
           if (room.started) {
-            if (!finished(room) && !forfeited(room, index)) forfeitPlayer(room.game, index, 'abandon');
-            player.connection = ''; player.deadline = 0; player.departed = true;
+            this.abandon(room, index, 'abandon');
             this.maybeRematch(room);
           } else room.players.splice(index, 1);
-          entry.leaving = true;
           return 'left';
         }
         if (message.type === 'start') {
@@ -190,14 +227,37 @@ export class GameHub {
         }
         if (message.type === 'configure') {
           if (room.started || index !== owner(room)) throw new ClientError('Seul l’hôte peut régler un salon en attente.');
+          if (room.tournament) throw new ClientError('Le tournoi réunit quatre joueurs.');
           const count = message.player_count;
           if (!Number.isInteger(count) || ![2,3,4].includes(count)) throw new ClientError('Choisissez 2, 3 ou 4 joueurs.');
           if (count < room.players.length) throw new ClientError('Des joueurs sont déjà présents : ce nombre est trop petit.');
           room.player_count = count;
           return;
         }
+        if (message.type === 'kick') {
+          if (room.started || index !== owner(room)) throw new ClientError('Seul l’hôte peut retirer un invité du salon en attente.');
+          const target = room.players.findIndex(p => p.seat_id && p.seat_id === message.seat_id);
+          if (target < 0 || target === index) throw new ClientError('Cet invité n’est plus dans le salon.');
+          const [removed] = room.players.splice(target, 1);
+          room.removed = [...(room.removed ?? []), removed.connection].slice(-16);
+          return;
+        }
+        if (message.type === 'next_round') {
+          if (index !== owner(room)) throw new ClientError('Seul l’hôte peut lancer la manche suivante.');
+          if (!room.game || message.session_id !== room.game.session_id || message.round !== room.game.match.round) throw new ClientError('Cette manche a déjà changé.');
+          if (this.waiting(room).length) throw new ClientError('Attendez la reconnexion des joueurs.');
+          this.advanceRound(room);
+          return;
+        }
+        if (message.type === 'advance_tournament') {
+          const duel = currentDuel(room);
+          if (index !== owner(room)) throw new ClientError('Seul l’hôte peut lancer le prochain duel.');
+          if (!duel || duel.winner === null || finished(room) || message.stage !== room.tournament.stage) throw new ClientError('Le prochain duel n’est pas disponible.');
+          this.beginDuel(room, room.tournament.stage + 1);
+          return;
+        }
         if (message.type === 'rematch') {
-          if (!finished(room)) throw new ClientError('Attendez la fin du match pour rejouer.');
+          if (room.tournament || !finished(room)) throw new ClientError('Attendez la fin du match pour rejouer.');
           if (forfeited(room, index) || player.departed) throw new ClientError('Cette place a quitté le match.', true);
           // A delayed duplicate vote must not apply to a later match.
           if (message.session_id !== room.game.session_id) throw new ClientError('Ce résultat appartient au match précédent.');
@@ -206,15 +266,19 @@ export class GameHub {
           return;
         }
         if (message.type === 'action') {
+          const seat = gameSeat(room, index);
           if (!room.started) throw new ClientError('La partie n’a pas encore commencé.');
+          if (!room.game || seat < 0) throw new ClientError('Attendez votre prochain duel.');
           if (forfeited(room, index)) throw new ClientError('Vous avez abandonné cette partie.', true);
           if (this.paused(room)) throw new ClientError('La partie attend la reconnexion d’un joueur.');
-          if (message.session_id && message.session_id !== room.game.session_id) throw new ClientError('Cette action appartient au match précédent.');
+          if ((message.session_id || room.tournament || (room.rounds ?? 1) > 1) && message.session_id !== room.game.session_id) throw new ClientError('Cette action appartient au match précédent.');
+          if ((room.rounds ?? 1) > 1 && message.round !== room.game.match.round) throw new ClientError('Cette action appartient à une autre manche.');
           if (!message.action || typeof message.action !== 'object' || Array.isArray(message.action)) throw new ClientError('Action incorrecte.');
           if (Date.now() - entry.lastAction < 40) throw new ClientError('Attendez un instant avant votre prochaine action.');
           entry.lastAction = Date.now();
-          const actionResult = applyAction(room.game, index, message.action);
+          const actionResult = applyAction(room.game, seat, message.action);
           if (!actionResult.ok) throw new ClientError(actionResult.error);
+          this.settleDuel(room);
           return;
         }
         throw new ClientError('Message inconnu.');
@@ -222,6 +286,7 @@ export class GameHub {
       if (!result.room) throw new ClientError('Le salon a expiré.', true);
       if (result.result?.error) throw result.result.error;
       if (result.result?.value === 'left') {
+        entry.leaving = true;
         // This result goes only to the departing owner, before closing. The
         // broadcast reads the committed room separately for each remaining seat.
         const departing = result.room.players.findIndex(p => secretEquals(p.token, entry.token));
@@ -237,14 +302,25 @@ export class GameHub {
       else throw error;
     }
   }
-  connectedPlayer(entry, name, token) { return { name: cleanName(name), token, connection: entry.id, leaseUntil: Date.now() + this.leaseMs, deadline: 0 }; }
+  connectedPlayer(entry, message, token) {
+    return {
+      name: cleanText(message.name, 20) || 'Joueur', province: PROVINCES.includes(message.province) ? message.province : '',
+      seat_id: randomUUID(), token, connection: entry.id, leaseUntil: Date.now() + this.leaseMs, deadline: 0,
+    };
+  }
   async create(entry, message) {
     const tri = message.tri_cards ?? 0;
     if (!Number.isInteger(tri) || ![0, 6, 12].includes(tri)) throw new ClientError('Choisissez 6 ou 12 cartes pour le Tri.', true);
     const token = randomBytes(24).toString('hex');
     const count = message.player_count ?? 0; // Legacy rooms keep their original default capacity.
     if (!Number.isInteger(count) || ![0,2,3,4].includes(count)) throw new ClientError('Nombre de joueurs incorrect.', true);
-    const room = await this.store.create({ players: [this.connectedPlayer(entry, message.name, token)], tri_cards: tri, player_count: count, voice_topic: randomBytes(24).toString('hex'), started: false, game: null });
+    const rounds = message.rounds ?? 1;
+    if (![1, 3, 5].includes(rounds)) throw new ClientError('Choisissez 1, 3 ou 5 manches.', true);
+    const tournament = message.tournament === true ? {
+      name: cleanText(message.tournament_name, 36) || 'Tournoi entre amis', stage: -1, champion: null,
+      duels: [{ seats: [0, 1], winner: null }, { seats: [2, 3], winner: null }, { seats: [], winner: null }],
+    } : null;
+    const room = await this.store.create({ players: [this.connectedPlayer(entry, message, token)], tri_cards: tri, player_count: tournament ? 4 : count, rounds, tournament, voice_topic: randomBytes(24).toString('hex'), started: false, game: null });
     this.authenticate(entry, room, 0, token);
     await this.deliver(room.code);
   }
@@ -261,13 +337,14 @@ export class GameHub {
         if (forfeited(room, index) || room.players[index].departed) throw new ClientError('Cette place a été perdue par abandon.', true);
         // A valid private bearer may take over its own connection. This permits
         // immediate recovery when a previous Function vanished without close.
-        room.players[index] = { ...room.players[index], ...this.connectedPlayer(entry, room.players[index].name, token) };
+        Object.assign(room.players[index], { connection: entry.id, leaseUntil: Date.now() + this.leaseMs, deadline: 0 });
       } else {
         if (room.started) throw new ClientError('Cette partie a déjà commencé.', true);
         if (room.players.length >= capacity(room)) throw new ClientError('Le salon est complet.', true);
+        if ((room.tournament || (room.rounds ?? 1) > 1) && message.series !== true) throw new ClientError('Mettez le jeu à jour pour rejoindre ce salon.', true);
         assigned = randomBytes(24).toString('hex');
         index = room.players.length;
-        room.players.push(this.connectedPlayer(entry, message.name, assigned));
+        room.players.push(this.connectedPlayer(entry, message, assigned));
       }
       room.activity = Date.now();
       return { index, token: assigned };
@@ -284,11 +361,20 @@ export class GameHub {
     this.welcome(entry, room, index);
   }
   welcome(entry, room, index) {
-    this.send(entry, { type: 'welcome', player: index, token: entry.token, code: room.code, is_host: index === owner(room), features: { rematch: true, player_count: true, voice: !!this.voice } });
+    this.send(entry, { type: 'welcome', player: index, token: entry.token, code: room.code, is_host: index === owner(room), features: { rematch: true, player_count: true, series: true, kick: true, voice: !!this.voice } });
   }
   sendState(entry, room, index) {
-    const view = viewFor(room.game, index);
-    this.send(entry, { type: 'state', data: { ...view, paused: this.paused(room), reconnect_remaining_ms: this.remaining(room), your_index: index, online: true } });
+    const seat = gameSeat(room, index);
+    if (!room.game || seat < 0) return;
+    const view = viewFor(room.game, seat);
+    const seats = currentDuel(room)?.seats ?? room.players.map((_p, i) => i);
+    view.players.forEach((player, i) => { player.province = room.players[seats[i]].province ?? ''; });
+    const duel = currentDuel(room);
+    if (Number.isInteger(duel?.winner) && duel.winner >= 0) {
+      if (view.match_result.winners.length > 1) view.match_result.tie_break = true;
+      view.match_result.winners = [duel.seats.indexOf(duel.winner)];
+    }
+    this.send(entry, { type: 'state', data: { ...view, paused: this.paused(room), reconnect_remaining_ms: this.remaining(room), your_index: seat, online: true } });
   }
   async deliver(code) {
     // Serialize fan-out per room so a slow Redis read cannot send an older
@@ -302,15 +388,25 @@ export class GameHub {
         if (entry.code !== code || entry.leaving) continue;
         if (!room) { this.error(entry, 'Le salon a expiré.', true); continue; }
         const index = room.players.findIndex(p => p.connection === entry.id && secretEquals(p.token, entry.token));
-        if (index < 0) { this.error(entry, 'Cette connexion a été remplacée. Reconnectez-vous.', true); continue; }
+        if (index < 0) {
+          this.error(entry, room.removed?.includes(entry.id) ? 'L’hôte vous a retiré du salon.' : 'Cette connexion a été remplacée. Reconnectez-vous.', true);
+          continue;
+        }
         if (entry.version >= room.version) continue;
         if (entry.index !== index) {
           entry.index = index;
           this.welcome(entry, room, index);
         }
-        const players = room.players.map((p, i) => ({ name: p.name, connected: !!p.connection && !p.departed, forfeited: forfeited(room, i), rematch_ready: !!p.rematch_ready, departed: !!p.departed }));
-        this.send(entry, { type: 'lobby', data: { code, players, port: 443, started: room.started, tri_cards: room.tri_cards, player_count: room.player_count || 0, capacity: capacity(room), finished: finished(room), host: index === owner(room), your_index: index } });
-        if (room.started) this.sendState(entry, room, index);
+        const players = room.players.map((p, i) => ({ name: p.name, province: p.province ?? '', seat_id: p.seat_id ?? '', connected: !!p.connection && !p.departed, forfeited: forfeited(room, i), rematch_ready: !!p.rematch_ready, departed: !!p.departed }));
+        const playing = !!room.game && gameSeat(room, index) >= 0;
+        const progress = room.tournament && room.game ? { round: room.game.match.round, round_finished: room.game.winner >= 0, finished: matchFinished(room), session_id: room.game.session_id } : null;
+        const data = { code, players, port: 443, started: room.started, tri_cards: room.tri_cards, player_count: room.player_count || 0, capacity: capacity(room), finished: finished(room), host: index === owner(room), your_index: index, rounds: room.rounds ?? 1, tournament: room.tournament ?? null, progress, playing };
+        const lobbyKey = JSON.stringify(data);
+        if (lobbyKey !== entry.lobbyKey) this.send(entry, { type: 'lobby', data });
+        entry.lobbyKey = lobbyKey;
+        const stateKey = playing ? JSON.stringify([room.game.session_id, room.game.revision, this.paused(room), gameSeat(room, index)]) : '';
+        if (playing && stateKey !== entry.stateKey) this.sendState(entry, room, index);
+        entry.stateKey = stateKey;
         entry.version = room.version;
       }
       this.ensureVoice(code, room);

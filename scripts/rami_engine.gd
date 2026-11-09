@@ -54,12 +54,12 @@ func start_game(names: Array, seed_value: int = 0, rounds: int = 1) -> Dictionar
 		state.match.totals.append(0)
 	return {"ok": true, "error": ""}
 
-func start_tri_game(names: Array, hand_size: int = 6, seed_value: int = 0) -> Dictionary:
+func start_tri_game(names: Array, hand_size: int = 6, seed_value: int = 0, rounds: int = 1) -> Dictionary:
 	if names.size() < 2 or names.size() > 4:
 		return _fail("Le Tri accueille de 2 à 4 joueurs.")
 	if not hand_size in [6,12]:
 		return _fail("Choisissez 6 ou 12 cartes par joueur.")
-	start_game(names, seed_value, 1)
+	start_game(names, seed_value, rounds)
 	var cards: Array = state.deck + state.discard
 	for player in state.players:
 		cards.append_array(player.hand)
@@ -747,12 +747,16 @@ func next_round() -> Dictionary:
 	for player in state.players:
 		names.append(player.name)
 	var session: String = str(state.get("session_id",""))
+	var revision := int(state.get("revision",0))
+	var tri_size := int(state.get("tri_hand_size",0))
 	# Continue the saved random sequence, including after an app restart.
 	var deal_seed := maxi(1, int(_rng.randi()))
-	start_game(names,deal_seed,int(previous.length))
+	if tri_size > 0: start_tri_game(names,tri_size,deal_seed,int(previous.length))
+	else: start_game(names,deal_seed,int(previous.length))
 	previous.round = int(previous.round) + 1
 	state.match = previous
 	state.session_id = session
+	state.revision = revision + 1
 	for index in eliminated:
 		state.players[index].forfeited = true
 	state.turn = (int(previous.round)-1) % names.size()
@@ -888,7 +892,6 @@ func restore_game(saved: Variant) -> bool:
 	var match_data: Variant = candidate.get("match",{})
 	if not match_data is Dictionary or not match_data.get("totals") is Array or match_data.totals.size() != candidate.players.size() or not match_data.get("results") is Array:
 		return false
-	if tri and (match_data.get("length") != 1 or match_data.get("round") != 1): return false
 	if not _saved_integer(match_data.get("length"),1,5) or not int(match_data.length) in [1,3,5]: return false
 	if not _saved_integer(match_data.get("round"),1,int(match_data.length)): return false
 	var expected := int(match_data.round) - (1 if candidate.winner < 0 else 0)

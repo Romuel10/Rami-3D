@@ -2,6 +2,8 @@ extends SceneTree
 const Main = preload("res://main.tscn")
 const Codec = preload("res://scripts/voice_codec.gd")
 const Network = preload("res://scripts/network_manager.gd")
+const Profile = preload("res://scripts/player_profile.gd")
+const Store = preload("res://scripts/solo_store.gd")
 var checks := 0
 var failures := 0
 func _init() -> void: call_deferred("_run")
@@ -50,10 +52,19 @@ func _run() -> void:
 	root.add_child(app)
 	await process_frame
 	app.animations_enabled=false
+	app._show_profile(true)
+	check(app.province_input.item_count==7 and app.province_input.get_item_text(6)=="Toliara", "first launch offers the six provinces")
+	app.name_input.text="Alice"
+	app.province_input.select(1)
+	button(app.overlay,"Enregistrer le profil").pressed.emit()
+	check(app.player_province=="Antananarivo" and app.overlay.get_child_count()==0,"province and nickname persist before play")
 	app.saved_address="ws://192.168.1.2:7357"
 	app._open_friends()
 	check(fields(app.overlay)==1 and app.address_input==null and app.invitation_input==null,"friends screen only requests six-digit code")
-	check(button(app.overlay,"Même Wi-Fi")==null and button(app.overlay,"Changer de serveur")==null,"technical address tabs removed")
+	check(button(app.overlay,"Même Wi-Fi")!=null and button(app.overlay,"Changer de serveur")==null,"local play is available without an address field")
+	button(app.overlay,"Même Wi-Fi").pressed.emit()
+	check(app.friends_local and fields(app.overlay)==1 and app.address_input==null,"local play accepts the same six-digit code")
+	button(app.overlay,"En ligne").pressed.emit()
 	check(app.code_input.max_length==6 and app.code_input.virtual_keyboard_type==LineEdit.KEYBOARD_TYPE_NUMBER,"numeric six-digit keyboard")
 	check(app.room_count_select.item_count==3,"creator has 2/3/4 player choices")
 	await capture(app,"join")
@@ -100,6 +111,10 @@ func _run() -> void:
 	app.voice._status(true)
 	app.voice._receive(1,"test-stream",1,Marshalls.raw_to_base64(encoded))
 	check(app.voice.speakers.has(1),"received audio is decoded for a room member")
+	app.voice.set_speaker_muted(1,true)
+	app.voice._receive(1,"test-stream",2,Marshalls.raw_to_base64(encoded))
+	check(app.voice.listening and not app.voice.speakers.has(1),"per-player mute clears only that voice")
+	app.voice.set_speaker_muted(1,false)
 	app.voice.notification(Node.NOTIFICATION_APPLICATION_PAUSED)
 	app.voice._receive(1,"test-stream",2,Marshalls.raw_to_base64(encoded))
 	check(app.voice._receivers.is_empty() and not app.voice.transmitting,"background app cannot resume capture or received speech")
@@ -110,6 +125,64 @@ func _run() -> void:
 	check(not app.voice.transmitting and not app.voice.available,"disconnect stops all voice capture")
 	app._leave_to_menu()
 	check(not app.voice_panel.visible and app.game_mode=="menu","leaving hides voice controls")
+	Store.write_data(Store.STATS, {"rounds":1,"wins":1,"points":0,"seen":{"example:1":true}})
+	var exported := Profile.backup_text("Alice", "Antananarivo")
+	var parsed := Profile.parse_backup(exported)
+	check(not parsed.is_empty() and not parsed.solo.is_empty() and parsed.stats.wins == 1, "export includes verified solo and statistics")
+	check(Profile.parse_backup(exported.replace("Antananarivo", "Inconnue")).is_empty(), "invalid province in a backup is rejected")
+	app.saved_name = "Autre profil"
+	app.player_province = "Toliara"
+	app._save_preferences()
+	app._restore_backup(exported)
+	check(app.saved_name == "Alice" and app.player_province == "Antananarivo" and Store.statistics().wins == 1, "restore reinstates profile, game and statistics")
+	check(not FileAccess.file_exists(Profile.RESTORE) and Store.load_game().game.state.tri_hand_size == 12, "completed restore clears the journal and keeps the Tri save")
+
+	var guest := Network.new()
+	guest.session_path = "user://social-lan-guest.save"
+	root.add_child(guest)
+	app.friends_player_count = 2
+	app.friends_rounds = 3
+	app._show_friends(false)
+	button(app.overlay,"Créer un salon").pressed.emit()
+	check(app.game_mode == "lobby" and app.network._hosting_locally, "same Wi-Fi menu creates a local server")
+	check(guest.join_lan_room("Bob", app.network.room_code, "Mahajanga"), "guest searches by six-digit code")
+	# A loopback broadcast also works in a runner with no external route.
+	guest._discovery._socket.set_dest_address("127.255.255.255", guest._discovery.PORT)
+	var deadline := Time.get_ticks_msec() + 7000
+	while not guest.connected and Time.get_ticks_msec() < deadline: await create_timer(0.02).timeout
+	check(guest.connected and app.current_lobby.players.size() == 2, "UDP discovery and WebSocket join work on the LAN")
+	if guest.connected:
+		check(guest.get_lobby().players[0].province == "Antananarivo" and not app.voice_panel.visible, "local roster shows province and needs no internet voice service")
+		app.lobby_start.pressed.emit()
+		check(app.snapshot.match.length == 3, "local match starts with selected round count")
+		app._act({"type":"draw","source":"deck"})
+		var selected_card: Node3D = app.hand_cards[0]
+		selected_card.tapped.emit(selected_card)
+		app._drag_card = selected_card
+		var duplicate: Dictionary = app.snapshot.duplicate(true)
+		app._network_game_updated(duplicate)
+		check(app.selected == [selected_card.card_id] and app._drag_card == selected_card, "identical snapshots preserve selection and drag")
+		var paused: Dictionary = duplicate.duplicate(true)
+		paused.paused = true
+		paused.reconnect_remaining_ms = 57000
+		app._network_game_updated(paused)
+		check(app.selected == [selected_card.card_id] and app._drag_card == selected_card, "presence update preserves the hand while pausing commands")
+		app._network_game_updated(duplicate)
+		app.network.planned_reconnect = true
+		app._connection_changed(false)
+		check(app.overlay.get_child_count() == 0 and app.selected.size() == 1 and not app._my_turn(false), "scheduled reconnect keeps the table open and blocks moves")
+		app.network.planned_reconnect = false
+		app._network_game_updated(duplicate)
+		check(app._my_turn(false), "scheduled reconnect resumes the same playable hand")
+		var rules: RefCounted = app.network._engine
+		while rules.state.players[0].hand.size() > 1: rules.state.deck.append(rules.state.players[0].hand.pop_back())
+		app._act({"type":"discard", "card":rules.state.players[0].hand[0]})
+		check(button(app.overlay,"Manche suivante") != null and button(app.overlay,"Oui, rejouer") == null,"round result advances within the match")
+		button(app.overlay,"Manche suivante").pressed.emit()
+		check(app.snapshot.match.round == 2 and app.overlay.get_child_count() == 0, "next round starts with the same room")
+	guest.leave_room()
+	guest.queue_free()
+	app._leave_to_menu()
 	app.queue_free()
 	await create_timer(0.25).timeout
 

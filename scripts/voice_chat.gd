@@ -21,6 +21,8 @@ var _dc := 0.0
 var _sequence := 0
 var _next_send := 0
 var _receivers: Dictionary = {}
+var _speaker_ids: Array[String] = []
+var _muted: Dictionary = {}
 
 func setup(room: Node) -> void:
 	network = room
@@ -57,6 +59,18 @@ func stop_talk() -> void:
 func toggle_listening() -> void:
 	listening = not listening
 	_clear_receivers()
+	changed.emit()
+
+func speaker_muted(index: int) -> bool:
+	return index >= 0 and index < _speaker_ids.size() and _muted.has(_speaker_ids[index])
+
+func set_speaker_muted(index: int, value: bool) -> void:
+	if index < 0 or index >= _speaker_ids.size(): return
+	var id := _speaker_ids[index]
+	if value:
+		_muted[id] = true
+		_drop_receiver(index)
+	else: _muted.erase(id)
 	changed.emit()
 
 func _permission_result(permission: String, granted: bool) -> void:
@@ -120,7 +134,7 @@ func _process(_delta: float) -> void:
 	network.send_voice(_sequence,Marshalls.raw_to_base64(Codec.encode(frame)))
 
 func _receive(index: int, stream: String, sequence: int, encoded: String) -> void:
-	if not _foreground or not available or not listening or transmitting or sequence < 0 or stream.is_empty(): return
+	if not _foreground or not available or not listening or transmitting or sequence < 0 or stream.is_empty() or speaker_muted(index): return
 	if encoded.length() != 860: return
 	var samples := Codec.decode(Marshalls.base64_to_raw(encoded))
 	if samples.is_empty(): return
@@ -157,15 +171,26 @@ func _receive(index: int, stream: String, sequence: int, encoded: String) -> voi
 	changed.emit()
 
 func sync_players(players: Array) -> void:
+	var ids: Array[String] = []
+	for i in range(players.size()):
+		var id := str(players[i].get("seat_id", ""))
+		ids.append(id if not id.is_empty() else "%d:%s" % [i, players[i].get("name", "")])
 	for index in _receivers.keys():
-		if index >= players.size() or not players[index].get("connected",false) or players[index].get("departed",false):
-			_receivers[index].player.queue_free()
-			_receivers.erase(index)
-			speakers.erase(index)
+		if index >= ids.size() or index >= _speaker_ids.size() or ids[index] != _speaker_ids[index] or not players[index].get("connected",false) or players[index].get("departed",false):
+			_drop_receiver(index)
+	_speaker_ids = ids
+	for id in _muted.keys():
+		if not id in ids: _muted.erase(id)
+
+func _drop_receiver(index: int) -> void:
+	if _receivers.has(index):
+		_receivers[index].player.stop()
+		_receivers[index].player.queue_free()
+		_receivers.erase(index)
+	speakers.erase(index)
 
 func _clear_receivers() -> void:
-	for receiver in _receivers.values(): receiver.player.queue_free()
-	_receivers.clear()
+	for index in _receivers.keys(): _drop_receiver(index)
 	speakers.clear()
 
 func _notification(what: int) -> void:

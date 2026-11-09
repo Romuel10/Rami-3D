@@ -1,6 +1,12 @@
 # Rami Salon 3D
 
-Jeu Android de rami en français : une table et des cartes en 3D, un mode solo contre 1 à 3 ordinateurs, et des parties privées à 2–4 joueurs où chacun utilise son téléphone. Projet réalisé avec Godot 4.6.3, sans publicité, compte ni achat intégré.
+Jeu Android de rami en français avec une table en 3D, un mode solo contre 1 à 3 ordinateurs et des salons privés de 2 à 4 joueurs. Projet réalisé avec Godot 4.6.3.
+
+## Profils et tournois en ligne — version 0.12.0
+
+Au premier lancement, choisissez un pseudo et une province parmi les six de Madagascar. Le profil local apparaît dans le salon et dans le tableau du tournoi. **Options → Sauvegarder ou restaurer** permet de copier le profil, la partie solo et les statistiques, puis de les restaurer sur un autre appareil.
+
+Dans **Tournois**, créez une compétition privée de Rami ou de Tri. Les quatre joueurs entrent avec le même code. L’hôte lance les deux demi-finales, puis la finale. Le plus petit total gagne chaque duel, avec le nombre de manches remportées pour départager les ex æquo.
 
 ## Accueil et Tri entre amis — version 0.11.0
 
@@ -160,15 +166,15 @@ Depuis l’accueil, choisir **Exercice de rangement**. Touchez une carte, puis u
 
 Le serveur Supabase est déjà intégré à l’application. Pour le Tri à trois ou quatre, utilisez la version 0.11.0 ou suivante.
 
-1. Pour le Rami, choisir **Jouer avec des amis**. Pour le Tri, choisir **Jouer au Tri**, **6 ou 12 cartes**, puis **Tri avec des amis**. L’hôte choisit **2, 3 ou 4 joueurs**, puis **Créer un salon**.
+1. Pour le Rami, choisir **Jouer avec des amis**. Pour le Tri, choisir **Jouer au Tri**, **6 ou 12 cartes**, puis **Tri avec des amis**. Choisir **En ligne** pour jouer à distance ou **Même Wi-Fi** lorsque les téléphones partagent le réseau local. L’hôte choisit **2, 3 ou 4 joueurs**, **1, 3 ou 5 manches**, puis **Créer un salon**.
 2. L’hôte touche **Copier le code** et transmet les six chiffres à ses amis. Les zéros au début du code doivent être conservés.
-3. Les amis saisissent uniquement ce code dans **Rejoindre un salon**. L’hôte peut ajuster le nombre de joueurs avant le départ, sans retirer un joueur déjà présent.
-4. Quand le nombre choisi est atteint et tous les joueurs sont connectés, l’hôte touche **Commencer la partie**.
+3. Les amis choisissent le même mode et saisissent les six chiffres. Avant le départ, l’hôte peut ajuster le nombre de places et retirer un invité.
+4. Quand tous les joueurs sont présents, l’hôte touche **Commencer la partie**, puis **Manche suivante** entre les manches. Le plus petit total de points gagne le match.
 5. À la fin, chaque joueur choisit **Oui, rejouer** ou **Quitter le salon**. Une nouvelle partie commence lorsque tous les joueurs restants sont prêts. Si quelqu’un quitte, les autres restent dans le même salon pour attendre un remplaçant ou ajuster le nombre prévu.
 
-**Discussion vocale :** maintenez **Maintenir pour parler**, puis relâchez pour couper le micro. Android demande l’autorisation au premier usage ; après l’avoir accordée, maintenez de nouveau le bouton. Le micro reste coupé au départ, après une reconnexion et lorsque l’application passe en arrière-plan. Le bouton **Son des amis** permet de couper l’écoute. Pendant que vous parlez, l’écoute est suspendue pour limiter l’écho. La voix est transmise aux membres du salon et n’est pas enregistrée. Un casque améliore le confort d’écoute.
+En ligne, maintenez **Maintenir pour parler**, puis relâchez pour couper le micro. Après avoir accordé l’autorisation Android, maintenez de nouveau le bouton. **Voix par joueur** permet de choisir qui entendre. Le micro reste coupé au départ, après une reconnexion et lorsque l’application passe en arrière-plan.
 
-Le mode entre amis fonctionne sur Internet, même si tous les téléphones utilisent le même Wi-Fi. Le moteur Wi-Fi historique reste couvert par les tests internes ; son écran technique n’est plus présenté aux joueurs. [Détails du serveur Supabase](supabase/README.md).
+Le mode **Même Wi-Fi** fonctionne sans Internet. Gardez le téléphone qui héberge le salon dans le jeu. [Détails du serveur Supabase](supabase/README.md).
 
 ## Règles de cette version
 

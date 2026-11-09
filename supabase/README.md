@@ -24,9 +24,11 @@ Les connexions n’utilisent pas le contrôle JWT du point d’entrée : les jou
 
 Un bail Postgres de huit secondes sérialise les modifications d’un salon. Le jeton de verrou et le numéro de version empêchent un ancien worker d’écraser une sauvegarde récente. Sauvegarde et libération du verrou sont atomiques. Une perte réseau conserve la place 60 secondes ; un départ volontaire avant le démarrage la libère, pendant la partie il vaut abandon.
 
-Les Edge Functions ont une durée maximale. Le serveur ferme chaque socket au bout de 100 secondes ; le client reprend automatiquement sa place avec son jeton. Un arrêt imprévu du worker est détecté après expiration du bail de présence de 15 secondes, puis applique le délai de reconnexion. Il peut donc y avoir une brève pause lors d’une reprise. Aucun état de partie ne dépend de la mémoire du worker.
+Les Edge Functions ont une durée maximale. Le serveur renouvelle chaque connexion au bout de 100 secondes. Le client relance immédiatement une connexion planifiée et garde la main affichée pendant la reprise. Un arrêt imprévu du worker est détecté après expiration du bail de présence de 15 secondes, puis applique le délai de reconnexion.
 
-Les salons expirent après 24 heures sans action de jeu ; les lignes expirées sont purgées lors des créations suivantes. Le service dépend des quotas et de la disponibilité du projet Supabase.
+Le départ du dernier joueur libère le salon. Les salons expirent après 24 heures sans action de jeu et les lignes expirées sont purgées lors des créations suivantes.
+
+Un match peut compter une, trois ou cinq manches. Dans un tournoi, les quatre places restent stables et chaque duel possède sa propre session. Les joueurs en attente reçoivent le tableau et le résultat des duels. Les vues de jeu sont envoyées uniquement aux deux joueurs du duel courant.
 
 ## Redéployer
 

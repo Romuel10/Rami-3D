@@ -19,7 +19,8 @@ export class RedisRoomStore {
     const data = await this.redis.get(this.key(code));
     if(!data) return null;
     const room = JSON.parse(data);
-    if(room.started && !validateState(room.game)) throw new Error('Sauvegarde de partie invalide.');
+    const bye = room.game === null && Number.isInteger(room.tournament?.duels[room.tournament.stage]?.winner);
+    if(room.started && !bye && !validateState(room.game)) throw new Error('Sauvegarde de partie invalide.');
     return room;
   }
   async lock(code, operation) {

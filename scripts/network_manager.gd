@@ -7,6 +7,7 @@ signal lobby_updated(data: Dictionary)
 signal game_updated(view: Dictionary)
 signal notice(message: String)
 signal connection_changed(connected: bool)
+signal room_closed(message: String)
 signal voice_received(player: int, stream: String, sequence: int, data: String)
 signal voice_status(available: bool)
 
@@ -20,12 +21,18 @@ const SESSION_TTL_SECONDS := 86400
 const SESSION_FILE := "user://network-session.save"
 const LEAVE_FLUSH_MS := 250
 const EngineScript = preload("res://scripts/rami_engine.gd")
+const Profile = preload("res://scripts/player_profile.gd")
+const Discovery = preload("res://scripts/lan_discovery.gd")
 
 var tri_cards: int = 0
 var player_count: int = 0
+var rounds := 1
 var supports_rematch := false
+var supports_kick := false
+var planned_reconnect := false
 var voice_available := false
 var _session_id := ""
+var _round := 1
 var room_code: String = ""
 var local_player: int = -1
 var is_host: bool = false
@@ -49,6 +56,10 @@ var _engine: RefCounted
 var _client: WebSocketPeer
 var _client_url: String = ""
 var _client_name: String = ""
+var _province := ""
+var _tournament_name := ""
+var _discovery: RefCounted
+var _rotation_deadline := 0
 var _session_token: String = ""
 var _auth_sent: bool = false
 var _wants_connection: bool = false
@@ -60,9 +71,11 @@ var _known_lobby: Dictionary = {}
 func _ready() -> void:
 	set_process(true)
 
-func host_room(player_name: String, port: int = PORT, hand_size: int = 0) -> bool:
+func host_room(player_name: String, port: int = PORT, hand_size: int = 0, options: Dictionary = {}) -> bool:
 	leave_room()
 	tri_cards = hand_size if hand_size in [6,12] else 0
+	player_count = int(options.get("count", 0))
+	rounds = int(options.get("rounds", 1))
 	if port < 1024 or port > 65535:
 		notice.emit("Choisissez un port compris entre 1024 et 65535.")
 		return false
@@ -72,19 +85,27 @@ func host_room(player_name: String, port: int = PORT, hand_size: int = 0) -> boo
 		_server = null
 		notice.emit("Impossible d’ouvrir le salon. Le port est peut-être déjà utilisé.")
 		return false
+	room_code = "%06d" % randi_range(0, 999999)
+	if options.get("discover", false):
+		_discovery = Discovery.new()
+		if not _discovery.listen(room_code, port):
+			_reset_transport(false)
+			notice.emit("Impossible d’annoncer le salon sur le Wi-Fi.")
+			return false
+		supports_rematch = true
+		supports_kick = true
 	is_host = true
 	_hosting_locally = true
 	connected = true
 	local_player = 0
 	server_port = port
-	room_code = "%06d" % randi_range(0, 999999)
 	local_address = _lan_address()
-	_players = [{"name": _clean_name(player_name), "connected": true, "token": _new_token(), "forfeited": false, "disconnect_at": 0}]
+	_players = [_new_player(player_name, str(options.get("province", "")))]
 	connection_changed.emit(true)
 	_broadcast_lobby()
 	return true
 
-func join_room(address: String, player_name: String, code: String = "") -> bool:
+func join_room(address: String, player_name: String, code: String = "", province: String = "") -> bool:
 	leave_room()
 	var url := _normalise_address(address)
 	if url.is_empty():
@@ -96,14 +117,37 @@ func join_room(address: String, player_name: String, code: String = "") -> bool:
 	room_code = code
 	_client_url = url
 	_client_name = _clean_name(player_name)
+	_province = province
 	_wants_connection = true
 	local_address = address.strip_edges()
 	return _connect_client()
 
-func create_remote_room(address: String, player_name: String, hand_size: int = 0, count: int = 0) -> bool:
+func join_lan_room(player_name: String, code: String, province: String) -> bool:
+	leave_room()
+	_discovery = Discovery.new()
+	if not _discovery.search(code):
+		_stop_discovery()
+		notice.emit("Impossible de chercher le salon sur le Wi-Fi.")
+		return false
+	room_code = code
+	_client_name = _clean_name(player_name)
+	_province = province
+	return true
+
+func cancel_pending_join() -> void:
+	if not connected and (_wants_connection or _discovery != null): leave_room()
+
+func _stop_discovery() -> void:
+	if _discovery != null: _discovery.close()
+	_discovery = null
+
+func create_remote_room(address: String, player_name: String, hand_size: int = 0, count: int = 0, options: Dictionary = {}) -> bool:
 	leave_room()
 	tri_cards = hand_size if hand_size in [6,12] else 0
 	player_count = 2 if tri_cards > 0 and count == 0 else count
+	rounds = int(options.get("rounds", 1))
+	_tournament_name = str(options.get("tournament", ""))
+	_province = str(options.get("province", ""))
 	var url := _normalise_address(address)
 	if url.is_empty():
 		notice.emit("Le service en ligne est indisponible.")
@@ -130,6 +174,9 @@ func start_match() -> bool:
 	if _players.size() < 2:
 		notice.emit("Il faut au moins deux joueurs pour commencer.")
 		return false
+	if player_count > 0 and _players.size() != player_count:
+		notice.emit("Attendez les %d joueurs prévus." % player_count)
+		return false
 	if _has_missing_players():
 		notice.emit("Attendez que tous les joueurs soient reconnectés.")
 		return false
@@ -137,8 +184,8 @@ func start_match() -> bool:
 	var names: Array = []
 	for player: Dictionary in _players:
 		names.append(player.name)
-	if tri_cards > 0: _engine.start_tri_game(names, tri_cards)
-	else: _engine.start_game(names)
+	if tri_cards > 0: _engine.start_tri_game(names, tri_cards, 0, rounds)
+	else: _engine.start_game(names, 0, rounds)
 	match_started = true
 	_broadcast_lobby()
 	_broadcast_game()
@@ -148,16 +195,48 @@ func send_action(action: Dictionary) -> void:
 	if _hosting_locally:
 		_apply_action(0, action)
 	elif connected and _client != null and _client.get_ready_state() == WebSocketPeer.STATE_OPEN:
-		_send(_client, {"type": "action", "action": action, "session_id": _session_id})
+		_send(_client, {"type": "action", "action": action, "session_id": _session_id, "round": _round})
 	else:
 		notice.emit("La connexion au salon est interrompue.")
 
 func configure_players(count: int) -> void:
-	if connected and is_host and not match_started and _client != null:
-		_send(_client, {"type":"configure", "player_count":count})
+	if not connected or not is_host or match_started: return
+	if _hosting_locally:
+		if count in [2,3,4] and count >= _players.size():
+			player_count = count
+			_broadcast_lobby()
+	elif _client != null: _send(_client, {"type":"configure", "player_count":count})
+
+func remove_guest(seat_id: String) -> void:
+	if not connected or not is_host or match_started: return
+	if _hosting_locally:
+		for peer_id: int in _peers.keys():
+			var entry: Dictionary = _peers[peer_id]
+			if int(entry.player) > 0 and _players[int(entry.player)].seat_id == seat_id:
+				_reject(entry.peer, "L’hôte vous a retiré du salon.")
+				_remove_peer(peer_id, true)
+				return
+	elif _client != null: _send(_client, {"type":"kick", "seat_id":seat_id})
+
+func next_match_round(progress: Dictionary = {}) -> void:
+	if not connected or not is_host: return
+	if _hosting_locally:
+		for p in _players:
+			if not p.connected and not p.get("departed", false) and not p.forfeited:
+				notice.emit("Attendez la reconnexion des joueurs.")
+				return
+		_advance_local_round()
+	elif _client != null:
+		_send(_client, {"type":"next_round", "session_id":progress.get("session_id",_session_id), "round":int(progress.get("round",_round))})
+
+func advance_tournament(stage: int) -> void:
+	if connected and is_host and _client != null:
+		_send(_client, {"type":"advance_tournament", "stage":stage})
 
 func request_rematch() -> void:
-	if connected and supports_rematch and _match_finished and _client != null:
+	if _hosting_locally and supports_rematch and _engine != null:
+		_vote_local_rematch(0, str(_engine.state.session_id))
+	elif connected and supports_rematch and _match_finished and _client != null:
 		_send(_client, {"type":"rematch", "session_id":_session_id})
 	else:
 		notice.emit("Attendez la reconnexion au salon pour rejouer.")
@@ -194,15 +273,19 @@ func leave_room() -> void:
 	_leaving = true
 	_wants_connection = false
 	forget_session()
-	if _hosting_locally and match_started and _engine != null and int(_engine.state.get("winner", -1)) < 0:
+	if _hosting_locally and match_started and _engine != null and not _engine.match_result().finished:
 		# This telephone owns the Wi-Fi server. Closing it ends the table and
 		# declares the other active players winners before sockets are closed.
+		if int(_engine.state.winner) >= 0: _engine.next_round()
 		_engine.forfeit_player(0, "hote_abandon", true)
 		_players[0].forfeited = true
 		_broadcast_game()
 	elif _client != null and _client.get_ready_state() == WebSocketPeer.STATE_OPEN:
 		_send(_client, {"type": "leave"})
 		_client.poll()
+	if _hosting_locally and supports_rematch:
+		for entry: Dictionary in _peers.values():
+			_reject(entry.peer, "L’hôte a fermé le salon Wi-Fi.")
 	# Keep old sockets alive for a bounded flush. A new connection uses distinct
 	# objects, so completion of this drain cannot close a replacement room.
 	_drain_current()
@@ -304,7 +387,11 @@ func _clear_current(emit_change: bool) -> void:
 	match_started = false
 	tri_cards = 0
 	player_count = 0
+	rounds = 1
+	_round = 1
 	supports_rematch = false
+	supports_kick = false
+	planned_reconnect = false
 	_session_id = ""
 	_voice_disconnected()
 	_match_finished = false
@@ -313,6 +400,9 @@ func _clear_current(emit_change: bool) -> void:
 	_session_token = ""
 	_client_url = ""
 	_client_name = ""
+	_province = ""
+	_tournament_name = ""
+	_stop_discovery()
 	_auth_sent = false
 	_known_lobby.clear()
 	_last_action_at.clear()
@@ -365,6 +455,20 @@ func get_lobby() -> Dictionary:
 
 func _process(_delta: float) -> void:
 	_poll_draining()
+	if _discovery != null:
+		var result: Dictionary = _discovery.poll(not match_started)
+		if result.has("address"):
+			_stop_discovery()
+			if result.address.is_empty():
+				room_code = ""
+				notice.emit("Salon introuvable. Vérifiez le code et le réseau Wi-Fi.")
+			else:
+				_client_url = result.address
+				_wants_connection = true
+				_connect_client()
+	if planned_reconnect and Time.get_ticks_msec() >= _rotation_deadline:
+		planned_reconnect = false
+		connection_changed.emit(connected)
 	if _hosting_locally:
 		_poll_server()
 		_expire_disconnected()
@@ -435,9 +539,15 @@ func _server_message(peer_id: int, message: Dictionary) -> void:
 	if kind == "leave":
 		_remove_peer(peer_id, true)
 		return
+	if kind == "rematch" and supports_rematch:
+		_vote_local_rematch(int(entry.player), str(message.get("session_id", "")))
+		return
 	if kind == "action":
 		var action: Variant = message.get("action")
 		if not action is Dictionary:
+			return
+		if _engine != null and ((message.has("session_id") and str(message.session_id) != _engine.state.session_id) or (rounds > 1 and int(message.get("round", 0)) != int(_engine.state.match.round))):
+			_send(peer, {"type":"error", "message":"Cette action appartient à une autre manche."})
 			return
 		var now := Time.get_ticks_msec()
 		var previous: int = int(_last_action_at.get(peer_id, 0))
@@ -462,7 +572,7 @@ func _accept_join(peer_id: int, message: Dictionary) -> void:
 		if seat < 0:
 			_reject(peer, "La session a expiré. Rejoignez à nouveau le salon.")
 			return
-		if bool(_players[seat].get("forfeited", false)):
+		if bool(_players[seat].get("forfeited", false)) or bool(_players[seat].get("departed", false)):
 			if _engine != null:
 				_send(peer, {"type":"state", "data":_snapshot_for(seat)})
 			_reject(peer, "Cette place a perdu par abandon.")
@@ -474,16 +584,19 @@ func _accept_join(peer_id: int, message: Dictionary) -> void:
 		if match_started:
 			_reject(peer, "La partie a commencé. Seuls les joueurs de cette partie peuvent se reconnecter.")
 			return
-		if _players.size() >= (2 if tri_cards > 0 else MAX_PLAYERS):
-			_reject(peer, "Ce salon est complet (quatre joueurs maximum).")
+		if _players.size() >= (player_count if player_count > 0 else (2 if tri_cards > 0 else MAX_PLAYERS)):
+			_reject(peer, "Ce salon est complet.")
+			return
+		if rounds > 1 and message.get("series",false) != true:
+			_reject(peer, "Mettez le jeu à jour pour rejoindre ce salon.")
 			return
 		seat = _players.size()
-		_players.append({"name": _clean_name(str(message.get("name", "Joueur"))), "connected": true, "token": _new_token(), "forfeited": false, "disconnect_at": 0})
+		_players.append(_new_player(str(message.get("name", "Joueur")), str(message.get("province", ""))))
 	_players[seat].connected = true
 	_players[seat].disconnect_at = 0
 	entry.player = seat
 	_peers[peer_id] = entry
-	_send(peer, {"type": "welcome", "player": seat, "token": _players[seat].token, "code": room_code, "is_host": false})
+	_welcome_local(peer, seat)
 	_broadcast_lobby()
 	if match_started:
 		_broadcast_game()
@@ -491,6 +604,9 @@ func _accept_join(peer_id: int, message: Dictionary) -> void:
 func _reject(peer: WebSocketPeer, message: String) -> void:
 	_send(peer, {"type": "error", "message": message, "fatal": true})
 	# Keep the socket open long enough to deliver the error. The client closes it.
+
+func _welcome_local(peer: WebSocketPeer, seat: int) -> void:
+	_send(peer, {"type":"welcome", "player":seat, "token":_players[seat].token, "code":room_code, "is_host":false, "features":{"rematch":supports_rematch, "kick":supports_kick}})
 
 func _remove_peer(peer_id: int, voluntary: bool = false) -> void:
 	if not _peers.has(peer_id):
@@ -515,36 +631,77 @@ func _remove_peer(peer_id: int, voluntary: bool = false) -> void:
 				if int(other.player) > index:
 					other.player = int(other.player) - 1
 					var seat := int(other.player)
-					_send(other.peer, {"type":"welcome", "player":seat, "token":_players[seat].token, "code":room_code, "is_host":false})
+					_welcome_local(other.peer, seat)
 	_peers.erase(peer_id)
 	_last_action_at.erase(peer_id)
 	if voluntary:
 		var peer: WebSocketPeer = entry.peer
 		_draining.append({"sockets":[peer], "until":Time.get_ticks_msec()+LEAVE_FLUSH_MS})
+	if _restart_local_if_ready(): return
 	_broadcast_lobby()
 	if match_started:
 		_broadcast_game()
 
 func _forfeit_seat(index: int, reason: String) -> void:
-	if _engine == null or int(_engine.state.get("winner", -1)) >= 0 or bool(_players[index].get("forfeited", false)):
+	if _engine == null: return
+	_players[index].departed = true
+	_players[index].disconnect_at = 0
+	if bool(_players[index].forfeited) or _engine.match_result().finished: return
+	if int(_engine.state.winner) >= 0:
+		if _players.filter(func(p): return not p.get("departed",false) and not p.forfeited).size() == 1:
+			_advance_local_round()
 		return
 	var result: Dictionary = _engine.forfeit_player(index, reason)
 	if result.get("ok", false):
 		_players[index].forfeited = true
-		_players[index].disconnect_at = 0
 		notice.emit("%s a perdu par abandon." % _players[index].name)
 
+func _advance_local_round() -> void:
+	if _engine == null: return
+	var result: Dictionary = _engine.next_round()
+	if not result.ok:
+		notice.emit(result.error)
+		return
+	for i in range(1,_players.size()):
+		if _players[i].get("departed",false): _forfeit_seat(i, "abandon")
+	_broadcast_lobby()
+	_broadcast_game()
+
+func _vote_local_rematch(index: int, session: String) -> void:
+	if _engine == null or not _engine.match_result().finished or session != _engine.state.session_id: return
+	_players[index].rematch_ready = true
+	if not _restart_local_if_ready(): _broadcast_lobby()
+
+func _restart_local_if_ready() -> bool:
+	if not supports_rematch or _engine == null or not _engine.match_result().finished: return false
+	var remaining: Array = _players.filter(func(p): return not p.get("departed",false) and not p.forfeited)
+	if remaining.is_empty() or not remaining.all(func(p): return p.get("rematch_ready",false)): return false
+	for entry: Dictionary in _peers.values():
+		var old := int(entry.player)
+		if old > 0:
+			entry.player = remaining.find(_players[old])
+			if entry.player > 0 and entry.player != old:
+				_send(entry.peer, {"type":"welcome", "player":entry.player, "token":_players[old].token, "code":room_code, "features":{"rematch":true,"kick":true}})
+	_players = remaining
+	for p in _players: p.rematch_ready = false
+	_engine = null
+	match_started = false
+	if _players.size() >= 2 and (player_count == 0 or _players.size() == player_count) and not _has_missing_players(): start_match()
+	else: _broadcast_lobby()
+	return true
+
 func _expire_disconnected() -> void:
-	if not match_started or _engine == null or int(_engine.state.get("winner", -1)) >= 0:
+	if not match_started or _engine == null:
 		return
 	var changed := false
 	var now := Time.get_ticks_msec()
 	for index in range(1, _players.size()):
 		var player: Dictionary = _players[index]
-		if not bool(player.connected) and not bool(player.get("forfeited", false)) and int(player.get("disconnect_at", 0)) > 0 and now >= int(player.disconnect_at):
+		if not bool(player.connected) and not player.get("departed",false) and int(player.get("disconnect_at", 0)) > 0 and now >= int(player.disconnect_at):
 			_forfeit_seat(index, "déconnexion")
 			changed = true
 	if changed:
+		if _restart_local_if_ready(): return
 		_broadcast_lobby()
 		_broadcast_game()
 
@@ -564,13 +721,14 @@ func _apply_action(player: int, action: Dictionary, reply_peer: WebSocketPeer = 
 		else:
 			notice.emit(error)
 		return
+	if int(_engine.state.winner) >= 0: _broadcast_lobby()
 	_broadcast_game()
 
 func _broadcast_lobby() -> void:
 	var players: Array = []
 	for player: Dictionary in _players:
-		players.append({"name": player.name, "connected": player.connected, "forfeited": player.get("forfeited", false)})
-	var lobby := {"code": room_code, "players": players, "address": local_address, "port": server_port, "started": match_started, "tri_cards": tri_cards, "host": true, "your_index": 0}
+		players.append({"name":player.name, "province":player.province, "seat_id":player.seat_id, "connected":player.connected, "forfeited":player.forfeited, "departed":player.get("departed",false), "rematch_ready":player.get("rematch_ready",false)})
+	var lobby := {"code":room_code, "players":players, "address":local_address, "port":server_port, "started":match_started, "tri_cards":tri_cards, "player_count":player_count, "rounds":rounds, "local":true, "host":true, "your_index":0}
 	_known_lobby = lobby
 	lobby_updated.emit(lobby)
 	for entry: Dictionary in _peers.values():
@@ -592,13 +750,14 @@ func _broadcast_game() -> void:
 
 func _snapshot_for(index: int) -> Dictionary:
 	var snapshot: Dictionary = _engine.view_for(index)
+	for i in range(_players.size()): snapshot.players[i].province = _players[i].province
 	snapshot["paused"] = _has_missing_players()
 	snapshot["your_index"] = index
 	snapshot["online"] = true
 	var remaining := 0
 	if snapshot["paused"]:
 		for player: Dictionary in _players:
-			if not bool(player.connected) and not bool(player.get("forfeited", false)):
+			if not bool(player.connected) and not bool(player.get("forfeited", false)) and not bool(player.get("departed", false)):
 				var until := maxi(0, int(player.get("disconnect_at", 0)) - Time.get_ticks_msec())
 				remaining = until if remaining == 0 else mini(remaining, until)
 	snapshot["reconnect_remaining_ms"] = remaining
@@ -608,7 +767,7 @@ func _has_missing_players() -> bool:
 	if _engine != null and int(_engine.state.get("winner", -1)) >= 0:
 		return false
 	for player: Dictionary in _players:
-		if not bool(player.connected) and not bool(player.get("forfeited", false)):
+		if not bool(player.connected) and not bool(player.get("forfeited", false)) and not bool(player.get("departed", false)):
 			return true
 	return false
 
@@ -636,9 +795,9 @@ func _poll_client() -> void:
 	if state == WebSocketPeer.STATE_OPEN:
 		if not _auth_sent:
 			if _client_mode == "create":
-				_send(_client, {"type": "create", "name": _client_name, "tri_cards":tri_cards, "player_count":player_count})
+				_send(_client, {"type":"create", "name":_client_name, "province":_province, "tri_cards":tri_cards, "player_count":player_count, "rounds":rounds, "tournament":not _tournament_name.is_empty(), "tournament_name":_tournament_name})
 			else:
-				_send(_client, {"type": "join", "name": _client_name, "code": room_code, "token": _session_token})
+				_send(_client, {"type":"join", "name":_client_name, "province":_province, "code":room_code, "token":_session_token, "series":true})
 			_auth_sent = true
 		while _client != null and _client.get_available_packet_count() > 0:
 			var packet := _client.get_packet()
@@ -648,17 +807,21 @@ func _poll_client() -> void:
 			if value is Dictionary:
 				_client_message(value)
 	elif state == WebSocketPeer.STATE_CLOSED:
+		var rotation := _client.get_close_code() == 1012 and not _session_token.is_empty()
 		_client = null
 		_voice_disconnected()
+		if rotation and not planned_reconnect:
+			planned_reconnect = true
+			_rotation_deadline = Time.get_ticks_msec() + 4500
 		if connected and (not _match_finished or supports_rematch):
 			connected = false
 			connection_changed.emit(false)
-			notice.emit("Connexion interrompue. Reconnexion en cours…")
+			if not planned_reconnect: notice.emit("Connexion interrompue. Reconnexion en cours…")
 		if _match_finished and not supports_rematch:
 			connected = false
 			_wants_connection = false
 		else:
-			_retry_at = Time.get_ticks_msec() + RECONNECT_DELAY_MS
+			_retry_at = Time.get_ticks_msec() + (0 if rotation else RECONNECT_DELAY_MS)
 	_last_client_state = state
 
 func _client_message(message: Dictionary) -> void:
@@ -671,6 +834,7 @@ func _client_message(message: Dictionary) -> void:
 			is_host = bool(message.get("is_host", false))
 			var features: Dictionary = message.get("features", {})
 			supports_rematch = bool(features.get("rematch", false))
+			supports_kick = bool(features.get("kick", false))
 			_client_mode = "join"
 			connected = true
 			# Welcome authenticates a seat, not a new match. Preserve a completed
@@ -686,12 +850,14 @@ func _client_message(message: Dictionary) -> void:
 					return
 				tri_cards = int(data.get("tri_cards",0))
 				player_count = int(data.get("player_count",0))
+				rounds = int(data.get("rounds",1))
 				_known_lobby = data
 				is_host = bool(data.get("host", is_host))
 				match_started = bool(data.get("started", false))
-				if not match_started:
+				if not match_started or data.get("playing",true) == false:
 					_match_finished = false
 					_session_id = ""
+					planned_reconnect = false
 				local_player = int(data.get("your_index", local_player))
 				_persist_session()
 				lobby_updated.emit(data)
@@ -700,9 +866,12 @@ func _client_message(message: Dictionary) -> void:
 			if data is Dictionary:
 				match_started = true
 				_session_id = str(data.get("session_id", ""))
+				_round = int(data.get("match",{}).get("round",1))
+				planned_reconnect = false
 				var summaries: Array = data.get("players", [])
-				var own_forfeit: bool = local_player >= 0 and local_player < summaries.size() and bool(summaries[local_player].get("forfeited", false))
-				_match_finished = int(data.get("winner", -1)) >= 0 or own_forfeit
+				var seat := int(data.get("your_index",local_player))
+				var own_forfeit: bool = seat >= 0 and seat < summaries.size() and bool(summaries[seat].get("forfeited", false))
+				_match_finished = bool(data.get("match_result",{}).get("finished",int(data.get("winner",-1)) >= 0)) or own_forfeit
 				if _match_finished and (not supports_rematch or own_forfeit):
 					forget_session()
 				else:
@@ -725,8 +894,8 @@ func _client_message(message: Dictionary) -> void:
 				if _client != null:
 					_client.close(1000, "Connexion refusée")
 				connected = false
-				if not _match_finished:
-					connection_changed.emit(false)
+				planned_reconnect = false
+				room_closed.emit(str(message.get("message", "Connexion refusée.")))
 
 func _send(peer: WebSocketPeer, message: Dictionary) -> void:
 	if peer != null and peer.get_ready_state() == WebSocketPeer.STATE_OPEN:
@@ -734,6 +903,9 @@ func _send(peer: WebSocketPeer, message: Dictionary) -> void:
 
 func _new_token() -> String:
 	return Crypto.new().generate_random_bytes(24).hex_encode()
+
+func _new_player(player_name: String, province: String) -> Dictionary:
+	return {"name":_clean_name(player_name), "province":province if province in Profile.PROVINCES else "", "seat_id":Crypto.new().generate_random_bytes(8).hex_encode(), "connected":true, "token":_new_token(), "forfeited":false, "disconnect_at":0}
 
 func _clean_name(value: String) -> String:
 	var name_text := value.strip_edges().left(20)

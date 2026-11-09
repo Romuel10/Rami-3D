@@ -18,6 +18,7 @@ func _run() -> void:
 		_original_preferences = FileAccess.get_file_as_bytes("user://preferences.cfg")
 	var baseline := ConfigFile.new()
 	baseline.set_value("player", "name", "Test Nouveautés")
+	baseline.set_value("player", "province", "Toliara")
 	baseline.set_value("help", "beginner", true)
 	baseline.set_value("music", "settings", {"enabled": true, "volume": 0.28, "track_index": 0})
 	_check(baseline.save("user://preferences.cfg") == OK, "test preferences available")

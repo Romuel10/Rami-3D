@@ -30,6 +30,7 @@ static func save_game(engine: RefCounted, difficulty: int, order: Array) -> bool
 static func load_game() -> Dictionary:
 	for path in [SAVE, SAVE + ".bak"]:
 		var data := read_data(path)
+		if data.get("version",0) == 1 and data.get("empty",false) == true: return {}
 		if data.get("version",0) == 1 and Rules.new().restore_game(data.get("game",{})):
 			return data
 	return {}

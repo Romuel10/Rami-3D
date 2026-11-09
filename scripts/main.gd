@@ -16,6 +16,7 @@ const Practice = preload("res://scripts/tutorial_practice.gd")
 const SoloStore = preload("res://scripts/solo_store.gd")
 const SoundEffects = preload("res://scripts/sound_effects.gd")
 const Invitation = preload("res://scripts/invitation.gd")
+const Profile = preload("res://scripts/player_profile.gd")
 const HAND_SCALE := 2.15
 const DECK_POSITION := Vector3(-0.8, 0.28, -0.8)
 const INK = Color("f2eee4")
@@ -34,6 +35,7 @@ var game_mode := "menu"
 var sort_suit := true
 var busy := false
 var player_name := "Vous"
+var player_province := ""
 var tri_grouping_enabled := false
 var economy_mode := false
 var _tri_boundaries: Array = []
@@ -43,11 +45,16 @@ var _heading_font: FontVariation
 var tri_choice := 6
 var friends_tri_cards := 0
 var friends_player_count := 2
+var friends_rounds := 1
+var friends_local := false
+var tournament_name_input: LineEdit
+var province_input: OptionButton
 var room_count_select: OptionButton
 var voice: Node
 var voice_panel: PanelContainer
 var mic_button: Button
 var listen_button: Button
+var speakers_button: Button
 var voice_label: Label
 var rematch_button: Button
 var rematch_status: Label
@@ -119,6 +126,7 @@ var action_buttons_base: Array = []
 func _ready() -> void:
 	get_viewport().physics_object_picking = true
 	Input.emulate_touch_from_mouse = false
+	var restored := Profile.finish_restore()
 	_load_preferences()
 	_make_world()
 	_make_interface()
@@ -141,6 +149,7 @@ func _ready() -> void:
 	network.game_updated.connect(_network_game_updated)
 	network.notice.connect(_toast)
 	network.connection_changed.connect(_connection_changed)
+	network.room_closed.connect(_room_closed)
 	voice = VoiceChat.new()
 	add_child(voice)
 	voice.setup(network)
@@ -151,6 +160,9 @@ func _ready() -> void:
 	# Reproducible visual checks can start an offline table without network access.
 	if "--demo" in OS.get_cmdline_user_args():
 		_start_solo()
+	elif player_province.is_empty():
+		_show_profile(true)
+	if not restored: _toast("Restauration en attente. Libérez de l’espace puis relancez le jeu.")
 
 func _process(delta: float) -> void:
 	if toast_time > 0:
@@ -169,6 +181,10 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_RESUMED and OS.has_feature("android") and fullscreen_enabled:
 		_set_fullscreen(true, false)
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		if overlay_kind == "profile_setup": return
+		if overlay_kind == "room_setup":
+			_cancel_room_setup()
+			return
 		if overlay and overlay.get_child_count() > 0:
 			_close_overlay()
 		elif game_mode != "menu":
@@ -420,6 +436,7 @@ func _show_menu() -> void:
 	game_mode = "menu"
 	snapshot = {}
 	_clear_content()
+	header_status.text = "%s · %s" % [saved_name, player_province] if not player_province.is_empty() else ""
 	var gradient := Gradient.new()
 	gradient.offsets = PackedFloat32Array([0.0, 0.30, 0.53, 0.79, 1.0])
 	gradient.colors = PackedColorArray([Color("101813"), Color(0.06,0.095,0.075,0.98), Color(0.06,0.095,0.075,0.65), Color(0.05,0.07,0.05,0.08), Color(0.05,0.07,0.05,0.13)])
@@ -432,6 +449,9 @@ func _show_menu() -> void:
 	backdrop.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_place(backdrop, content, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ONE)
+	if not player_province.is_empty():
+		var profile_button := _command_button("%s · %s" % [saved_name, player_province], _show_profile, content)
+		_place(profile_button, content, Vector2(-400,70), Vector2(-68,120), Vector2(1,0), Vector2(1,0))
 
 	var brand := VBoxContainer.new()
 	brand.add_theme_constant_override("separation", -8)
@@ -459,6 +479,7 @@ func _show_menu() -> void:
 	tri.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	tri.custom_minimum_size.y = 60
 	tri.add_theme_font_size_override("font_size", 20)
+	_command_button("Tournois", _show_tournaments, choices).alignment = HORIZONTAL_ALIGNMENT_LEFT
 	if not SoloStore.load_game().is_empty():
 		_command_button("Reprendre ma partie solo", _resume_solo, choices).alignment = HORIZONTAL_ALIGNMENT_LEFT
 	if network.has_saved_session():
@@ -494,29 +515,89 @@ func _show_menu() -> void:
 func _show_options() -> void:
 	var box := _modal("Options", "")
 	if game_mode == "menu":
-		_label("Votre prénom", 16, MUTED, box)
-		name_input = _field("Votre prénom", saved_name, box)
-		name_input.max_length = 18
-		name_input.text_changed.connect(func(_value: String): _save_profile())
+		_button("Profil du joueur", _show_profile, box)
+		_button("Sauvegarder ou restaurer", _show_backup, box)
 	if game_mode in ["menu", "solo"]:
 		_button("Options du solo", _show_solo_settings, box)
+	if game_mode == "online" and current_lobby.get("tournament") is Dictionary:
+		_button("Tableau du tournoi", _show_bracket, box)
 	_button("Affichage et confort", _show_comfort_settings, box)
 	music_button = _button("Musique" if music.enabled else "Musique coupée", _show_music_settings, box)
 	fullscreen_button = _button("Fenêtre" if fullscreen_enabled else "Plein écran", _toggle_fullscreen, box)
 	_button("Fermer", _close_overlay, box, true)
 
+func _show_profile(first_launch: bool = false) -> void:
+	var box := _modal("Votre profil", "Choisissez un pseudo et votre province.")
+	if first_launch: overlay_kind = "profile_setup"
+	_label("Pseudo", 16, MUTED, box)
+	name_input = _field("Votre pseudo", saved_name if saved_name != "Vous" or not first_launch else "", box)
+	name_input.max_length = 20
+	_label("Province", 16, MUTED, box)
+	province_input = OptionButton.new()
+	province_input.custom_minimum_size.y = 54
+	province_input.add_item("Choisir une province")
+	province_input.set_item_disabled(0, true)
+	for province in Profile.PROVINCES: province_input.add_item(province)
+	province_input.select(Profile.PROVINCES.find(player_province) + 1)
+	box.add_child(province_input)
+	_button("Enregistrer le profil", _save_profile, box, true)
+	if first_launch: _button("Restaurer ma sauvegarde", _show_backup.bind(true), box)
+	else: _button("Retour", _show_options, box)
+
 func _save_profile() -> void:
-	if is_instance_valid(name_input):
-		player_name = name_input.text.strip_edges().left(18)
-	if player_name.is_empty():
-		player_name = "Vous"
-	saved_name = player_name
-	_save_preferences()
+	var name_text := Profile.clean_name(name_input.text)
+	if name_text.is_empty() or province_input.selected < 1:
+		_toast("Indiquez un pseudo et choisissez une province.")
+		return
+	var previous := [saved_name, player_province]
+	saved_name = name_text
+	player_province = Profile.PROVINCES[province_input.selected - 1]
+	if not _save_preferences():
+		saved_name = previous[0]
+		player_province = previous[1]
+		_toast("Le profil n’a pas pu être enregistré.")
+		return
+	player_name = saved_name
+	_close_overlay()
+	_show_menu()
+
+func _show_backup(first_launch: bool = false) -> void:
+	var box := _modal("Sauvegarde", "Votre profil, votre partie solo et vos statistiques.")
+	if first_launch: overlay_kind = "profile_setup"
+	if not player_province.is_empty():
+		_button("Copier ma sauvegarde", func():
+			var text := Profile.backup_text(saved_name, player_province)
+			if text.length() <= Profile.BACKUP_LIMIT:
+				DisplayServer.clipboard_set(text)
+				_toast("Sauvegarde copiée. Collez-la dans un fichier que vous garderez.")
+			else: _toast("La sauvegarde est trop volumineuse pour être copiée."), box)
+	_long_text("La restauration remplace les données de jeu de cet appareil.", box)
+	var backup := TextEdit.new()
+	backup.custom_minimum_size.y = 120
+	backup.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+	backup.placeholder_text = "Collez ici le texte de votre sauvegarde"
+	box.add_child(backup)
+	_button("Coller", func(): backup.text = DisplayServer.clipboard_get().left(Profile.BACKUP_LIMIT + 1), box)
+	_button("Restaurer cette sauvegarde", func(): _restore_backup(backup.text), box, true)
+	_button("Retour", _show_profile.bind(true) if first_launch else _show_options, box)
+
+func _restore_backup(text: String) -> void:
+	var data := Profile.parse_backup(text)
+	if data.is_empty():
+		_toast("Sauvegarde invalide. Collez le texte complet exporté par Rami.")
+		return
+	if not SoloStore.write_data(Profile.RESTORE, data) or not Profile.finish_restore():
+		_toast("Restauration en attente. Libérez de l’espace puis relancez le jeu.")
+		return
+	_load_preferences()
+	_close_overlay()
+	_show_menu()
+	_toast("Votre sauvegarde a été restaurée.")
 
 func _start_solo(tri_size: int = 0) -> void:
 	turn_token += 1
 	busy = false
-	_save_profile()
+	player_name = saved_name
 	network.leave_room()
 	_close_overlay()
 	engine = EngineRules.new()
@@ -632,38 +713,26 @@ func _render_snapshot() -> void:
 		panel.add_child(column)
 		var p: Dictionary = players[i]
 		var name_text := "Vous" if i == own else str(p.get("name", "Joueur"))
-		panel.tooltip_text = str(p.get("name", "Joueur"))
+		panel.tooltip_text = _profile_label(p)
 		var name_label := _label(name_text, 15, GOLD if i == turn else INK, column)
 		name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		var count := int(p.get("count", p.get("hand_count", 13)))
 		var detail := "Forfait" if p.get("forfeited", false) else "%d cartes" % count
 		if p.get("opened", false) and not p.get("forfeited", false): detail += " · ouvert"
+		if not str(p.get("province", "")).is_empty(): detail += " · " + str(p.province)
 		var detail_label := _label(detail, 12, MUTED, column)
+		detail_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	if _is_tri(): header_status.text = "Tri · %d cartes · %d tris à former" % [int(snapshot.tri_hand_size),int(snapshot.tri_goal)]
-	var phase: String = snapshot.get("phase", "draw")
-	var can_act: bool = turn == own and not snapshot.get("paused", false) and int(snapshot.get("winner", -1)) < 0 and own < players.size() and not players[own].get("forfeited",false)
-	for button in draw_buttons:
-		button.disabled = not can_act or phase != "draw"
-	if not draw_buttons.is_empty():
-		draw_buttons[0].text = "Piocher · " + str(snapshot.get("deck_count", 0))
-		var discard: Variant = snapshot.get("discard_top", "")
-		draw_buttons[1].disabled = draw_buttons[1].disabled or discard == null or discard == ""
-	for button in play_buttons:
-		if is_instance_valid(button): button.disabled = not can_act or phase != "play"
-	if int(snapshot.get("winner",-1)) >= 0:
-		game_status.text = str(_winner_result().title)
-	elif own < players.size() and players[own].get("forfeited",false):
-		game_status.text = "Vous avez abandonné cette partie."
-	elif snapshot.get("paused", false):
-		game_status.text = "Reconnexion en cours…"
-	elif turn == own:
-		game_status.text = "À vous de piocher" if phase == "draw" else ("À vous de défausser" if _is_tri() else "À vous de jouer")
-		if beginner_enabled and not _is_tri():
-			game_status.text = "1. Piochez une carte" if phase == "draw" else "2. Posez ou défaussez"
-	else:
-		game_status.text = str(players[turn].get("name", "L’adversaire")) + " joue…" if turn < players.size() else "En attente…"
+	if game_mode == "online":
+		var scores: Dictionary = snapshot.get("match", {})
+		var tournament: Variant = current_lobby.get("tournament")
+		if tournament is Dictionary and int(tournament.stage) in [0,1,2]:
+			header_status.text = ["Demi-finale 1", "Demi-finale 2", "Finale"][int(tournament.stage)]
+		elif not _is_tri(): header_status.text = "Salon · " + network.room_code
+		if int(scores.get("length", 1)) > 1: header_status.text += " · Manche %d/%d" % [int(scores.round),int(scores.length)]
+	_update_turn_controls()
 	var hand: Array = snapshot.get("hand", []).duplicate()
 	if hand_order.is_empty():
 		hand.sort_custom(func(a, b): return _sort_key(str(a)) < _sort_key(str(b)))
@@ -733,6 +802,33 @@ func _render_snapshot() -> void:
 		_show_winner()
 	elif overlay_kind == "coach":
 		_show_coach()
+
+func _update_turn_controls() -> void:
+	if not is_instance_valid(game_status) or snapshot.is_empty(): return
+	var own := int(snapshot.get("your_index", 0))
+	var turn := int(snapshot.get("turn", 0))
+	var players: Array = snapshot.get("players", [])
+	var phase := str(snapshot.get("phase", "draw"))
+	var paused: bool = bool(snapshot.get("paused", false)) or (game_mode == "online" and network.planned_reconnect)
+	var won := int(snapshot.get("winner", -1)) >= 0
+	var abandoned := own >= 0 and own < players.size() and bool(players[own].get("forfeited", false))
+	var can_act := own >= 0 and own < players.size() and turn == own and not paused and not won and not abandoned
+	for button in draw_buttons:
+		button.disabled = not can_act or phase != "draw"
+	if not draw_buttons.is_empty():
+		draw_buttons[0].text = "Piocher · " + str(snapshot.get("deck_count", 0))
+		var discard: Variant = snapshot.get("discard_top", "")
+		draw_buttons[1].disabled = draw_buttons[1].disabled or discard == null or discard == ""
+	for button in play_buttons:
+		if is_instance_valid(button): button.disabled = not can_act or phase != "play"
+	if won: game_status.text = str(_winner_result().title)
+	elif abandoned: game_status.text = "Vous avez abandonné cette partie."
+	elif paused: game_status.text = "Reconnexion au salon…"
+	elif turn == own:
+		game_status.text = "À vous de piocher" if phase == "draw" else ("À vous de défausser" if _is_tri() else "À vous de jouer")
+		if beginner_enabled and not _is_tri():
+			game_status.text = "1. Piochez une carte" if phase == "draw" else "2. Posez ou défaussez"
+	else: game_status.text = str(players[turn].get("name", "L’adversaire")) + " joue…" if turn >= 0 and turn < players.size() else "En attente…"
 
 func _view_card(id: String, face: bool, parent: Node3D, key: String, zone: String) -> Node3D:
 	var card: Node3D
@@ -835,7 +931,7 @@ func _my_turn(show_error: bool = true) -> bool:
 	if own < players.size() and players[own].get("forfeited",false):
 		if show_error: _toast("Vous avez abandonné et ne pouvez plus jouer dans ce match.")
 		return false
-	if snapshot.get("paused", false):
+	if snapshot.get("paused", false) or (game_mode == "online" and network.planned_reconnect):
 		if show_error: _toast("Un joueur doit se reconnecter pour continuer.")
 		return false
 	if int(snapshot.get("turn", -1)) != int(snapshot.get("your_index", 0)):
@@ -993,7 +1089,9 @@ func _winner_result() -> Dictionary:
 		else:
 			title = "Match remporté !" if own in winners else "Match terminé"
 			body = "Vous gagnez le match au total des points." if own in winners else ", ".join(names) + " gagne le match au total des points."
-	if _is_tri() and finished and not forfeit:
+	if authoritative.get("tie_break",false):
+		body = "Vous gagnez le duel au nombre de manches remportées." if own in winners else ", ".join(names) + " gagne le duel au nombre de manches remportées."
+	if _is_tri() and finished and not forfeit and int(scores.get("length",1)) == 1:
 		title = "Tri : victoire !" if own in winners else "Tri : partie terminée"
 		body = ("Vous remportez la partie" if own in winners else ", ".join(names) + " remporte la partie") + " avec %d tris, après la défausse." % int(snapshot.get("tri_goal",2))
 	return {"title":title,"body":body,"winners":winners,"finished":finished,"forfeit":forfeit,"round_winner":round_winner}
@@ -1023,7 +1121,7 @@ func _show_winner() -> void:
 			for id in group:
 				labels.append(CardText.short_label(str(id)))
 			_long_text("  ·  ".join(labels),box)
-	if not scores.is_empty() and not _is_tri():
+	if not scores.is_empty() and (not _is_tri() or int(scores.get("length",1)) > 1):
 		_label("Manche %d / %d · le plus petit total gagne" % [int(scores.get("round",1)),int(scores.get("length",1))],17,INK,box)
 		var ranking: Array = []
 		for index in range(players.size()):
@@ -1043,39 +1141,78 @@ func _show_winner() -> void:
 		if result.finished:
 			_label("Une autre partie ?",22,INK,box)
 			_button("Rejouer",func(): _start_solo(int(snapshot.get("tri_hand_size",0))),box,true)
-	elif game_mode == "online" and network.supports_rematch:
-		_label("On rejoue ?",22,INK,box)
-		rematch_status = _label("",17,MUTED,box)
-		rematch_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		rematch_button = _button("Oui, rejouer",_request_rematch,box,true)
-		_update_rematch_controls()
-	_button("Quitter le salon" if game_mode == "online" else "Retour à l’accueil",_leave_to_menu,box)
+	elif game_mode == "online":
+		if not result.finished:
+			if network.is_host: _button("Manche suivante", network.next_match_round, box, true)
+			else: _label("L’hôte lancera la manche suivante.", 17, MUTED, box)
+		elif current_lobby.get("tournament") is Dictionary: _add_bracket(box)
+		elif network.supports_rematch:
+			_label("On rejoue ?",22,INK,box)
+			rematch_status = _label("",17,MUTED,box)
+			rematch_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			rematch_button = _button("Oui, rejouer",_request_rematch,box,true)
+			_update_rematch_controls()
+	var leave := _confirm_leave if game_mode == "online" and (not result.finished or current_lobby.get("tournament") is Dictionary) else _leave_to_menu
+	_button("Quitter le salon" if game_mode == "online" else "Retour à l’accueil",leave,box)
 
 func _open_friends() -> void:
 	friends_tri_cards = 0
-	_save_profile()
-	_show_friends(false)
+	friends_local = false
+	_show_friends()
 
-func _show_friends(_internet: bool = true) -> void:
-	online_tab = true
+func _show_friends(internet: bool = true) -> void:
+	friends_local = not internet
+	online_tab = internet
 	address_input = null
 	invitation_input = null
-	var box := _modal("Tri entre amis" if friends_tri_cards > 0 else "Rami entre amis", "Créez un salon ou rejoignez vos amis avec leur code.")
-	_label("Créer un salon",22,INK,box)
+	var description := "Connectez les appareils au même Wi-Fi. Ce salon fonctionne sans Internet." if friends_local else "Retrouvez vos amis à distance avec un code à 6 chiffres."
+	var box := _modal("Tri entre amis" if friends_tri_cards > 0 else "Rami entre amis", description)
+	overlay_kind = "room_setup"
+	var modes := HBoxContainer.new()
+	modes.add_theme_constant_override("separation", 10)
+	box.add_child(modes)
+	_command_button("En ligne", _show_friends.bind(true), modes, not friends_local).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_command_button("Même Wi-Fi", _show_friends.bind(false), modes, friends_local).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var columns := HBoxContainer.new()
+	columns.add_theme_constant_override("separation", 20)
+	box.add_child(columns)
+	var create := VBoxContainer.new()
+	create.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	create.add_theme_constant_override("separation", 8)
+	columns.add_child(create)
+	_label("Créer un salon",22,INK,create)
 	if friends_tri_cards > 0:
-		_label("%d cartes par joueur" % friends_tri_cards,17,MUTED,box)
-	_label("Nombre de joueurs",16,MUTED,box)
-	room_count_select = _player_count_picker(box,friends_player_count)
+		_label("%d cartes par joueur" % friends_tri_cards,17,MUTED,create)
+	room_count_select = _player_count_picker(create,friends_player_count)
 	room_count_select.item_selected.connect(func(index: int): friends_player_count = index+2)
-	_button("Créer un salon", _create_room, box, true)
-	box.add_child(HSeparator.new())
-	_label("Rejoindre un salon",22,INK,box)
-	code_input = _field("Code à 6 chiffres", "", box)
+	_round_picker(create)
+	_button("Créer un salon", _create_room, create, true)
+	var join := VBoxContainer.new()
+	join.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	join.add_theme_constant_override("separation", 8)
+	columns.add_child(join)
+	_label("Rejoindre un salon",22,INK,join)
+	_room_code_field(join)
+	_button("Rejoindre le salon", _join_room, join)
+	_button("Retour", _cancel_room_setup, box)
+
+func _cancel_room_setup() -> void:
+	network.cancel_pending_join()
+	_close_overlay()
+
+func _room_code_field(parent: Node) -> void:
+	code_input = _field("Code à 6 chiffres", "", parent)
 	code_input.max_length = 6
 	code_input.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
 	code_input.text_submitted.connect(func(_value: String): _join_room())
-	_button("Rejoindre le salon", _join_room, box)
-	_button("Retour", _close_overlay, box)
+
+func _round_picker(parent: Node) -> void:
+	var picker := OptionButton.new()
+	picker.custom_minimum_size.y = 54
+	for count in [1,3,5]: picker.add_item("1 manche" if count == 1 else "%d manches" % count, count)
+	picker.select(picker.get_item_index(friends_rounds))
+	picker.item_selected.connect(func(index: int): friends_rounds = picker.get_item_id(index))
+	parent.add_child(picker)
 
 func _player_count_picker(parent: Node, count: int) -> OptionButton:
 	var picker := OptionButton.new()
@@ -1086,12 +1223,18 @@ func _player_count_picker(parent: Node, count: int) -> OptionButton:
 	return picker
 
 func _create_room() -> void:
+	if friends_local:
+		network.host_room(saved_name, NetworkRoom.PORT, friends_tri_cards, {"count":friends_player_count, "rounds":friends_rounds, "province":player_province, "discover":true})
+		return
+	_create_online(friends_tri_cards, friends_player_count)
+
+func _create_online(tri_size: int, count: int, tournament: String = "") -> void:
 	var address := ServerProfile.configured_url()
 	if address.is_empty():
 		_toast("Le service en ligne est indisponible dans cette version.")
 		return
-	network.create_remote_room(address, player_name, friends_tri_cards, friends_player_count)
-	_toast("Création du salon…")
+	if network.create_remote_room(address, saved_name, tri_size, count, {"rounds":friends_rounds, "province":player_province, "tournament":tournament}):
+		_toast("Création du salon…")
 
 func _join_room() -> void:
 	var code := code_input.text.strip_edges()
@@ -1101,32 +1244,65 @@ func _join_room() -> void:
 	if not digits_only:
 		_toast("Entrez le code à 6 chiffres de votre ami.")
 		return
+	if friends_local:
+		if network.join_lan_room(saved_name, code, player_province): _toast("Recherche du salon sur le Wi-Fi…")
+		return
 	var address := ServerProfile.configured_url()
 	if address.is_empty():
 		_toast("Le service en ligne est indisponible dans cette version.")
 		return
-	network.join_room(address, player_name, code)
-	_toast("Connexion au salon…")
+	if network.join_room(address, saved_name, code, player_province): _toast("Connexion au salon…")
+
+func _show_tournaments() -> void:
+	friends_local = false
+	var box := _modal("Tournois", "Quatre joueurs, deux demi-finales et une finale.")
+	overlay_kind = "room_setup"
+	_label("Organiser un tournoi", 22, INK, box)
+	tournament_name_input = _field("Nom du tournoi", "Tournoi entre amis", box)
+	tournament_name_input.max_length = 36
+	var choices := HBoxContainer.new()
+	choices.add_theme_constant_override("separation", 10)
+	box.add_child(choices)
+	var format := OptionButton.new()
+	format.custom_minimum_size.y = 54
+	format.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	format.add_item("Rami", 0)
+	format.add_item("Tri · 6 cartes", 6)
+	format.add_item("Tri · 12 cartes", 12)
+	choices.add_child(format)
+	_round_picker(choices)
+	_button("Créer le tournoi", func():
+		var title := tournament_name_input.text.strip_edges()
+		_create_online(format.get_selected_id(), 4, title if not title.is_empty() else "Tournoi entre amis"), box, true)
+	box.add_child(HSeparator.new())
+	_label("Rejoindre un tournoi", 22, INK, box)
+	_room_code_field(box)
+	_button("Rejoindre avec un code", _join_room, box)
+	_button("Retour", _cancel_room_setup, box)
 
 func _lobby_updated(data: Dictionary) -> void:
 	var unchanged: bool = current_lobby == data
+	var host_changed := bool(current_lobby.get("host",false)) != bool(data.get("host",false))
 	current_lobby = data.duplicate(true)
 	friends_tri_cards = int(data.get("tri_cards",0))
 	if voice != null: voice.sync_players(data.get("players",[]))
 	_update_voice_controls()
-	if game_mode == "online" and not snapshot.is_empty() and data.get("started",false):
+	if game_mode == "online" and not snapshot.is_empty() and data.get("started",false) and data.get("playing",true):
+		if host_changed and overlay_kind == "winner":
+			_winner_key = ""
+			_show_winner()
 		_update_rematch_controls()
 		return
 	# Presence heartbeats must not recreate an open player-count picker.
-	if unchanged and game_mode == "lobby": return
+	if unchanged and game_mode == "lobby" and overlay_kind != "connection": return
 	if game_mode != "lobby":
 		toast_label.hide()
 		toast_time = 0.0
-	snapshot.clear()
+	snapshot = {}
 	game_mode = "lobby"
 	_close_overlay()
 	_clear_content()
-	header_status.text = "Salon · " + str(data.get("code", network.room_code))
+	header_status.text = ("Salon Wi-Fi" if data.get("local",false) else "Salon") + " · " + str(data.get("code", network.room_code))
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _style(Color("222e26"), Color("657461"), 16, 26))
 	_place(panel, content, Vector2(-330,125), Vector2(330,-35), Vector2(0.5,0), Vector2(0.5,1))
@@ -1137,34 +1313,104 @@ func _lobby_updated(data: Dictionary) -> void:
 	lobby_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	lobby_box.add_theme_constant_override("separation", 12)
 	scroll.add_child(lobby_box)
-	_label("Votre salon", 30, INK, lobby_box)
-	_label("Partagez ce code avec vos amis", 16, MUTED, lobby_box)
-	var code := _label(str(data.get("code", network.room_code)), 52, GOLD, lobby_box)
-	code.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_button("Copier le code", _copy_invitation, lobby_box)
 	var players: Array = data.get("players", [])
+	var tournament: Variant = data.get("tournament")
+	var started := bool(data.get("started", false))
+	var title := _label(str(tournament.name) if tournament is Dictionary else ("Salon Wi-Fi" if data.get("local",false) else "Votre salon"), 30, INK, lobby_box)
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	if not started:
+		var invitation := HBoxContainer.new()
+		invitation.add_theme_constant_override("separation", 14)
+		lobby_box.add_child(invitation)
+		_label(str(data.get("code", network.room_code)), 40, GOLD, invitation).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_command_button("Copier le code", _copy_invitation, invitation)
+	var variant := "Tri · %d cartes" % friends_tri_cards if friends_tri_cards > 0 else "Rami"
+	var count := int(data.get("rounds",1))
+	_label("%s · %d manche%s" % [variant, count, "s" if count > 1 else ""], 16, MUTED, lobby_box)
+	if started and tournament is Dictionary:
+		_add_bracket(lobby_box)
+		_button("Quitter le tournoi", _confirm_leave, lobby_box)
+		_update_voice_controls()
+		return
 	var target := int(data.get("player_count",0))
 	if target == 0: target = maxi(2, players.size())
 	_label("%d / %d joueurs" % [players.size(),target],20,GOLD,lobby_box)
 	for i in range(players.size()):
 		var p: Dictionary = players[i]
-		_label(("●  " if p.get("connected",true) else "○  ") + str(p.get("name","Joueur")) + (" · vous" if i == network.local_player else ""), 21, INK, lobby_box)
-	if network.is_host:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		lobby_box.add_child(row)
+		var name_label := _label(("●  " if p.get("connected",true) else "○  ") + _profile_label(p) + (" · vous" if i == network.local_player else ""), 18, INK, row)
+		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		if network.is_host and network.supports_kick and i != network.local_player and not str(p.get("seat_id","")).is_empty():
+			_command_button("Retirer", network.remove_guest.bind(str(p.seat_id)), row)
+	if network.is_host and not tournament is Dictionary:
 		room_count_select = _player_count_picker(lobby_box,maxi(2,target))
 		for i in range(3): room_count_select.set_item_disabled(i,i+2 < players.size())
 		room_count_select.item_selected.connect(func(index: int): network.configure_players(index+2))
-	if friends_tri_cards > 0: _label("Tri · %d cartes par joueur" % friends_tri_cards,16,MUTED,lobby_box)
 	var all_connected := true
 	for player in players:
 		if not player.get("connected",false): all_connected = false
 	if players.size() < target: _label("En attente de %d joueur(s)…" % (target-players.size()),17,MUTED,lobby_box)
 	if network.is_host:
-		lobby_start = _button("Commencer la partie", func(): network.start_match(), lobby_box, true)
+		lobby_start = _button("Lancer le tournoi" if tournament is Dictionary else "Commencer la partie", func(): network.start_match(), lobby_box, true)
 		lobby_start.disabled = players.size() < 2 or players.size() != target or not all_connected
 	else:
 		_label("L’hôte lancera la partie.", 18, GOLD, lobby_box)
 	_button("Quitter le salon", _leave_to_menu, lobby_box)
 	_update_voice_controls()
+
+func _profile_label(player: Dictionary) -> String:
+	var province := str(player.get("province", ""))
+	return str(player.get("name", "Joueur")) + (" · " + province if not province.is_empty() else "")
+
+func _entrant_label(index: Variant) -> String:
+	var players: Array = current_lobby.get("players", [])
+	if index == null or int(index) < 0 or int(index) >= players.size(): return "À déterminer"
+	return _profile_label(players[int(index)])
+
+func _show_bracket() -> void:
+	var box := _modal("Tableau du tournoi", str(current_lobby.tournament.name))
+	_add_bracket(box)
+	_button("Revenir à la table", func():
+		_close_overlay()
+		if int(snapshot.get("winner",-1)) >= 0: _show_winner(), box)
+
+func _add_bracket(box: VBoxContainer) -> void:
+	var tournament: Dictionary = current_lobby.tournament
+	var stage := int(tournament.stage)
+	var labels := ["Demi-finale 1", "Demi-finale 2", "Finale"]
+	for i in range(tournament.duels.size()):
+		var duel: Dictionary = tournament.duels[i]
+		var active_duel := i == stage and duel.winner == null
+		var panel := PanelContainer.new()
+		panel.add_theme_stylebox_override("panel", _style(DEEP, GOLD if active_duel else Color("465346"), 8, 10))
+		box.add_child(panel)
+		var card := VBoxContainer.new()
+		card.add_theme_constant_override("separation", 4)
+		panel.add_child(card)
+		var title: String = labels[i]
+		if active_duel: title += " · en cours"
+		_label(title, 16, GOLD, card)
+		var seats: Array = duel.seats
+		if i == 2 and seats.size() < 2: seats = [tournament.duels[0].winner, tournament.duels[1].winner]
+		if seats.size() == 2:
+			_long_text(_entrant_label(seats[0]) + "   —   " + _entrant_label(seats[1]), card)
+		if duel.winner != null:
+			_long_text("Vainqueur · " + _entrant_label(duel.winner) if int(duel.winner) >= 0 else "Duel clos par abandon.", card)
+	if tournament.champion != null:
+		var champion := _label("Champion · " + _entrant_label(tournament.champion) if int(tournament.champion) >= 0 else "Tournoi clos", 21, GOLD, box)
+		champion.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	elif stage >= 0 and tournament.duels[stage].winner != null:
+		if network.is_host:
+			_button("Lancer la finale" if stage == 1 else "Lancer la deuxième demi-finale", network.advance_tournament.bind(stage), box, true)
+		else: _label("Le prochain duel sera lancé par l’hôte.", 17, MUTED, box)
+	elif not current_lobby.get("playing",false):
+		var progress: Variant = current_lobby.get("progress")
+		if progress is Dictionary and progress.round_finished and not progress.finished and network.is_host:
+			_button("Manche suivante", network.next_match_round.bind(progress), box, true)
 
 func _request_rematch() -> void:
 	network.request_rematch()
@@ -1191,7 +1437,19 @@ func _network_game_updated(data: Dictionary) -> void:
 	if network.local_player < 0: return
 	if overlay_kind == "connection" or game_mode != "online":
 		_close_overlay()
-	var entering: bool = game_mode != "online" or snapshot.get("session_id","") != data.get("session_id","")
+	var entering: bool = game_mode != "online" or snapshot.get("session_id","") != data.get("session_id","") or snapshot.get("match",{}).get("round",1) != data.get("match",{}).get("round",1)
+	var updated := data.duplicate(true)
+	updated["your_index"] = int(updated.get("your_index", network.local_player))
+	if not entering:
+		var old_table := snapshot.duplicate()
+		var new_table := updated.duplicate()
+		for key in ["paused", "reconnect_remaining_ms"]:
+			old_table.erase(key)
+			new_table.erase(key)
+		if old_table == new_table:
+			snapshot = updated
+			_update_turn_controls()
+			return
 	if entering:
 		_close_overlay()
 		_winner_key = ""
@@ -1199,26 +1457,38 @@ func _network_game_updated(data: Dictionary) -> void:
 		selected.clear()
 		hand_order.clear()
 		busy = false
-	snapshot = data
+	snapshot = updated
 	if entering:
 		game_mode = "online"
 		_show_game()
-	snapshot["your_index"] = network.local_player
 	_render_snapshot()
 
 func _connection_changed(connected: bool) -> void:
 	_update_voice_controls()
 	_update_rematch_controls()
+	if network.planned_reconnect:
+		_update_turn_controls()
+		return
 	if not connected and game_mode == "online" and int(snapshot.get("winner",-1)) >= 0:
 		return
 	if not connected and (game_mode == "lobby" or game_mode == "online"):
 		if not snapshot.is_empty():
 			snapshot["paused"] = true
-			_render_snapshot()
+			_update_turn_controls()
 		var box := _modal("Connexion interrompue", "La partie vous laisse 60 secondes pour vous reconnecter. Passé ce délai, votre absence vaut abandon. Revenir à l’accueil maintenant compte aussi comme un abandon.")
 		overlay_kind = "connection"
 		_button("Se reconnecter", func(): _close_overlay(); network.reconnect(), box, true)
 		_button("Abandonner la partie", _abandon_to_menu, box)
+
+func _room_closed(message: String) -> void:
+	_update_voice_controls()
+	_update_rematch_controls()
+	if game_mode == "online" and int(snapshot.get("winner", -1)) >= 0:
+		if is_instance_valid(rematch_status): rematch_status.text = "Le salon est fermé."
+		return
+	if game_mode in ["lobby", "online"]:
+		var box := _modal("Salon fermé", message)
+		_button("Retour à l’accueil", _leave_to_menu, box, true)
 
 func _modal(title: String, subtitle: String) -> VBoxContainer:
 	_cancel_drag()
@@ -1331,7 +1601,7 @@ func _show_coach() -> void:
 	_button("Lire les règles", _show_rules, box)
 
 func _start_sorting() -> void:
-	_save_profile()
+	player_name = saved_name
 	turn_token += 1
 	busy = false
 	game_mode = "sorting"
@@ -1464,7 +1734,15 @@ func _confirm_leave() -> void:
 		_button("Continuer",_close_overlay,exercise,true)
 		_button("Retour à l’accueil",_leave_to_menu,exercise)
 		return
-	if int(snapshot.get("winner",-1)) >= 0:
+	if game_mode == "lobby" or current_lobby.get("tournament") is Dictionary and game_mode == "online":
+		var tournament := current_lobby.get("tournament") is Dictionary
+		var subtitle := "Votre place sera libérée."
+		if tournament and current_lobby.get("started",false) and not current_lobby.get("finished",false): subtitle = "Quitter retire votre place dans les duels à venir."
+		var box := _modal("Quitter le tournoi ?" if tournament else "Quitter le salon ?", subtitle)
+		_button("Rester", _close_overlay, box, true)
+		_button("Quitter", _leave_to_menu, box)
+		return
+	if int(snapshot.get("winner",-1)) >= 0 and _winner_result().finished:
 		_leave_to_menu()
 		return
 	var message := "Abandonner termine le match : vous perdez et votre adversaire gagne."
@@ -1492,6 +1770,8 @@ func _abandon_to_menu() -> void:
 func _leave_to_menu() -> void:
 	_autosave()
 	game_mode = "menu"
+	current_lobby = {}
+	voice.sync_players([])
 	network.leave_room()
 	_close_overlay()
 	_show_menu()
@@ -1505,8 +1785,10 @@ func _toast(message: String) -> void:
 
 func _load_preferences() -> void:
 	var cfg := ConfigFile.new()
-	if cfg.load("user://preferences.cfg") == OK:
+	if cfg.load(Profile.PREFERENCES) == OK:
 		saved_name = str(cfg.get_value("player", "name", "Vous"))
+		var province := str(cfg.get_value("player", "province", ""))
+		player_province = province if province in Profile.PROVINCES else ""
 		saved_address = str(cfg.get_value("network", "server", ""))
 		difficulty = clampi(int(cfg.get_value("solo","difficulty",1)),0,2)
 		bot_count = clampi(int(cfg.get_value("solo","opponents",1)),1,3)
@@ -1525,9 +1807,10 @@ func _load_preferences() -> void:
 			music_settings = saved_music
 	player_name = saved_name
 
-func _save_preferences() -> void:
+func _save_preferences() -> bool:
 	var cfg := ConfigFile.new()
 	cfg.set_value("player", "name", saved_name)
+	cfg.set_value("player", "province", player_province)
 	cfg.set_value("network", "server", saved_address)
 	cfg.set_value("help", "beginner", beginner_enabled)
 	cfg.set_value("music", "settings", music_settings)
@@ -1541,7 +1824,7 @@ func _save_preferences() -> void:
 	cfg.set_value("comfort","left_handed",left_handed)
 	cfg.set_value("comfort","economy",economy_mode)
 	cfg.set_value("comfort","tri_groups",tri_grouping_enabled)
-	cfg.save("user://preferences.cfg")
+	return Profile.save_preferences(cfg)
 
 func _autosave() -> void:
 	if game_mode == "solo" and engine != null and not engine.state.is_empty():
@@ -1908,7 +2191,7 @@ func _is_tri() -> bool:
 	return game_mode == "online" and snapshot.get("variant","rami") == "tri"
 
 func _show_tri_setup() -> void:
-	_save_profile()
+	friends_local = false
 	var box := _modal("Tri", "Choisissez le nombre de cartes et votre mode de jeu.")
 	var choice := OptionButton.new()
 	choice.add_item("6 cartes · objectif 2 tris",6)
@@ -1980,12 +2263,30 @@ func _make_voice_controls() -> void:
 	mic_button.mouse_exited.connect(func(): voice.stop_talk())
 	listen_button = _command_button("Son des amis : activé",func(): voice.toggle_listening(),box)
 	listen_button.add_theme_font_size_override("font_size",14)
+	speakers_button = _command_button("Voix par joueur", _show_voice_settings, box)
+	speakers_button.add_theme_font_size_override("font_size",14)
 	_update_voice_controls()
+
+func _show_voice_settings() -> void:
+	var box := _modal("Voix des joueurs", "Choisissez qui vous voulez entendre.")
+	var players: Array = current_lobby.get("players", [])
+	for i in range(players.size()):
+		if i == network.local_player or players[i].get("departed",false): continue
+		var toggle := CheckButton.new()
+		toggle.text = _profile_label(players[i])
+		toggle.custom_minimum_size.y = 48
+		toggle.button_pressed = not voice.speaker_muted(i)
+		toggle.toggled.connect(func(value: bool): voice.set_speaker_muted(i, not value))
+		box.add_child(toggle)
+	_button("Revenir au salon" if game_mode == "lobby" else "Revenir à la table", func():
+		_close_overlay()
+		if int(snapshot.get("winner",-1)) >= 0: _show_winner(), box, true)
 
 func _update_voice_controls() -> void:
 	if not is_instance_valid(voice_panel) or network == null or voice == null: return
-	voice_panel.visible = not network.room_code.is_empty() and game_mode in ["lobby","online"]
+	voice_panel.visible = not network.room_code.is_empty() and game_mode in ["lobby","online"] and not current_lobby.get("local",false)
 	mic_button.disabled = not voice.available or not network.connected
+	speakers_button.disabled = current_lobby.get("players",[]).size() < 2
 	listen_button.text = "Son des amis : activé" if voice.listening else "Son des amis : coupé"
 	mic_button.text = "Vous parlez…" if voice.transmitting else "Maintenir pour parler"
 	if not voice.available: voice_label.text = "Vocal indisponible" if network.connected else "Vocal déconnecté"

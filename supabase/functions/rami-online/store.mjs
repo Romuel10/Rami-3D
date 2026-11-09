@@ -24,7 +24,8 @@ export class SupabaseRoomStore {
     return response.json();
   }
   validate(room) {
-    if (room?.started && !validateState(room.game)) throw new Error('Sauvegarde de partie invalide.');
+    const bye = room?.game === null && Number.isInteger(room.tournament?.duels[room.tournament.stage]?.winner);
+    if (room?.started && !bye && !validateState(room.game)) throw new Error('Sauvegarde de partie invalide.');
     return room;
   }
   async ready() { await this.rpc('read', { p_code: '000000' }); }
