@@ -286,6 +286,8 @@ async function finishRummyTurn(app, client, code, seat) {
   });
   const game = room.game;
   await client.until('state', m => m.data.session_id === game.session_id && m.data.revision === game.revision);
+  // The controlled finish can happen faster than two real turns on CI.
+  await delay(55);
   client.send({ type: 'action', session_id: game.session_id, round: game.match.round, action: { type: 'discard', card: game.players[seat].hand[0] } });
   return (await client.until('state', m => m.data.session_id === game.session_id && m.data.revision === game.revision + 1)).data;
 }
