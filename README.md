@@ -2,6 +2,12 @@
 
 Jeu Android de rami en français avec une table en 3D, un mode solo contre 1 à 3 ordinateurs et des salons privés de 2 à 4 joueurs. Projet réalisé avec Godot 4.6.3.
 
+## Carte de Madagascar et animations — version 0.13.0
+
+Le profil propose une carte tactile des six provinces et des boutons avec leurs noms. Les contours sont simplifiés à partir des régions Natural Earth 1:10m, regroupées par province. [Données Natural Earth](https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-1-states-provinces/)
+
+**Voir l’intro** joue un éventail de six cartes animé dans l’atelier 3D de Higgsfield. Les éclats de pioche et de défausse ainsi que l’animation de victoire suivent les réglages d’animations et d’économie de batterie du jeu.
+
 ## Profils et tournois en ligne — version 0.12.0
 
 Au premier lancement, choisissez un pseudo et une province parmi les six de Madagascar. Le profil local apparaît dans le salon et dans le tableau du tournoi. **Options → Sauvegarder ou restaurer** permet de copier le profil, la partie solo et les statistiques, puis de les restaurer sur un autre appareil.

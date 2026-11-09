@@ -17,6 +17,9 @@ const SoloStore = preload("res://scripts/solo_store.gd")
 const SoundEffects = preload("res://scripts/sound_effects.gd")
 const Invitation = preload("res://scripts/invitation.gd")
 const Profile = preload("res://scripts/player_profile.gd")
+const ProvinceMap = preload("res://scripts/province_map.gd")
+const CardFlourish = preload("res://scripts/card_flourish.gd")
+const SalonIntro = preload("res://scripts/salon_intro.gd")
 const HAND_SCALE := 2.15
 const DECK_POSITION := Vector3(-0.8, 0.28, -0.8)
 const INK = Color("f2eee4")
@@ -48,7 +51,7 @@ var friends_player_count := 2
 var friends_rounds := 1
 var friends_local := false
 var tournament_name_input: LineEdit
-var province_input: OptionButton
+var province_map: ProvinceMap
 var room_count_select: OptionButton
 var voice: Node
 var voice_panel: PanelContainer
@@ -496,6 +499,16 @@ func _show_menu() -> void:
 	_command_button("Options", _show_options, footer).custom_minimum_size.y = 46
 	_command_button("Règles du jeu", _show_rules, footer).custom_minimum_size.y = 46
 	_command_button("Crédits", _show_credits, footer).custom_minimum_size.y = 46
+	var intro := _command_button("Voir l’intro", _show_intro, content)
+	_place(intro, content, Vector2(-230,-90), Vector2(-68,-42), Vector2.ONE, Vector2.ONE)
+	var motion := animations_enabled and not economy_mode
+	if motion:
+		brand.modulate.a = 0.0
+		brand.create_tween().tween_property(brand, "modulate:a", 1.0, 0.32)
+		for index in range(choices.get_child_count()):
+			var choice := choices.get_child(index) as Button
+			choice.modulate.a = 0.0
+			choice.create_tween().tween_property(choice, "modulate:a", 1.0, 0.22).set_delay(index * 0.035)
 
 	for i in range(4):
 		var back = _card("0:S:1", false, Vector3(3.8+i*0.024,0.16+i*0.035,-1.65))
@@ -508,9 +521,26 @@ func _show_menu() -> void:
 		card.rotation_degrees.y = (2-i)*10.0
 		card.scale = Vector3.ONE * 2.50
 		var target: Transform3D = card.transform
-		if animations_enabled:
-			card.position += Vector3(0.2,0.4,-0.6)
-		card.move_to(target, 0.42 if animations_enabled else 0.0, i*0.045, 0.12)
+		if motion:
+			card.position = Vector3(3.62 + i*0.03, 0.29 + i*0.032, 0.93)
+			card.rotation_degrees.y = -15.0
+		card.move_to(target, 0.52 if motion else 0.0, i*0.065 if motion else 0.0, 0.24)
+
+func _show_intro() -> void:
+	var box := _modal("Entrée au salon", "", 1030.0)
+	overlay_kind = "intro"
+	var frame := AspectRatioContainer.new()
+	frame.ratio = 16.0 / 9.0
+	frame.custom_minimum_size.y = 540
+	box.add_child(frame)
+	var intro := SalonIntro.new()
+	intro.name = "IntroDuSalon"
+	frame.add_child(intro)
+	var buttons := HBoxContainer.new()
+	buttons.add_theme_constant_override("separation", 12)
+	box.add_child(buttons)
+	_command_button("Revoir", intro.replay, buttons).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_command_button("Retour à l’accueil", _close_overlay, buttons, true).size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 func _show_options() -> void:
 	var box := _modal("Options", "")
@@ -527,31 +557,62 @@ func _show_options() -> void:
 	_button("Fermer", _close_overlay, box, true)
 
 func _show_profile(first_launch: bool = false) -> void:
-	var box := _modal("Votre profil", "Choisissez un pseudo et votre province.")
+	var box := _modal("Votre profil", "Touchez votre province sur la carte, puis enregistrez votre pseudo.", 1090.0)
 	if first_launch: overlay_kind = "profile_setup"
-	_label("Pseudo", 16, MUTED, box)
-	name_input = _field("Votre pseudo", saved_name if saved_name != "Vous" or not first_launch else "", box)
+	var columns := HBoxContainer.new()
+	columns.add_theme_constant_override("separation", 24)
+	box.add_child(columns)
+	var atlas_frame := PanelContainer.new()
+	atlas_frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	atlas_frame.add_theme_stylebox_override("panel", _style(DEEP, Color("657461"), 8, 2))
+	columns.add_child(atlas_frame)
+	province_map = ProvinceMap.new()
+	province_map.custom_minimum_size = Vector2(470, 490)
+	province_map.animate = animations_enabled and not economy_mode
+	atlas_frame.add_child(province_map)
+	var form := VBoxContainer.new()
+	form.custom_minimum_size.x = 350
+	form.add_theme_constant_override("separation", 7)
+	columns.add_child(form)
+	_label("Pseudo", 16, MUTED, form)
+	name_input = _field("Votre pseudo", saved_name if saved_name != "Vous" or not first_launch else "", form)
 	name_input.max_length = 20
-	_label("Province", 16, MUTED, box)
-	province_input = OptionButton.new()
-	province_input.custom_minimum_size.y = 54
-	province_input.add_item("Choisir une province")
-	province_input.set_item_disabled(0, true)
-	for province in Profile.PROVINCES: province_input.add_item(province)
-	province_input.select(Profile.PROVINCES.find(player_province) + 1)
-	box.add_child(province_input)
-	_button("Enregistrer le profil", _save_profile, box, true)
-	if first_launch: _button("Restaurer ma sauvegarde", _show_backup.bind(true), box)
-	else: _button("Retour", _show_options, box)
+	_label("Province", 16, MUTED, form)
+	var shortcuts: Dictionary = {}
+	var group := ButtonGroup.new()
+	for index in range(Profile.PROVINCES.size()):
+		var province: String = Profile.PROVINCES[index]
+		var button := _command_button("%d   %s" % [index + 1, province], province_map.choose.bind(province), form)
+		button.custom_minimum_size.y = 40
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.toggle_mode = true
+		button.button_group = group
+		var accent: Color = ProvinceMap.COLORS[index]
+		var normal := _style(Color("293930"), accent, 5, 12)
+		normal.content_margin_top = 6
+		normal.content_margin_bottom = 6
+		normal.border_width_left = 4
+		button.add_theme_stylebox_override("normal", normal)
+		button.add_theme_stylebox_override("pressed", _style(Color("494936"), GOLD, 5, 10))
+		shortcuts[province] = button
+	var save := _command_button("Enregistrer le profil", _save_profile, form, true)
+	save.disabled = true
+	province_map.province_chosen.connect(func(chosen: String):
+		for province in shortcuts: shortcuts[province].set_pressed_no_signal(province == chosen)
+		save.disabled = false
+		if name_input.has_focus(): name_input.release_focus())
+	province_map.choose(player_province, false)
+	if first_launch: _command_button("Restaurer ma sauvegarde", _show_backup.bind(true), form)
+	else: _command_button("Retour", _show_options, form)
 
 func _save_profile() -> void:
 	var name_text := Profile.clean_name(name_input.text)
-	if name_text.is_empty() or province_input.selected < 1:
+	if name_text.is_empty() or not province_map.selected in Profile.PROVINCES:
 		_toast("Indiquez un pseudo et choisissez une province.")
 		return
 	var previous := [saved_name, player_province]
 	saved_name = name_text
-	player_province = Profile.PROVINCES[province_input.selected - 1]
+	player_province = province_map.selected
 	if not _save_preferences():
 		saved_name = previous[0]
 		player_province = previous[1]
@@ -786,7 +847,7 @@ func _render_snapshot() -> void:
 			card.set_meta("meld_index", i)
 			_place_table_card(card, Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * 0.70), position_card), initial_deal, j * 0.035)
 	_render_opponents(initial_deal)
-	_play_snapshot_sound(initial_deal)
+	_play_snapshot_effects(initial_deal)
 	_update_hand_status()
 	# Cards no longer present in the visible snapshot cannot retain callbacks
 	# or keep an animation alive after leaving this table.
@@ -1107,13 +1168,15 @@ func _show_winner() -> void:
 	var box := _modal(result.title,result.body)
 	overlay_kind = "winner"
 	if int(snapshot.get("your_index",0)) in (result.winners if result.finished else [winner]):
-		var celebration := _label("✦  ✦  ✦",40,GOLD,box)
-		celebration.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		if animations_enabled:
-			var sparkle := celebration.create_tween().set_loops(3)
-			_UI_sparkles.append(sparkle)
-			sparkle.tween_property(celebration,"modulate:a",0.35,0.32)
-			sparkle.tween_property(celebration,"modulate:a",1.0,0.32)
+		if animations_enabled and not economy_mode:
+			var celebration := CardFlourish.new()
+			celebration.name = "VictoireAnimee"
+			celebration.victory = true
+			celebration.custom_minimum_size.y = 110
+			box.add_child(celebration)
+		else:
+			var mark := _label("✦  ✦  ✦", 32, GOLD, box)
+			mark.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var scores: Dictionary = snapshot.get("match",{})
 	if _is_tri() and not result.forfeit:
 		for group in snapshot.get("winning_tris",[]):
@@ -1491,7 +1554,7 @@ func _room_closed(message: String) -> void:
 		var box := _modal("Salon fermé", message)
 		_button("Retour à l’accueil", _leave_to_menu, box, true)
 
-func _modal(title: String, subtitle: String) -> VBoxContainer:
+func _modal(title: String, subtitle: String, width: float = 680.0) -> VBoxContainer:
 	_cancel_drag()
 	_close_overlay()
 	toast_label.hide()
@@ -1502,7 +1565,7 @@ func _modal(title: String, subtitle: String) -> VBoxContainer:
 	_place(dim, overlay, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ONE)
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _style(Color("222e26"), Color("657461"), 10, 28))
-	_place(panel, overlay, Vector2(-340,105), Vector2(340,-38), Vector2(0.5,0), Vector2(0.5,1))
+	_place(panel, overlay, Vector2(-width*0.5,105), Vector2(width*0.5,-38), Vector2(0.5,0), Vector2(0.5,1))
 	if animations_enabled:
 		dim.modulate.a = 0.0
 		dim.create_tween().tween_property(dim, "modulate:a", 1.0, 0.16)
@@ -1533,6 +1596,7 @@ func _show_credits() -> void:
 	_long_text("Cartes : SVGCards, Saul Spatz. Illustrations du domaine public, avec les figures classiques de Byron Knoll.",box)
 	_button("Voir les cartes d’origine",func(): OS.shell_open("https://github.com/saulspatz/SVGCards"),box)
 	_long_text("Polices : Open Sans, Noto Sans Symbols et DejaVu Serif. Leurs licences sont incluses dans l’application.",box)
+	_long_text("Carte de Madagascar d’après Natural Earth. Animation de l’accueil créée dans l’atelier 3D de Higgsfield.",box)
 	_button("Fermer",_close_overlay,box,true)
 
 func _show_rules() -> void:
@@ -1904,21 +1968,31 @@ func _next_round() -> void:
 	_show_game()
 	_refresh_snapshot()
 
-func _play_snapshot_sound(initial: bool) -> void:
+func _play_snapshot_effects(initial: bool) -> void:
 	var key := "%s:%s:%s" % [snapshot.get("session_id",""),snapshot.get("match",{}).get("round",1),snapshot.get("revision",0)]
 	if key == _sound_revision: return
 	_sound_revision = key
 	var action: Dictionary = snapshot.get("last_action",{})
 	var actor := int(action.get("player",-1))
+	var kind := str(action.get("type", ""))
 	if not initial and actor != int(snapshot.get("your_index",0)):
-		table_scene.animate_action(actor,str(action.get("type","")),str(action.get("source","deck")))
+		table_scene.animate_action(actor,kind,str(action.get("source","deck")))
+	if not initial and animations_enabled and not economy_mode and kind in ["draw", "discard", "meld", "extend"]:
+		var target := Vector3(0.85, 0.19, -0.8)
+		if kind == "draw" and action.get("source", "deck") == "deck": target = DECK_POSITION
+		if kind in ["meld", "extend"]: target = Vector3(0.0, 0.24, -1.9)
+		var at := camera.unproject_position(target)
+		var flash := CardFlourish.new()
+		flash.name = "EclatCarte"
+		flash.accent = Color("d89c85") if kind == "discard" else GOLD
+		_place(flash, content, at - Vector2(73, 55), at + Vector2(73, 47))
 	if effects == null: return
 	if int(snapshot.get("winner",-1)) >= 0:
 		effects.play("win")
 	elif initial:
 		effects.play("deal")
 	else:
-		effects.play(str(snapshot.get("last_action",{}).get("type","")))
+		effects.play(kind)
 
 func _opponent_indices() -> Array:
 	var result: Array = []
@@ -2109,8 +2183,6 @@ func _cancel_drag(restore: bool = true) -> void:
 		_layout_hand()
 		for item in hand_cards: item.set_selected(item.card_id in selected,false)
 
-var _UI_sparkles: Array = []
-
 func _show_comfort_settings() -> void:
 	var box := _modal("Affichage et confort","Ces réglages sont mémorisés sur ce téléphone.")
 	var motion := CheckButton.new()
@@ -2152,10 +2224,6 @@ func _apply_comfort() -> void:
 		if not animations_enabled:
 			var target: Transform3D = card.motion_target
 			card.move_to(target,0)
-	if not animations_enabled:
-		for sparkle in _UI_sparkles:
-			if sparkle != null and sparkle.is_valid(): sparkle.kill()
-		_UI_sparkles.clear()
 	if is_instance_valid(action_row) and not action_buttons_base.is_empty():
 		var order := action_buttons_base.duplicate()
 		if left_handed: order.reverse()

@@ -18,9 +18,14 @@ func _run() -> void:
 	if app.overlay_kind != "profile_setup":
 		_press("Options")
 		_press("Profil du joueur")
+	await process_frame
 	app.name_input.text = "Test UI"
-	_check(app.province_input.item_count == 7, "profile shows all six provinces")
-	app.province_input.select(5)
+	var marker: Vector2 = app.province_map.marker_position("Toamasina")
+	_check(app.province_map.province_at(marker) == "Toamasina", "province marker lies within the geographic shape")
+	var touch := InputEventScreenTouch.new()
+	touch.position = marker
+	touch.pressed = true
+	app.province_map._gui_input(touch)
 	_press("Enregistrer le profil")
 	_check(app.player_province == "Toamasina", "profile saves the selected province")
 	app.bot_count = 1

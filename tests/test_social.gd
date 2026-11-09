@@ -53,11 +53,34 @@ func _run() -> void:
 	await process_frame
 	app.animations_enabled=false
 	app._show_profile(true)
-	check(app.province_input.item_count==7 and app.province_input.get_item_text(6)=="Toliara", "first launch offers the six provinces")
+	await process_frame
+	for province in Profile.PROVINCES:
+		var point: Vector2 = app.province_map.marker_position(province)
+		check(app.province_map.province_at(point) == province, "geographic touch target selects " + province)
+	check(app.province_map.province_at(Vector2(4,4)).is_empty(), "water outside the provinces cannot be selected")
+	button(app.overlay,"6   Toliara").pressed.emit()
+	check(app.province_map.selected == "Toliara", "named shortcut and map share one selection")
+	var touch := InputEventScreenTouch.new()
+	touch.position = app.province_map.marker_position("Antananarivo")
+	touch.pressed = true
+	app.province_map._gui_input(touch)
+	check(app.province_map.selected == "Antananarivo" and button(app.overlay,"1   Antananarivo").button_pressed, "map touch highlights the matching shortcut")
+	await capture(app,"profile-map")
 	app.name_input.text="Alice"
-	app.province_input.select(1)
 	button(app.overlay,"Enregistrer le profil").pressed.emit()
 	check(app.player_province=="Antananarivo" and app.overlay.get_child_count()==0,"province and nickname persist before play")
+	button(app.content,"Voir l’intro").pressed.emit()
+	var intro: Node = app.overlay.find_child("IntroDuSalon",true,false)
+	check(app.overlay_kind == "intro" and intro.animator.is_playing(), "menu plays the embedded Higgsfield animation")
+	var skeleton: Skeleton3D = intro.find_children("*", "Skeleton3D", true, false).front()
+	var before: Vector3 = skeleton.get_bone_pose_position(0)
+	intro.animator.seek(2.4, true)
+	check(skeleton.get_bone_count() == 6 and not skeleton.get_bone_pose_position(0).is_equal_approx(before), "the imported animation moves the six-card rig")
+	await capture(app,"intro")
+	button(app.overlay,"Revoir").pressed.emit()
+	check(intro.animator.current_animation_position < 0.1, "intro replays from its first pose")
+	button(app.overlay,"Retour à l’accueil").pressed.emit()
+	check(app.game_mode == "menu" and app.overlay_kind.is_empty(), "intro can be skipped back to the menu")
 	app.saved_address="ws://192.168.1.2:7357"
 	app._open_friends()
 	check(fields(app.overlay)==1 and app.address_input==null and app.invitation_input==null,"friends screen only requests six-digit code")
