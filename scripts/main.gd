@@ -809,7 +809,7 @@ func _update_turn_controls() -> void:
 	var turn := int(snapshot.get("turn", 0))
 	var players: Array = snapshot.get("players", [])
 	var phase := str(snapshot.get("phase", "draw"))
-	var paused: bool = bool(snapshot.get("paused", false)) or (game_mode == "online" and network.planned_reconnect)
+	var paused: bool = bool(snapshot.get("paused", false)) or (game_mode == "online" and network.quick_reconnect)
 	var won := int(snapshot.get("winner", -1)) >= 0
 	var abandoned := own >= 0 and own < players.size() and bool(players[own].get("forfeited", false))
 	var can_act := own >= 0 and own < players.size() and turn == own and not paused and not won and not abandoned
@@ -931,7 +931,7 @@ func _my_turn(show_error: bool = true) -> bool:
 	if own < players.size() and players[own].get("forfeited",false):
 		if show_error: _toast("Vous avez abandonné et ne pouvez plus jouer dans ce match.")
 		return false
-	if snapshot.get("paused", false) or (game_mode == "online" and network.planned_reconnect):
+	if snapshot.get("paused", false) or (game_mode == "online" and network.quick_reconnect):
 		if show_error: _toast("Un joueur doit se reconnecter pour continuer.")
 		return false
 	if int(snapshot.get("turn", -1)) != int(snapshot.get("your_index", 0)):
@@ -1466,7 +1466,8 @@ func _network_game_updated(data: Dictionary) -> void:
 func _connection_changed(connected: bool) -> void:
 	_update_voice_controls()
 	_update_rematch_controls()
-	if network.planned_reconnect:
+	if network.quick_reconnect:
+		if not connected and not snapshot.is_empty(): snapshot["paused"] = true
 		_update_turn_controls()
 		return
 	if not connected and game_mode == "online" and int(snapshot.get("winner",-1)) >= 0:

@@ -29,7 +29,7 @@ var player_count: int = 0
 var rounds := 1
 var supports_rematch := false
 var supports_kick := false
-var planned_reconnect := false
+var quick_reconnect := false
 var voice_available := false
 var _session_id := ""
 var _round := 1
@@ -59,7 +59,7 @@ var _client_name: String = ""
 var _province := ""
 var _tournament_name := ""
 var _discovery: RefCounted
-var _rotation_deadline := 0
+var _quick_reconnect_deadline := 0
 var _session_token: String = ""
 var _auth_sent: bool = false
 var _wants_connection: bool = false
@@ -391,7 +391,7 @@ func _clear_current(emit_change: bool) -> void:
 	_round = 1
 	supports_rematch = false
 	supports_kick = false
-	planned_reconnect = false
+	quick_reconnect = false
 	_session_id = ""
 	_voice_disconnected()
 	_match_finished = false
@@ -466,9 +466,9 @@ func _process(_delta: float) -> void:
 				_client_url = result.address
 				_wants_connection = true
 				_connect_client()
-	if planned_reconnect and Time.get_ticks_msec() >= _rotation_deadline:
-		planned_reconnect = false
-		connection_changed.emit(connected)
+	if quick_reconnect and Time.get_ticks_msec() >= _quick_reconnect_deadline:
+		quick_reconnect = false
+		if not connected: connection_changed.emit(false)
 	if _hosting_locally:
 		_poll_server()
 		_expire_disconnected()
@@ -781,7 +781,7 @@ func _connect_client() -> bool:
 	if error != OK:
 		_client = null
 		_retry_at = Time.get_ticks_msec() + RECONNECT_DELAY_MS
-		notice.emit("Connexion impossible. Vérifiez votre connexion Internet.")
+		if not quick_reconnect: notice.emit("Connexion impossible. Vérifiez votre connexion.")
 		return false
 	return true
 
@@ -807,21 +807,23 @@ func _poll_client() -> void:
 			if value is Dictionary:
 				_client_message(value)
 	elif state == WebSocketPeer.STATE_CLOSED:
-		var rotation := _client.get_close_code() == 1012 and not _session_token.is_empty()
+		# A proxy can turn a scheduled close into an ordinary transport loss.
+		# Give the authenticated seat one immediate, quiet recovery attempt.
+		var retry_now := connected and not _session_token.is_empty() and (not _match_finished or supports_rematch)
 		_client = null
 		_voice_disconnected()
-		if rotation and not planned_reconnect:
-			planned_reconnect = true
-			_rotation_deadline = Time.get_ticks_msec() + 4500
+		if retry_now and not quick_reconnect:
+			quick_reconnect = true
+			_quick_reconnect_deadline = Time.get_ticks_msec() + 4500
 		if connected and (not _match_finished or supports_rematch):
 			connected = false
 			connection_changed.emit(false)
-			if not planned_reconnect: notice.emit("Connexion interrompue. Reconnexion en cours…")
+			if not quick_reconnect: notice.emit("Connexion interrompue. Reconnexion en cours…")
 		if _match_finished and not supports_rematch:
 			connected = false
 			_wants_connection = false
 		else:
-			_retry_at = Time.get_ticks_msec() + (0 if rotation else RECONNECT_DELAY_MS)
+			_retry_at = Time.get_ticks_msec() + (0 if retry_now else RECONNECT_DELAY_MS)
 	_last_client_state = state
 
 func _client_message(message: Dictionary) -> void:
@@ -857,7 +859,7 @@ func _client_message(message: Dictionary) -> void:
 				if not match_started or data.get("playing",true) == false:
 					_match_finished = false
 					_session_id = ""
-					planned_reconnect = false
+					quick_reconnect = false
 				local_player = int(data.get("your_index", local_player))
 				_persist_session()
 				lobby_updated.emit(data)
@@ -867,7 +869,7 @@ func _client_message(message: Dictionary) -> void:
 				match_started = true
 				_session_id = str(data.get("session_id", ""))
 				_round = int(data.get("match",{}).get("round",1))
-				planned_reconnect = false
+				quick_reconnect = false
 				var summaries: Array = data.get("players", [])
 				var seat := int(data.get("your_index",local_player))
 				var own_forfeit: bool = seat >= 0 and seat < summaries.size() and bool(summaries[seat].get("forfeited", false))
@@ -894,7 +896,7 @@ func _client_message(message: Dictionary) -> void:
 				if _client != null:
 					_client.close(1000, "Connexion refusée")
 				connected = false
-				planned_reconnect = false
+				quick_reconnect = false
 				room_closed.emit(str(message.get("message", "Connexion refusée.")))
 
 func _send(peer: WebSocketPeer, message: Dictionary) -> void:

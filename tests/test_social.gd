@@ -168,10 +168,10 @@ func _run() -> void:
 		app._network_game_updated(paused)
 		check(app.selected == [selected_card.card_id] and app._drag_card == selected_card, "presence update preserves the hand while pausing commands")
 		app._network_game_updated(duplicate)
-		app.network.planned_reconnect = true
+		app.network.quick_reconnect = true
 		app._connection_changed(false)
 		check(app.overlay.get_child_count() == 0 and app.selected.size() == 1 and not app._my_turn(false), "scheduled reconnect keeps the table open and blocks moves")
-		app.network.planned_reconnect = false
+		app.network.quick_reconnect = false
 		app._network_game_updated(duplicate)
 		check(app._my_turn(false), "scheduled reconnect resumes the same playable hand")
 		var rules: RefCounted = app.network._engine
