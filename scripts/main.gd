@@ -20,6 +20,8 @@ const Profile = preload("res://scripts/player_profile.gd")
 const ProvinceMap = preload("res://scripts/province_map.gd")
 const CardFlourish = preload("res://scripts/card_flourish.gd")
 const SalonIntro = preload("res://scripts/salon_intro.gd")
+const Wallet = preload("res://scripts/tseli_wallet.gd")
+const PROJECT_URL := "https://github.com/Romuel10/Rami-3D"
 const HAND_SCALE := 2.15
 const DECK_POSITION := Vector3(-0.8, 0.28, -0.8)
 const INK = Color("f2eee4")
@@ -49,6 +51,7 @@ var tri_choice := 6
 var friends_tri_cards := 0
 var friends_player_count := 2
 var friends_rounds := 1
+var friends_stake := 0
 var friends_local := false
 var tournament_name_input: LineEdit
 var province_map: ProvinceMap
@@ -67,6 +70,14 @@ var camera: Camera3D
 var ui: Control
 var content: Control
 var overlay: Control
+var _modal_panel: PanelContainer
+var _modal_scroll: ScrollContainer
+var _privacy_back: Callable
+var _modal_width := 720.0
+var _keyboard_height := 0
+var wallet: Wallet
+var _wallet_label: Label
+var _profile_wallet_label: Label
 var toast_label: Label
 var toast_time := 0.0
 var header_status: Label
@@ -105,6 +116,7 @@ var _view_cards: Dictionary = {}
 var _previous_cards: Dictionary = {}
 var _rendered_turn := -1
 var difficulty := 1
+var _solo_difficulty := 1
 var match_length := 1
 var hand_order: Array = []
 var effects: Node
@@ -159,15 +171,26 @@ func _ready() -> void:
 	voice.changed.connect(_update_voice_controls)
 	voice.notice.connect(_toast)
 	_make_voice_controls()
-	_show_menu()
+	wallet = Wallet.new()
+	if OS.get_environment("RAMI_WALLET_OFFLINE") != "1":
+		wallet.server_url = ServerProfile.configured_url()
+	add_child(wallet)
+	wallet.changed.connect(_update_wallet_labels)
 	# Reproducible visual checks can start an offline table without network access.
 	if "--demo" in OS.get_cmdline_user_args():
 		_start_solo()
-	elif player_province.is_empty():
-		_show_profile(true)
+	elif animations_enabled and not economy_mode:
+		_show_intro()
+	else:
+		_show_start_menu()
 	if not restored: _toast("Restauration en attente. Libérez de l’espace puis relancez le jeu.")
 
 func _process(delta: float) -> void:
+	if is_instance_valid(_modal_panel) and DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD):
+		var keyboard_height := DisplayServer.virtual_keyboard_get_height()
+		if keyboard_height != _keyboard_height:
+			_keyboard_height = keyboard_height
+			_layout_modal()
 	if toast_time > 0:
 		toast_time -= delta
 		toast_label.modulate.a = minf(1.0, toast_time * 2.0)
@@ -181,9 +204,17 @@ func _notification(what: int) -> void:
 		if voice != null: voice.stop_talk()
 	if what == NOTIFICATION_APPLICATION_PAUSED: Engine.max_fps = 5
 	if what == NOTIFICATION_APPLICATION_RESUMED: _apply_performance()
+	if what == NOTIFICATION_APPLICATION_RESUMED and is_instance_valid(wallet) and game_mode == "menu" and not player_province.is_empty():
+		wallet.sync()
 	if what == NOTIFICATION_APPLICATION_RESUMED and OS.has_feature("android") and fullscreen_enabled:
 		_set_fullscreen(true, false)
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		if overlay_kind == "intro":
+			_finish_intro()
+			return
+		if _privacy_back.is_valid():
+			_privacy_back.call()
+			return
 		if overlay_kind == "profile_setup": return
 		if overlay_kind == "room_setup":
 			_cancel_room_setup()
@@ -268,7 +299,7 @@ func _make_interface() -> void:
 	var symbol_fallbacks: Array[Font] = [load("res://assets/symbols.ttf")]
 	text_font.fallbacks = symbol_fallbacks
 	theme.default_font = text_font
-	theme.default_font_size = 18
+	theme.default_font_size = 23
 	_heading_font = FontVariation.new()
 	_heading_font.base_font = text_font
 	_heading_font.variation_embolden = 0.5
@@ -280,10 +311,24 @@ func _make_interface() -> void:
 	theme.set_stylebox("hover", "Button", _style(Color("3c4e40"), GOLD, 12, 18))
 	theme.set_stylebox("pressed", "Button", _style(Color("4e6050"), GOLD, 12, 18))
 	theme.set_stylebox("disabled", "Button", _style(Color("232c25"), Color("3c483f"), 12, 18))
-	theme.set_stylebox("normal", "LineEdit", _style(Color("18231d"), Color("526253"), 10, 16))
-	theme.set_stylebox("focus", "LineEdit", _style(Color("283b2e"), GOLD, 10, 16))
-	theme.set_color("font_color", "LineEdit", INK)
-	theme.set_color("font_placeholder_color", "LineEdit", MUTED)
+	var field_style := _style(Color("f2ecdc"), Color("ab9973"), 8, 14)
+	field_style.set_border_width_all(2)
+	field_style.content_margin_top = 10
+	field_style.content_margin_bottom = 10
+	var field_focus := _style(Color.TRANSPARENT, Color("f3c56d"), 8, 0)
+	field_focus.draw_center = false
+	field_focus.set_border_width_all(3)
+	for control_type in ["LineEdit", "TextEdit"]:
+		theme.set_stylebox("normal", control_type, field_style)
+		theme.set_stylebox("focus", control_type, field_focus)
+		theme.set_color("font_color", control_type, DEEP)
+		theme.set_color("font_placeholder_color", control_type, Color("525a4f"))
+		theme.set_color("caret_color", control_type, DEEP)
+		theme.set_color("selection_color", control_type, Color("45634d"))
+		theme.set_color("font_selected_color", control_type, Color.WHITE)
+	theme.set_font_size("font_size", "LineEdit", 26)
+	theme.set_constant("caret_width", "LineEdit", 3)
+	theme.set_font_size("font_size", "TextEdit", 24)
 	theme.set_stylebox("panel", "PopupMenu", _style(DEEP, Color("526253"), 8, 10))
 	ui.theme = theme
 	_header = PanelContainer.new()
@@ -321,7 +366,7 @@ func _make_interface() -> void:
 	_place(overlay, ui, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ONE)
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	toast_label = _label("", 16, INK, ui)
-	_place(toast_label, ui, Vector2(-550,-36), Vector2(550,-6), Vector2(0.5,1), Vector2(0.5,1))
+	_place(toast_label, ui, Vector2(-570,-58), Vector2(570,-8), Vector2(0.5,1), Vector2(0.5,1))
 	toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	toast_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	toast_label.add_theme_stylebox_override("normal", _style(Color("202a23"), Color("766646"), 5, 5))
@@ -355,7 +400,7 @@ func _place(node: Control, parent: Node, a: Vector2, b: Vector2, anchor_a: Vecto
 func _label(text: String, size: int, color: Color, parent: Node) -> Label:
 	var label := Label.new()
 	label.text = text
-	label.add_theme_font_size_override("font_size", size)
+	label.add_theme_font_size_override("font_size", maxi(size + (3 if size < 24 else 0), 20))
 	label.add_theme_constant_override("line_spacing", 3)
 	if size >= 24 and _heading_font != null: label.add_theme_font_override("font", _heading_font)
 	label.add_theme_color_override("font_color", color)
@@ -366,7 +411,7 @@ func _label(text: String, size: int, color: Color, parent: Node) -> Label:
 func _button(text: String, callback: Callable, parent: Node, primary: bool = false) -> Button:
 	var button := Button.new()
 	button.text = text
-	button.custom_minimum_size.y = 52
+	button.custom_minimum_size.y = 56
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	if primary:
 		button.add_theme_stylebox_override("normal", _style(GOLD, GOLD, 10, 16))
@@ -381,7 +426,7 @@ func _button(text: String, callback: Callable, parent: Node, primary: bool = fal
 
 func _command_button(text: String, callback: Callable, parent: Node, primary: bool = false) -> Button:
 	var button := _button(text, callback, parent, primary)
-	button.add_theme_font_size_override("font_size", 17)
+	button.add_theme_font_size_override("font_size", 22)
 	var colors := {
 		"normal": [Color("d2b980"), Color("edd6a3")] if primary else [Color("24312a"), Color("626a53")],
 		"hover": [Color("ecd099"), Color("ffe5b2")] if primary else [Color("374638"), GOLD],
@@ -405,8 +450,10 @@ func _field(placeholder: String, value: String, parent: Node) -> LineEdit:
 	var input := LineEdit.new()
 	input.placeholder_text = placeholder
 	input.text = value
-	input.custom_minimum_size.y = 54
+	input.custom_minimum_size.y = 64
 	input.max_length = 120
+	input.caret_blink = true
+	input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	parent.add_child(input)
 	return input
 
@@ -453,8 +500,14 @@ func _show_menu() -> void:
 	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_place(backdrop, content, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ONE)
 	if not player_province.is_empty():
-		var profile_button := _command_button("%s · %s" % [saved_name, player_province], _show_profile, content)
-		_place(profile_button, content, Vector2(-400,70), Vector2(-68,120), Vector2(1,0), Vector2(1,0))
+		var profile_box := VBoxContainer.new()
+		_place(profile_box, content, Vector2(-478,44), Vector2(-64,144), Vector2(1,0), Vector2(1,0))
+		var profile_button := _command_button("%s · %s" % [saved_name, player_province], _show_profile, profile_box)
+		profile_button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		_wallet_label = _label("", 25, GOLD, profile_box)
+		_wallet_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		_update_wallet_labels()
+		wallet.sync()
 
 	var brand := VBoxContainer.new()
 	brand.add_theme_constant_override("separation", -8)
@@ -473,15 +526,15 @@ func _show_menu() -> void:
 	var solo := _command_button("Jouer au rami", _start_solo, choices, true)
 	solo.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	solo.custom_minimum_size.y = 64
-	solo.add_theme_font_size_override("font_size", 22)
+	solo.add_theme_font_size_override("font_size", 27)
 	var friends := _command_button("Jouer avec des amis", _open_friends, choices)
 	friends.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	friends.custom_minimum_size.y = 60
-	friends.add_theme_font_size_override("font_size", 20)
+	friends.add_theme_font_size_override("font_size", 25)
 	var tri := _command_button("Jouer au Tri", _show_tri_setup, choices)
 	tri.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	tri.custom_minimum_size.y = 60
-	tri.add_theme_font_size_override("font_size", 20)
+	tri.add_theme_font_size_override("font_size", 25)
 	_command_button("Tournois", _show_tournaments, choices).alignment = HORIZONTAL_ALIGNMENT_LEFT
 	if not SoloStore.load_game().is_empty():
 		_command_button("Reprendre ma partie solo", _resume_solo, choices).alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -498,9 +551,7 @@ func _show_menu() -> void:
 	_place(footer, content, Vector2(72,-89), Vector2(442,-41), Vector2(0,1), Vector2(0,1))
 	_command_button("Options", _show_options, footer).custom_minimum_size.y = 46
 	_command_button("Règles du jeu", _show_rules, footer).custom_minimum_size.y = 46
-	_command_button("Crédits", _show_credits, footer).custom_minimum_size.y = 46
-	var intro := _command_button("Voir l’intro", _show_intro, content)
-	_place(intro, content, Vector2(-230,-90), Vector2(-68,-42), Vector2.ONE, Vector2.ONE)
+	_command_button("À propos", _show_about, footer).custom_minimum_size.y = 46
 	var motion := animations_enabled and not economy_mode
 	if motion:
 		brand.modulate.a = 0.0
@@ -527,20 +578,36 @@ func _show_menu() -> void:
 		card.move_to(target, 0.52 if motion else 0.0, i*0.065 if motion else 0.0, 0.24)
 
 func _show_intro() -> void:
-	var box := _modal("Entrée au salon", "", 1030.0)
+	_close_overlay()
+	_header.hide()
+	content.hide()
 	overlay_kind = "intro"
+	var background := ColorRect.new()
+	background.color = Color("17211d")
+	_place(background, overlay, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ONE)
 	var frame := AspectRatioContainer.new()
 	frame.ratio = 16.0 / 9.0
-	frame.custom_minimum_size.y = 540
-	box.add_child(frame)
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_place(frame, overlay, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ONE)
 	var intro := SalonIntro.new()
 	intro.name = "IntroDuSalon"
+	intro.finished.connect(_finish_intro.call_deferred)
 	frame.add_child(intro)
-	var buttons := HBoxContainer.new()
-	buttons.add_theme_constant_override("separation", 12)
-	box.add_child(buttons)
-	_command_button("Revoir", intro.replay, buttons).size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_command_button("Retour à l’accueil", _close_overlay, buttons, true).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var skip := _command_button("Passer l’intro", _finish_intro, overlay)
+	_place(skip, overlay, Vector2(-250,-94), Vector2(-36,-36), Vector2.ONE, Vector2.ONE)
+
+func _finish_intro() -> void:
+	if overlay_kind != "intro": return
+	_close_overlay()
+	_show_start_menu()
+
+func _show_start_menu() -> void:
+	_show_menu()
+	if player_province.is_empty(): _show_profile(true)
+
+func _update_wallet_labels() -> void:
+	for label in [_wallet_label, _profile_wallet_label]:
+		if is_instance_valid(label): label.text = Wallet.amount(wallet.balance())
 
 func _show_options() -> void:
 	var box := _modal("Options", "")
@@ -554,11 +621,14 @@ func _show_options() -> void:
 	_button("Affichage et confort", _show_comfort_settings, box)
 	music_button = _button("Musique" if music.enabled else "Musique coupée", _show_music_settings, box)
 	fullscreen_button = _button("Fenêtre" if fullscreen_enabled else "Plein écran", _toggle_fullscreen, box)
+	_button("Politique de confidentialité", _show_privacy.bind(_show_options), box)
 	_button("Fermer", _close_overlay, box, true)
 
 func _show_profile(first_launch: bool = false) -> void:
 	var box := _modal("Votre profil", "Touchez votre province sur la carte, puis enregistrez votre pseudo.", 1090.0)
-	if first_launch: overlay_kind = "profile_setup"
+	if first_launch:
+		overlay_kind = "profile_setup"
+		_command_button("Politique de confidentialité", _show_setup_privacy, box)
 	var columns := HBoxContainer.new()
 	columns.add_theme_constant_override("separation", 24)
 	box.add_child(columns)
@@ -602,8 +672,12 @@ func _show_profile(first_launch: bool = false) -> void:
 		save.disabled = false
 		if name_input.has_focus(): name_input.release_focus())
 	province_map.choose(player_province, false)
-	if first_launch: _command_button("Restaurer ma sauvegarde", _show_backup.bind(true), form)
-	else: _command_button("Retour", _show_options, form)
+	if first_launch:
+		_command_button("Restaurer ma sauvegarde", _show_backup.bind(true), form)
+	else:
+		_command_button("Retour", _show_options, form)
+		_profile_wallet_label = _label("", 25, GOLD, form)
+		_update_wallet_labels()
 
 func _save_profile() -> void:
 	var name_text := Profile.clean_name(name_input.text)
@@ -623,7 +697,7 @@ func _save_profile() -> void:
 	_show_menu()
 
 func _show_backup(first_launch: bool = false) -> void:
-	var box := _modal("Sauvegarde", "Votre profil, votre partie solo et vos statistiques.")
+	var box := _modal("Sauvegarde", "Votre profil, votre portefeuille, votre partie solo et vos statistiques.")
 	if first_launch: overlay_kind = "profile_setup"
 	if not player_province.is_empty():
 		_button("Copier ma sauvegarde", func():
@@ -632,11 +706,12 @@ func _show_backup(first_launch: bool = false) -> void:
 				DisplayServer.clipboard_set(text)
 				_toast("Sauvegarde copiée. Collez-la dans un fichier que vous garderez.")
 			else: _toast("La sauvegarde est trop volumineuse pour être copiée."), box)
-	_long_text("La restauration remplace les données de jeu de cet appareil.", box)
+	_long_text("Gardez votre texte de sauvegarde privé. La restauration remplace les données de jeu de cet appareil.", box)
 	var backup := TextEdit.new()
 	backup.custom_minimum_size.y = 120
 	backup.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
 	backup.placeholder_text = "Collez ici le texte de votre sauvegarde"
+	backup.caret_blink = true
 	box.add_child(backup)
 	_button("Coller", func(): backup.text = DisplayServer.clipboard_get().left(Profile.BACKUP_LIMIT + 1), box)
 	_button("Restaurer cette sauvegarde", func(): _restore_backup(backup.text), box, true)
@@ -651,6 +726,7 @@ func _restore_backup(text: String) -> void:
 		_toast("Restauration en attente. Libérez de l’espace puis relancez le jeu.")
 		return
 	_load_preferences()
+	wallet.reload()
 	_close_overlay()
 	_show_menu()
 	_toast("Votre sauvegarde a été restaurée.")
@@ -662,6 +738,7 @@ func _start_solo(tri_size: int = 0) -> void:
 	network.leave_room()
 	_close_overlay()
 	engine = EngineRules.new()
+	_solo_difficulty = difficulty
 	hand_order.clear()
 	_winner_key = ""
 	_sound_revision = ""
@@ -676,7 +753,7 @@ func _start_solo(tri_size: int = 0) -> void:
 
 func _show_game() -> void:
 	_clear_content()
-	header_status.text = "Solo · " + ["facile","normal","difficile"][difficulty] if game_mode == "solo" else "Salon · " + network.room_code
+	header_status.text = "Solo · " + ["facile","normal","difficile"][_solo_difficulty] if game_mode == "solo" else "Salon · " + network.room_code
 	players_row = HBoxContainer.new()
 	players_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	players_row.add_theme_constant_override("separation", 10)
@@ -763,7 +840,7 @@ func _render_snapshot() -> void:
 	var turn := int(snapshot.get("turn", 0))
 	var players: Array = snapshot.get("players", [])
 	if game_mode == "solo":
-		header_status.text = "Solo · %s · manche %d/%d" % [["facile","normal","difficile"][difficulty],int(snapshot.get("match",{}).get("round",1)),int(snapshot.get("match",{}).get("length",1))]
+		header_status.text = "Solo · %s · manche %d/%d" % [["facile","normal","difficile"][_solo_difficulty],int(snapshot.get("match",{}).get("round",1)),int(snapshot.get("match",{}).get("length",1))]
 	for i in range(players.size()):
 		var panel := PanelContainer.new()
 		panel.custom_minimum_size = Vector2(184, 50)
@@ -785,7 +862,9 @@ func _render_snapshot() -> void:
 		var detail_label := _label(detail, 12, MUTED, column)
 		detail_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	if _is_tri(): header_status.text = "Tri · %d cartes · %d tris à former" % [int(snapshot.tri_hand_size),int(snapshot.tri_goal)]
+	if _is_tri():
+		header_status.text = "Tri · %d cartes · %d tris à former" % [int(snapshot.tri_hand_size),int(snapshot.tri_goal)]
+		if game_mode == "solo": header_status.text += " · " + ["facile","normal","difficile"][_solo_difficulty]
 	if game_mode == "online":
 		var scores: Dictionary = snapshot.get("match", {})
 		var tournament: Variant = current_lobby.get("tournament")
@@ -793,6 +872,7 @@ func _render_snapshot() -> void:
 			header_status.text = ["Demi-finale 1", "Demi-finale 2", "Finale"][int(tournament.stage)]
 		elif not _is_tri(): header_status.text = "Salon · " + network.room_code
 		if int(scores.get("length", 1)) > 1: header_status.text += " · Manche %d/%d" % [int(scores.round),int(scores.length)]
+		if int(snapshot.get("stake",0)) > 0: header_status.text += " · Mise " + Wallet.amount(int(snapshot.stake))
 	_update_turn_controls()
 	var hand: Array = snapshot.get("hand", []).duplicate()
 	if hand_order.is_empty():
@@ -1096,7 +1176,7 @@ func _run_bots() -> void:
 		await get_tree().create_timer(0.42).timeout
 		if token != turn_token or game_mode != "solo":
 			return
-		engine.bot_step(int(snapshot.get("turn", 0)), difficulty)
+		engine.bot_step(int(snapshot.get("turn", 0)), _solo_difficulty)
 		snapshot = engine.view_for(0)
 		snapshot["your_index"] = 0
 		_render_snapshot()
@@ -1167,6 +1247,16 @@ func _show_winner() -> void:
 	var result := _winner_result()
 	var box := _modal(result.title,result.body)
 	overlay_kind = "winner"
+	if game_mode == "solo" and result.finished and result.winners == [0] and not result.forfeit:
+		if wallet.record_victory(str(snapshot.get("session_id","")), _solo_difficulty):
+			_label(Wallet.amount(Wallet.REWARDS[_solo_difficulty], true) + " · victoire", 27, GOLD, box)
+		else:
+			_long_text("Le gain n’a pas pu être enregistré. Reprenez ce match après avoir libéré de l’espace.", box)
+	if game_mode == "online" and result.finished and int(snapshot.get("stake",0)) > 0:
+		var net := int(snapshot.get("stake_net",0))
+		var movement := Wallet.amount(net, true) if net != 0 else "Mises rendues · égalité"
+		_label(movement, 27, GOLD if net >= 0 else INK, box)
+		wallet.sync(true)
 	if int(snapshot.get("your_index",0)) in (result.winners if result.finished else [winner]):
 		if animations_enabled and not economy_mode:
 			var celebration := CardFlourish.new()
@@ -1229,8 +1319,9 @@ func _show_friends(internet: bool = true) -> void:
 	address_input = null
 	invitation_input = null
 	var description := "Connectez les appareils au même Wi-Fi. Ce salon fonctionne sans Internet." if friends_local else "Retrouvez vos amis à distance avec un code à 6 chiffres."
-	var box := _modal("Tri entre amis" if friends_tri_cards > 0 else "Rami entre amis", description)
+	var box := _modal("Tri entre amis" if friends_tri_cards > 0 else "Rami entre amis", description, 850.0)
 	overlay_kind = "room_setup"
+	if internet: wallet.sync()
 	var modes := HBoxContainer.new()
 	modes.add_theme_constant_override("separation", 10)
 	box.add_child(modes)
@@ -1249,6 +1340,7 @@ func _show_friends(internet: bool = true) -> void:
 	room_count_select = _player_count_picker(create,friends_player_count)
 	room_count_select.item_selected.connect(func(index: int): friends_player_count = index+2)
 	_round_picker(create)
+	if internet: _stake_picker(create)
 	_button("Créer un salon", _create_room, create, true)
 	var join := VBoxContainer.new()
 	join.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1264,10 +1356,22 @@ func _cancel_room_setup() -> void:
 	_close_overlay()
 
 func _room_code_field(parent: Node) -> void:
+	_label("Code du salon", 19, MUTED, parent)
 	code_input = _field("Code à 6 chiffres", "", parent)
 	code_input.max_length = 6
 	code_input.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
 	code_input.text_submitted.connect(func(_value: String): _join_room())
+
+func _stake_picker(parent: VBoxContainer) -> void:
+	_label("Mise par joueur", 19, MUTED, parent)
+	var picker := OptionButton.new()
+	picker.custom_minimum_size.y = 56
+	for stake in Wallet.STAKES:
+		picker.add_item(Wallet.amount(stake) if stake > 0 else "Sans mise", stake)
+	picker.select(picker.get_item_index(friends_stake))
+	picker.item_selected.connect(func(index: int): friends_stake = picker.get_item_id(index))
+	parent.add_child(picker)
+	_long_text("Chacun accepte sa mise avant le départ. Le gagnant reçoit la cagnotte.", parent)
 
 func _round_picker(parent: Node) -> void:
 	var picker := OptionButton.new()
@@ -1289,14 +1393,18 @@ func _create_room() -> void:
 	if friends_local:
 		network.host_room(saved_name, NetworkRoom.PORT, friends_tri_cards, {"count":friends_player_count, "rounds":friends_rounds, "province":player_province, "discover":true})
 		return
-	_create_online(friends_tri_cards, friends_player_count)
+	_create_online(friends_tri_cards, friends_player_count, "", friends_stake)
 
-func _create_online(tri_size: int, count: int, tournament: String = "") -> void:
+func _create_online(tri_size: int, count: int, tournament: String = "", stake: int = 0) -> void:
 	var address := ServerProfile.configured_url()
 	if address.is_empty():
 		_toast("Le service en ligne est indisponible dans cette version.")
 		return
-	if network.create_remote_room(address, saved_name, tri_size, count, {"rounds":friends_rounds, "province":player_province, "tournament":tournament}):
+	var wallet_key := wallet.key() if stake > 0 else ""
+	if stake > 0 and wallet_key.is_empty():
+		_toast("Votre portefeuille n’a pas pu être enregistré.")
+		return
+	if network.create_remote_room(address, saved_name, tri_size, count, {"rounds":friends_rounds, "province":player_province, "tournament":tournament, "stake":stake, "wallet_key":wallet_key}):
 		_toast("Création du salon…")
 
 func _join_room() -> void:
@@ -1314,14 +1422,15 @@ func _join_room() -> void:
 	if address.is_empty():
 		_toast("Le service en ligne est indisponible dans cette version.")
 		return
-	if network.join_room(address, saved_name, code, player_province): _toast("Connexion au salon…")
+	if network.join_room(address, saved_name, code, player_province, wallet.key()): _toast("Connexion au salon…")
 
 func _show_tournaments() -> void:
 	friends_local = false
 	var box := _modal("Tournois", "Quatre joueurs, deux demi-finales et une finale.")
 	overlay_kind = "room_setup"
 	_label("Organiser un tournoi", 22, INK, box)
-	tournament_name_input = _field("Nom du tournoi", "Tournoi entre amis", box)
+	_label("Nom du tournoi", 19, MUTED, box)
+	tournament_name_input = _field("Votre titre", "Tournoi entre amis", box)
 	tournament_name_input.max_length = 36
 	var choices := HBoxContainer.new()
 	choices.add_theme_constant_override("separation", 10)
@@ -1397,6 +1506,15 @@ func _lobby_updated(data: Dictionary) -> void:
 		return
 	var target := int(data.get("player_count",0))
 	if target == 0: target = maxi(2, players.size())
+	var stake := int(data.get("stake", 0))
+	var all_accepted := stake == 0 or players.all(func(player): return player.get("stake_ready", false))
+	if stake > 0:
+		_label("Mise · " + Wallet.amount(stake) + " par joueur", 22, GOLD, lobby_box)
+		_label("Cagnotte au départ · " + Wallet.amount(target * stake), 19, INK, lobby_box)
+		if not started and network.local_player in range(players.size()) and not players[network.local_player].get("stake_ready",false):
+			_button("Accepter la mise · " + Wallet.amount(stake), network.accept_stake.bind(stake), lobby_box, true)
+		elif not all_accepted:
+			_long_text("En attente de l’accord de tous les joueurs.", lobby_box)
 	_label("%d / %d joueurs" % [players.size(),target],20,GOLD,lobby_box)
 	for i in range(players.size()):
 		var p: Dictionary = players[i]
@@ -1419,7 +1537,7 @@ func _lobby_updated(data: Dictionary) -> void:
 	if players.size() < target: _label("En attente de %d joueur(s)…" % (target-players.size()),17,MUTED,lobby_box)
 	if network.is_host:
 		lobby_start = _button("Lancer le tournoi" if tournament is Dictionary else "Commencer la partie", func(): network.start_match(), lobby_box, true)
-		lobby_start.disabled = players.size() < 2 or players.size() != target or not all_connected
+		lobby_start.disabled = players.size() < 2 or players.size() != target or not all_connected or not all_accepted
 	else:
 		_label("L’hôte lancera la partie.", 18, GOLD, lobby_box)
 	_button("Quitter le salon", _leave_to_menu, lobby_box)
@@ -1491,7 +1609,8 @@ func _update_rematch_controls() -> void:
 			ready += 1
 			if i == network.local_player: own_ready = true
 	rematch_button.disabled = own_ready or not network.connected
-	rematch_button.text = "Vous êtes prêt" if own_ready else "Oui, rejouer"
+	var stake := int(current_lobby.get("stake",0))
+	rematch_button.text = "Vous êtes prêt" if own_ready else ("Rejouer · mise " + Wallet.amount(stake) if stake > 0 else "Oui, rejouer")
 	rematch_status.text = "%d / %d prêts · même salon, même code." % [ready,count]
 	if not network.connected: rematch_status.text = "Reconnexion au salon… Vous pourrez ensuite rejouer."
 	elif own_ready: rematch_status.text += " En attente de vos amis…"
@@ -1524,6 +1643,7 @@ func _network_game_updated(data: Dictionary) -> void:
 	if entering:
 		game_mode = "online"
 		_show_game()
+		if int(snapshot.get("stake",0)) > 0: wallet.sync(true)
 	_render_snapshot()
 
 func _connection_changed(connected: bool) -> void:
@@ -1554,7 +1674,7 @@ func _room_closed(message: String) -> void:
 		var box := _modal("Salon fermé", message)
 		_button("Retour à l’accueil", _leave_to_menu, box, true)
 
-func _modal(title: String, subtitle: String, width: float = 680.0) -> VBoxContainer:
+func _modal(title: String, subtitle: String, width: float = 720.0) -> VBoxContainer:
 	_cancel_drag()
 	_close_overlay()
 	toast_label.hide()
@@ -1573,7 +1693,13 @@ func _modal(title: String, subtitle: String, width: float = 680.0) -> VBoxContai
 		panel.create_tween().tween_property(panel, "modulate:a", 1.0, 0.20)
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus = true
 	panel.add_child(scroll)
+	_modal_panel = panel
+	_modal_scroll = scroll
+	_modal_width = width
+	_keyboard_height = DisplayServer.virtual_keyboard_get_height() if DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD) else 0
+	_layout_modal()
 	var box := VBoxContainer.new()
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_theme_constant_override("separation", 15)
@@ -1584,20 +1710,67 @@ func _modal(title: String, subtitle: String, width: float = 680.0) -> VBoxContai
 		sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	return box
 
+func _layout_modal() -> void:
+	if not is_instance_valid(_modal_panel): return
+	var half_width := minf(_modal_width, overlay.size.x - 48.0) * 0.5
+	if half_width > 0:
+		_modal_panel.offset_left = -half_width
+		_modal_panel.offset_right = half_width
+	var keyboard := float(_keyboard_height) / get_viewport().get_final_transform().get_scale().y
+	_modal_panel.offset_top = 16.0 if _keyboard_height > 0 else 88.0
+	_modal_panel.offset_bottom = -minf(keyboard + 16.0, maxf(16.0, overlay.size.y - 144.0)) if _keyboard_height > 0 else -34.0
+	var focused := get_viewport().gui_get_focus_owner()
+	if focused != null and _modal_scroll.is_ancestor_of(focused):
+		_modal_scroll.ensure_control_visible.call_deferred(focused)
+
 func _close_overlay() -> void:
 	overlay_kind = ""
+	_modal_panel = null
+	_modal_scroll = null
+	_privacy_back = Callable()
 	if not is_instance_valid(overlay): return
 	for node in overlay.get_children():
 		node.get_parent().remove_child(node)
 		node.queue_free()
+	content.show()
+
+func _show_about() -> void:
+	var version := str(ProjectSettings.get_setting("application/config/version"))
+	var box := _modal("À propos", "Rami Salon 3D · Version " + version)
+	_long_text("Jouez au rami et au Tri contre l’ordinateur ou retrouvez vos amis dans un salon privé. Le Kirobo est la monnaie virtuelle des victoires solo et des mises en ligne.", box)
+	_label("Un jeu de Romuel10", 21, GOLD, box)
+	_button("Dépôt GitHub du jeu", func(): OS.shell_open(PROJECT_URL), box)
+	_button("Crédits", _show_credits, box)
+	_button("Politique de confidentialité", _show_privacy.bind(_show_about), box)
+	_button("Fermer", _close_overlay, box, true)
+
+func _show_setup_privacy() -> void:
+	var draft_name := name_input.text
+	var draft_province := province_map.selected
+	_show_privacy(func():
+		_show_profile(true)
+		name_input.text = draft_name
+		province_map.choose(draft_province, false))
+
+func _show_privacy(back: Callable) -> void:
+	var box := _modal("Politique de confidentialité", "Rami Salon 3D", 920.0)
+	_privacy_back = back
+	var policy := FileAccess.get_file_as_string("res://PRIVACY.md")
+	for block in policy.strip_edges().split("\n\n", false):
+		if block.begins_with("## "):
+			_label(block.substr(3), 23, GOLD, box)
+		elif not block.begins_with("# "):
+			_long_text(block, box)
+	_button("Dépôt GitHub du jeu", func(): OS.shell_open(PROJECT_URL), box)
+	_button("Retour", back, box, true)
 
 func _show_credits() -> void:
 	var box := _modal("Crédits", "Les illustrations et polices du jeu.")
 	_long_text("Cartes : SVGCards, Saul Spatz. Illustrations du domaine public, avec les figures classiques de Byron Knoll.",box)
 	_button("Voir les cartes d’origine",func(): OS.shell_open("https://github.com/saulspatz/SVGCards"),box)
 	_long_text("Polices : Open Sans, Noto Sans Symbols et DejaVu Serif. Leurs licences sont incluses dans l’application.",box)
-	_long_text("Carte de Madagascar d’après Natural Earth. Animation de l’accueil créée dans l’atelier 3D de Higgsfield.",box)
-	_button("Fermer",_close_overlay,box,true)
+	_long_text("Carte de Madagascar d’après Natural Earth. Animation de démarrage créée dans l’atelier 3D de Higgsfield.",box)
+	_button("Retour",_show_about,box,true)
 
 func _show_rules() -> void:
 	if _is_tri():
@@ -1755,6 +1928,7 @@ func _screen_changed() -> void:
 			ui.offset_right = minf(0, end.x-size.x)
 			ui.offset_bottom = minf(0, end.y-size.y)
 	_layout_hand(false)
+	_layout_modal()
 
 func _layout_hand(animate: bool = true, deal: bool = false) -> void:
 	if hand_cards.is_empty() or not is_instance_valid(camera):
@@ -1815,6 +1989,8 @@ func _confirm_leave() -> void:
 		message += " Comme vous hébergez le salon Wi-Fi, celui-ci sera fermé et les joueurs restants seront déclarés gagnants."
 	elif game_mode == "online" and snapshot.get("players",[]).size() > 2:
 		message = "Vous serez éliminé du match. Les joueurs restants continueront ; le dernier encore en jeu gagnera."
+	if int(snapshot.get("stake",0)) > 0:
+		message += " Votre mise reste dans la cagnotte."
 	var box := _modal("Abandonner la partie ?",message)
 	_button("Rester à la table",_close_overlay,box,true)
 	if game_mode == "solo":
@@ -1893,7 +2069,7 @@ func _save_preferences() -> bool:
 
 func _autosave() -> void:
 	if game_mode == "solo" and engine != null and not engine.state.is_empty():
-		if not SoloStore.save_game(engine, difficulty, hand_order):
+		if not SoloStore.save_game(engine, _solo_difficulty, hand_order):
 			_toast("La sauvegarde a échoué. Vérifiez l’espace disponible.")
 
 func _resume_solo() -> void:
@@ -1908,6 +2084,7 @@ func _resume_solo() -> void:
 	_close_overlay()
 	engine = restored
 	difficulty = clampi(int(saved.get("difficulty",1)),0,2)
+	_solo_difficulty = difficulty
 	match_length = int(engine.state.match.length)
 	if engine.state.get("variant", "rami") == "rami":
 		bot_count = engine.state.players.size() - 1
@@ -1934,8 +2111,8 @@ func _show_solo_settings() -> void:
 	box.add_child(opponents)
 	_label("Difficulté", 15, MUTED, box)
 	var choice := OptionButton.new()
-	for title in ["Facile · pour apprendre", "Normal · équilibré", "Difficile · anticipe les combinaisons"]:
-		choice.add_item(title)
+	for level in range(Wallet.REWARDS.size()):
+		choice.add_item("%s · %s par victoire" % [["Facile", "Normal", "Difficile"][level], Wallet.amount(Wallet.REWARDS[level])])
 	choice.selected = difficulty
 	choice.custom_minimum_size.y = 52
 	choice.item_selected.connect(func(index: int): difficulty = index; _save_preferences())
@@ -2317,7 +2494,7 @@ func _start_tri_tutorial() -> void:
 func _make_voice_controls() -> void:
 	voice_panel = PanelContainer.new()
 	voice_panel.add_theme_stylebox_override("panel",_style(Color("1b281f"),Color("5b644d"),6,12))
-	_place(voice_panel,ui,Vector2(24,105),Vector2(262,265))
+	_place(voice_panel,ui,Vector2(24,105),Vector2(310,265))
 	var box := VBoxContainer.new()
 	voice_panel.add_child(box)
 	voice_label = _label("Micro coupé",15,MUTED,box)
@@ -2326,14 +2503,14 @@ func _make_voice_controls() -> void:
 	mic_button.icon = load("res://assets/microphone.svg")
 	mic_button.expand_icon = true
 	mic_button.add_theme_constant_override("icon_max_width",18)
-	mic_button.add_theme_font_size_override("font_size",14)
+	mic_button.add_theme_font_size_override("font_size",20)
 	mic_button.button_down.connect(func(): voice.begin_talk())
 	mic_button.button_up.connect(func(): voice.stop_talk())
 	mic_button.mouse_exited.connect(func(): voice.stop_talk())
 	listen_button = _command_button("Son des amis : activé",func(): voice.toggle_listening(),box)
-	listen_button.add_theme_font_size_override("font_size",14)
+	listen_button.add_theme_font_size_override("font_size",20)
 	speakers_button = _command_button("Voix par joueur", _show_voice_settings, box)
-	speakers_button.add_theme_font_size_override("font_size",14)
+	speakers_button.add_theme_font_size_override("font_size",20)
 	_update_voice_controls()
 
 func _show_voice_settings() -> void:

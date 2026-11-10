@@ -104,26 +104,33 @@ func _tri_rank_groups(cards: Array) -> Array:
 				if best.size() == cards.size()/3: return best
 	return best
 
-func _tri_score(cards: Array) -> int:
+func _tri_score(cards: Array, difficulty: int) -> int:
 	var groups := tri_groups(cards)
+	var score: int = groups.size() * 1000
+	if difficulty == 0: return score
 	var rest := cards.duplicate()
 	for group in groups:
 		for id in group: rest.erase(id)
 	var counts: Dictionary = {}
+	var suits: Dictionary = {}
 	for id in rest:
-		var rank: int = card_info(id).rank
+		var info := card_info(id)
+		var rank: int = info.rank
 		counts[rank] = int(counts.get(rank,0)) + 1
-	var score: int = groups.size()*1000
-	for count in counts.values(): score += 30 * (int(count)/2)
+		if not suits.has(rank): suits[rank] = {}
+		suits[rank][info.suit] = true
+	for rank in counts:
+		score += 30 * (int(counts[rank])/2)
+		if difficulty == 2 and suits[rank].size() > 1: score += 12
 	return score
 
-func _tri_discard(cards: Array) -> String:
+func _tri_discard(cards: Array, difficulty: int) -> String:
 	var best: String = cards[0]
 	var best_score := -1
 	for id in cards:
 		var rest := cards.duplicate()
 		rest.erase(id)
-		var score := _tri_score(rest)
+		var score := _tri_score(rest, difficulty)
 		if score > best_score:
 			best_score = score
 			best = id
@@ -594,11 +601,11 @@ func bot_step(index: int, difficulty: int = 1) -> bool:
 			var source := "deck"
 			if not state.discard.is_empty():
 				var with_top: Array = hand + [state.discard.back()]
-				var drop := _tri_discard(with_top)
+				var drop := _tri_discard(with_top, difficulty)
 				with_top.erase(drop)
-				if _tri_score(with_top) > _tri_score(hand) or state.deck.is_empty(): source = "discard" if state.discard.size() < 2 or not state.deck.is_empty() else "deck"
+				if _tri_score(with_top, difficulty) > _tri_score(hand, difficulty) or state.deck.is_empty(): source = "discard" if state.discard.size() < 2 or not state.deck.is_empty() else "deck"
 			return apply_action(index, {"type":"draw","source":source}).ok
-		return apply_action(index, {"type":"discard","card":_tri_discard(hand)}).ok
+		return apply_action(index, {"type":"discard","card":_tri_discard(hand, difficulty)}).ok
 	if state.phase == "draw":
 		return apply_action(index, {"type":"draw", "source":_bot_draw_source(index, difficulty)}).ok
 	var groups := suggest_melds(index)

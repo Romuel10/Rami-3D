@@ -19,7 +19,12 @@ export class SupabaseRoomStore {
     const response = await this.fetcher(`${this.url}/rest/v1/rpc/rami_room_${name}`, {
       method: 'POST', headers, body: JSON.stringify(parameters), signal: AbortSignal.timeout(4000)
     });
-    if (!response.ok) throw new Error(`Room storage unavailable (${response.status})`);
+    if (!response.ok) {
+      const error = new Error(`Room storage unavailable (${response.status})`);
+      const detail = await response.json().catch(() => null);
+      if (detail?.code === 'RM001') error.code = detail.code;
+      throw error;
+    }
     if (response.status === 204) return null;
     return response.json();
   }
@@ -29,6 +34,7 @@ export class SupabaseRoomStore {
     return room;
   }
   async ready() { await this.rpc('read', { p_code: '000000' }); }
+  async syncWallet(key, wins) { return this.rpc('wallet_sync', { p_key: key, p_wins: wins }); }
   async read(code) { return this.validate(await this.rpc('read', { p_code: code })); }
   async create(initial) {
     for (let attempt = 0; attempt < 32; attempt++) {

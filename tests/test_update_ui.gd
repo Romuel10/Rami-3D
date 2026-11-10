@@ -25,6 +25,7 @@ func _run() -> void:
 	app = MainScene.instantiate()
 	root.add_child(app)
 	await process_frame
+	app._finish_intro()
 	_check(app.game_mode == "menu" and app.music.enabled and is_equal_approx(app.music.volume, 0.28), "application starts with configured music")
 
 	_press("Règles du jeu")
@@ -98,6 +99,7 @@ func _run() -> void:
 	app = MainScene.instantiate()
 	root.add_child(app)
 	await process_frame
+	app._finish_intro()
 	_check(not app.music.enabled and app.music.track_index == 2 and is_equal_approx(app.music.volume, 0.61), "new application instance restores music preferences")
 	_press("Options")
 	_check(not app.beginner_enabled and app.music_button.text == "Musique coupée", "reopened options reflect saved toggles")

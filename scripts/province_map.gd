@@ -96,9 +96,9 @@ func _draw() -> void:
 		var y := size.y * i / 7.0
 		draw_line(Vector2(0, y), Vector2(size.x, y), grid)
 	var font := get_theme_default_font()
-	draw_string(font, Vector2(18, 31), "MADAGASCAR", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, LIGHT)
-	draw_string(font, Vector2(18, 51), "Les six provinces", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("adbbb2"))
-	draw_string(font, Vector2(size.x - 37, 31), "N", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, LIGHT)
+	draw_string(font, Vector2(18, 31), "MADAGASCAR", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, LIGHT)
+	draw_string(font, Vector2(18, 55), "Les six provinces", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color("adbbb2"))
+	draw_string(font, Vector2(size.x - 37, 31), "N", HORIZONTAL_ALIGNMENT_LEFT, -1, 19, LIGHT)
 	draw_colored_polygon(PackedVector2Array([Vector2(size.x-32, 37), Vector2(size.x-39, 56), Vector2(size.x-25, 56)]), LIGHT)
 	for index in range(Profile.PROVINCES.size()):
 		var province: String = Profile.PROVINCES[index]
@@ -119,8 +119,8 @@ func _draw() -> void:
 			draw_arc(center, 16.0 + _pulse * 20.0, 0, TAU, 36, Color(LIGHT, 1.0 - _pulse), 2.0, true)
 		draw_circle(center, 13.0, LIGHT if chosen else SEA, true, -1.0, true)
 		draw_circle(center, 13.0, LIGHT, false, 1.2, true)
-		draw_string(font, center + Vector2(-11, 5), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, 22, 15, SEA if chosen else LIGHT)
-	draw_string(font, Vector2(18, size.y - 16), "Contours simplifiés · Natural Earth", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("b1bdb0"))
+		draw_string(font, center + Vector2(-11, 6), str(index + 1), HORIZONTAL_ALIGNMENT_CENTER, 22, 19, SEA if chosen else LIGHT)
+	draw_string(font, Vector2(18, size.y - 16), "Contours simplifiés · Natural Earth", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("b1bdb0"))
 
 func _draw_outline(ring: PackedVector2Array, color: Color, width: float) -> void:
 	var closed := ring.duplicate()

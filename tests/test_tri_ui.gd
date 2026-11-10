@@ -19,6 +19,7 @@ func _run() -> void:
 	var app = Main.instantiate()
 	root.add_child(app)
 	await process_frame
+	app._finish_intro()
 	check(button(app.ui,"Jouer au Tri") != null,"real Tri menu entry exists")
 	button(app.ui,"Jouer au Tri").pressed.emit()
 	check(button(app.overlay,"Tri contre l’ordinateur") != null and button(app.overlay,"Tri avec des amis") != null,"Tri setup includes solo and online play")

@@ -20,6 +20,22 @@ func fields(node: Node) -> int:
 	var count := 1 if node is LineEdit else 0
 	for child in node.get_children(): count += fields(child)
 	return count
+func finish_tri(app: Node, winner: int) -> void:
+	var game: RefCounted = app.engine
+	var state: Dictionary = game.state
+	var hand := ["0:H:7","1:H:7","0:C:7","0:S:8","0:C:8","0:D:2","0:S:9","0:C:9","0:D:9","0:H:1","0:S:3","0:D:4"]
+	var draw := "0:D:8"
+	var pool: Array = state.deck + state.discard + state.players[0].hand + state.players[1].hand
+	for id in hand: pool.erase(id)
+	pool.erase(draw)
+	state.players[winner].hand = hand
+	state.players[1-winner].hand = pool.slice(0,12)
+	state.discard = [pool[12]]
+	state.deck = pool.slice(13) + [draw]
+	state.turn = winner
+	check(game.apply_action(winner, {"type":"draw"}).ok, "finishing player can draw")
+	check(game.apply_action(winner, {"type":"discard", "card":"0:D:2"}).ok, "winning Tri is completed by discard")
+	app._refresh_snapshot()
 func capture(app: Node, label: String) -> void:
 	if DisplayServer.get_name()=="headless": return
 	for size in [Vector2i(1440,900),Vector2i(2400,1080)]:
@@ -51,8 +67,23 @@ func _run() -> void:
 	var app = Main.instantiate()
 	root.add_child(app)
 	await process_frame
+	var intro: Node = app.overlay.find_child("IntroDuSalon",true,false)
+	check(app.overlay_kind == "intro" and intro.animator.is_playing() and not app.content.visible, "the animated intro starts before the menu")
+	var skeleton: Skeleton3D = intro.find_children("*", "Skeleton3D", true, false).front()
+	var before: Vector3 = skeleton.get_bone_pose_position(0)
+	intro.animator.seek(2.4, true)
+	check(skeleton.get_bone_count() == 6 and not skeleton.get_bone_pose_position(0).is_equal_approx(before), "the imported animation moves the six-card rig")
+	await capture(app,"intro")
+	intro.animator.advance(intro.animator.current_animation_length)
+	await process_frame
+	check(app.overlay_kind == "profile_setup" and app.content.visible, "the first launch opens the province map when the intro ends")
 	app.animations_enabled=false
-	app._show_profile(true)
+	app.name_input.text = "Brouillon"
+	app.province_map.choose("Toamasina", false)
+	button(app.overlay, "Politique de confidentialité").pressed.emit()
+	check(app.overlay.find_children("*","Label",true,false).any(func(label): return "Microphone" == label.text), "the privacy policy can be read before saving a profile")
+	app.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	check(app.overlay_kind == "profile_setup" and app.name_input.text == "Brouillon" and app.province_map.selected == "Toamasina", "back from privacy preserves the profile draft")
 	await process_frame
 	for province in Profile.PROVINCES:
 		var point: Vector2 = app.province_map.marker_position(province)
@@ -69,18 +100,20 @@ func _run() -> void:
 	app.name_input.text="Alice"
 	button(app.overlay,"Enregistrer le profil").pressed.emit()
 	check(app.player_province=="Antananarivo" and app.overlay.get_child_count()==0,"province and nickname persist before play")
-	button(app.content,"Voir l’intro").pressed.emit()
-	var intro: Node = app.overlay.find_child("IntroDuSalon",true,false)
-	check(app.overlay_kind == "intro" and intro.animator.is_playing(), "menu plays the embedded Higgsfield animation")
-	var skeleton: Skeleton3D = intro.find_children("*", "Skeleton3D", true, false).front()
-	var before: Vector3 = skeleton.get_bone_pose_position(0)
-	intro.animator.seek(2.4, true)
-	check(skeleton.get_bone_count() == 6 and not skeleton.get_bone_pose_position(0).is_equal_approx(before), "the imported animation moves the six-card rig")
-	await capture(app,"intro")
-	button(app.overlay,"Revoir").pressed.emit()
-	check(intro.animator.current_animation_position < 0.1, "intro replays from its first pose")
-	button(app.overlay,"Retour à l’accueil").pressed.emit()
-	check(app.game_mode == "menu" and app.overlay_kind.is_empty(), "intro can be skipped back to the menu")
+	check(button(app.content,"Voir l’intro") == null, "there is no intro button on the menu")
+	app._show_intro()
+	button(app.overlay,"Passer l’intro").pressed.emit()
+	check(app.game_mode == "menu" and app.overlay_kind.is_empty() and app.content.visible, "intro can be skipped to a saved profile")
+	check(app._wallet_label.text == "500 Kirobo", "the saved profile displays its balance in Kirobo")
+	button(app.content, "À propos").pressed.emit()
+	var version := str(ProjectSettings.get_setting("application/config/version"))
+	check(app.overlay.find_children("*","Label",true,false).any(func(label): return version in label.text), "About displays the installed version")
+	check(button(app.overlay, "Crédits") != null and button(app.overlay, "Dépôt GitHub du jeu") != null, "About links to credits and the project")
+	button(app.overlay, "Politique de confidentialité").pressed.emit()
+	check(app.overlay.find_children("*","Label",true,false).any(func(label): return "Microphone" == label.text), "the bundled privacy policy describes microphone use")
+	button(app.overlay, "Retour").pressed.emit()
+	check(button(app.overlay, "Crédits") != null, "privacy returns to About")
+	button(app.overlay, "Fermer").pressed.emit()
 	app.saved_address="ws://192.168.1.2:7357"
 	app._open_friends()
 	check(fields(app.overlay)==1 and app.address_input==null and app.invitation_input==null,"friends screen only requests six-digit code")
@@ -89,6 +122,19 @@ func _run() -> void:
 	check(app.friends_local and fields(app.overlay)==1 and app.address_input==null,"local play accepts the same six-digit code")
 	button(app.overlay,"En ligne").pressed.emit()
 	check(app.code_input.max_length==6 and app.code_input.virtual_keyboard_type==LineEdit.KEYBOARD_TYPE_NUMBER,"numeric six-digit keyboard")
+	check(app.code_input.get_theme_font_size("font_size") >= 25 and app.code_input.get_theme_stylebox("normal").bg_color.get_luminance() > 0.7, "the room field has large text on a light background")
+	if DisplayServer.get_name() != "headless":
+		app.code_input.grab_focus()
+		app.set_process(false)
+		app._keyboard_height = roundi(560 * root.get_final_transform().get_scale().y)
+		app._layout_modal()
+		await process_frame
+		await process_frame
+		check(app._modal_scroll.get_global_rect().encloses(app.code_input.get_global_rect()), "the active field stays inside the scroll area above the keyboard")
+		app.code_input.release_focus()
+		app._keyboard_height = 0
+		app._layout_modal()
+		app.set_process(true)
 	check(app.room_count_select.item_count==3,"creator has 2/3/4 player choices")
 	await capture(app,"join")
 	app.room_count_select.item_selected.emit(2)
@@ -111,11 +157,29 @@ func _run() -> void:
 	players[1].connected=false; app._lobby_updated(lobby)
 	check(app.lobby_start.disabled,"disconnected player prevents start")
 	players[1].connected=true
+	lobby.stake=50
+	players[0].stake_ready=true
+	players[1].stake_ready=false
+	app._lobby_updated(lobby)
+	check(app.lobby_start.disabled,"the host cannot start before the guest accepts the stake")
+	players[1].stake_ready=true
+	app._lobby_updated(lobby)
+	check(not app.lobby_start.disabled,"a full staked room can start when all players accept")
+	var balance: int = app.wallet.balance()
 	app._start_solo(12)
-	app.engine.state.winner=0; app._refresh_snapshot()
+	app.difficulty=2
+	finish_tri(app, 0)
+	check(app.wallet.balance() == balance + 60, "a solo win uses the difficulty fixed at the start")
+	check(app.overlay.find_children("*","Label",true,false).any(func(label): return "+60 Kirobo" in label.text), "the victory displays the gain in Kirobo")
+	app._winner_key=""
+	app._show_winner()
+	check(app.wallet.balance() == balance + 60, "rendering the same victory twice only grants one reward")
 	check(button(app.overlay,"Rejouer")!=null,"solo result asks to play again")
 	button(app.overlay,"Rejouer").pressed.emit()
 	check(app.game_mode=="solo" and app.snapshot.winner<0 and app.snapshot.tri_hand_size==12,"solo replay keeps twelve-card Tri format")
+	finish_tri(app, 1)
+	check(app.wallet.balance() == balance + 60, "a loss grants no Kirobo")
+	app._start_solo(12)
 	await capture(app,"game")
 
 	app.network.connected=true; app.network.supports_rematch=true; app.network.room_code="001234"; app.network.local_player=0
@@ -152,12 +216,14 @@ func _run() -> void:
 	var exported := Profile.backup_text("Alice", "Antananarivo")
 	var parsed := Profile.parse_backup(exported)
 	check(not parsed.is_empty() and not parsed.solo.is_empty() and parsed.stats.wins == 1, "export includes verified solo and statistics")
+	check(parsed.has("wallet") and parsed.wallet.balance == balance and parsed.wallet.wins.values().has(1), "backup preserves the wallet and its pending victory")
 	check(Profile.parse_backup(exported.replace("Antananarivo", "Inconnue")).is_empty(), "invalid province in a backup is rejected")
 	app.saved_name = "Autre profil"
 	app.player_province = "Toliara"
 	app._save_preferences()
 	app._restore_backup(exported)
 	check(app.saved_name == "Alice" and app.player_province == "Antananarivo" and Store.statistics().wins == 1, "restore reinstates profile, game and statistics")
+	check(app.wallet.balance() == balance + 60, "restoring the backup preserves the solo gain")
 	check(not FileAccess.file_exists(Profile.RESTORE) and Store.load_game().game.state.tri_hand_size == 12, "completed restore clears the journal and keeps the Tri save")
 
 	var guest := Network.new()

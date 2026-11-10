@@ -2,11 +2,19 @@
 
 Jeu Android de rami en français avec une table en 3D, un mode solo contre 1 à 3 ordinateurs et des salons privés de 2 à 4 joueurs. Projet réalisé avec Godot 4.6.3.
 
+## Kirobo et informations du jeu — version 0.15.0
+
+Le Kirobo est la monnaie virtuelle du jeu. Le portefeuille commence avec 500 Kirobo. Remporter un match solo rapporte 25 Kirobo en facile, 60 en normal ou 120 en difficile. Dans un salon en ligne, les joueurs acceptent la mise choisie par l’hôte et le vainqueur reçoit la cagnotte.
+
+L’intro se lance à l’ouverture. Les textes et les champs de saisie sont agrandis et la fenêtre s’adapte au clavier. **À propos** regroupe la version, le lien vers ce dépôt, les crédits et la [politique de confidentialité](PRIVACY.md).
+
+Pour installer l’APK de test, ouvrez la dernière compilation réussie sur `main` dans [Actions → Android APK](https://github.com/Romuel10/Rami-3D/actions/workflows/android.yml). Dans **Artifacts**, téléchargez l’archive `rami-android-0.15.0-…` et ouvrez `rami-3d.apk` après l’avoir extraite.
+
 ## Carte de Madagascar et animations — version 0.13.0
 
 Le profil propose une carte tactile des six provinces et des boutons avec leurs noms. Les contours sont simplifiés à partir des régions Natural Earth 1:10m, regroupées par province. [Données Natural Earth](https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-1-states-provinces/)
 
-**Voir l’intro** joue un éventail de six cartes animé dans l’atelier 3D de Higgsfield. Les éclats de pioche et de défausse ainsi que l’animation de victoire suivent les réglages d’animations et d’économie de batterie du jeu.
+L’intro montre un éventail de six cartes animé dans l’atelier 3D de Higgsfield. Les éclats de pioche et de défausse ainsi que l’animation de victoire suivent les réglages d’animations et d’économie de batterie du jeu.
 
 ## Profils et tournois en ligne — version 0.12.0
 
@@ -30,7 +38,7 @@ Rejoindre un ami demande uniquement son code à six chiffres. L’hôte choisit 
 - **Table plus naturelle** : feutre visible au-dessus de son support, relief et rugosité des matières, dos bleu marine, éclairage ajusté et mains avec doigts distincts.
 - Le mode économie conserve 30 images/s sans ombres ni anticrénelage ; le mode normal vise 60 images/s avec anticrénelage 2×. Les performances réelles dépendent du téléphone.
 
-Illustrations : [SVGCards de Saul Spatz](https://github.com/saulspatz/SVGCards), domaine public. [Crédits et adaptations](assets/cards/LICENSE.txt). Le bouton **Crédits** de l’accueil indique aussi leur origine. Les salons Supabase sont préconfigurés comme en 0.8.0.
+Illustrations : [SVGCards de Saul Spatz](https://github.com/saulspatz/SVGCards), domaine public. [Crédits et adaptations](assets/cards/LICENSE.txt). Les crédits sont accessibles depuis **À propos**. Les salons Supabase sont préconfigurés comme en 0.8.0.
 
 ## Mode entre amis hébergé — version 0.8.0
 

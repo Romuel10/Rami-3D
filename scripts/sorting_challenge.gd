@@ -185,7 +185,7 @@ func _build_interface() -> void:
 	_built = true
 	var theme := Theme.new()
 	theme.default_font = load("res://assets/sans.ttf")
-	theme.default_font_size = 19
+	theme.default_font_size = 22
 	theme.set_color("font_color", "Label", INK)
 	theme.set_color("font_color", "Button", INK)
 	theme.set_color("font_hover_color", "Button", GOLD)
@@ -388,7 +388,7 @@ func _set_feedback(text: String, color: Color) -> void:
 func _label(text: String, font_size: int, color: Color, parent: Node) -> Label:
 	var label := Label.new()
 	label.text = text
-	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_font_size_override("font_size", maxi(20, font_size))
 	label.add_theme_color_override("font_color", color)
 	parent.add_child(label)
 	return label
