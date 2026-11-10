@@ -30,6 +30,8 @@ Le départ du dernier joueur libère le salon. Les salons expirent après 24 heu
 
 Un match peut compter une, trois ou cinq manches. Dans un tournoi, les quatre places restent stables et chaque duel possède sa propre session. Les joueurs en attente reçoivent le tableau et le résultat des duels. Les vues de jeu sont envoyées uniquement aux deux joueurs du duel courant.
 
+Les salons Internet de rami et de Tri peuvent utiliser une mise en Kirobo. Chaque joueur dispose d’un portefeuille privé et accepte sa mise avant le départ. La réservation et le règlement sont atomiques avec la sauvegarde du salon. La cagnotte revient au seul premier, ou chaque mise est rendue en cas d’égalité en tête ou d’expiration sans résultat. Les victoires solo sont enregistrées sur l’appareil puis synchronisées par reçus dédupliqués.
+
 ## Redéployer
 
 Avec Supabase CLI installé, consulter `supabase --help` puis les aides des commandes de votre version. Appliquer les migrations de `supabase/migrations` au projet lié, puis déployer `rami-online` avec les fichiers de cette fonction et ses dépendances relatives dans `vercel/lib`. `supabase/config.toml` déclare l’entrée et son authentification de session. Ne pas activer le JWT de passerelle sans modifier le protocole du client.
@@ -51,6 +53,7 @@ Pour tester explicitement un service déployé, sans clé administrative :
 
 ```bash
 node supabase/tests/live.mjs wss://mppunkypxdqyazoojksv.supabase.co/functions/v1/rami-online --rotation
+node supabase/tests/live.mjs wss://mppunkypxdqyazoojksv.supabase.co/functions/v1/rami-online --kirobo
 ```
 
 Il crée des salons QA pour Rami à quatre et Tri 6/12, vérifie les mains privées, les refus d’actions, la reprise et l’abandon. `--rotation` attend aussi le renouvellement réel d’une connexion du salon d’attente. Ces essais consomment temporairement des salons et des requêtes du projet ; ils ne sont pas lancés automatiquement à chaque CI.

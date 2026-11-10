@@ -20,7 +20,7 @@ const server = createServer(async (_request, response) => {
   let ready = false;
   try { await initialization; await store.ready(); ready = true; } catch { /* Honest 503, no memory-only games. */ }
   response.writeHead(ready ? 200 : 503, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-  response.end(JSON.stringify({ service: 'Rami Salon 3D', version: '0.12.0', ready, protocol: 1, storage: 'supabase-postgres', variants: ['rami', 'tri6', 'tri12'], features: ['player-count', 'tri-multiplayer', 'rematch', 'voice', 'series', 'tournaments', 'province', 'kick'] }));
+  response.end(JSON.stringify({ service: 'Rami Salon 3D', version: '0.15.0', ready, protocol: 1, storage: 'supabase-postgres', variants: ['rami', 'tri6', 'tri12'], features: ['player-count', 'tri-multiplayer', 'rematch', 'voice', 'series', 'tournaments', 'province', 'kick', 'tselis', 'kirobo'] }));
 });
 const wss = new WebSocketServer({ noServer: true, maxPayload: 32768, perMessageDeflate: false });
 let pendingUpgrades = 0;

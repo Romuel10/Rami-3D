@@ -14,6 +14,8 @@ func _run() -> void:
 	app = MainScene.instantiate()
 	root.add_child(app)
 	await process_frame
+	if app.overlay_kind == "intro":
+		_press("Passer l’intro")
 	_check(app.game_mode == "menu" and app.card_nodes.size() == 9, "menu starts with decorative cards")
 	if app.overlay_kind != "profile_setup":
 		_press("Options")

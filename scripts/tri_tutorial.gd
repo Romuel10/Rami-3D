@@ -157,7 +157,7 @@ func _build_interface() -> void:
 	var fallbacks: Array[Font] = [load("res://assets/symbols.ttf")]
 	font.fallbacks = fallbacks
 	local_theme.default_font = font
-	local_theme.default_font_size = 19
+	local_theme.default_font_size = 22
 	local_theme.set_color("font_color", "Label", INK)
 	local_theme.set_color("font_color", "Button", INK)
 	local_theme.set_color("font_hover_color", "Button", GOLD)
@@ -314,7 +314,7 @@ func _label(text: String, size_value: int, color: Color, parent: Node) -> Label:
 	var label := Label.new()
 	label.text = text
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	label.add_theme_font_size_override("font_size", size_value)
+	label.add_theme_font_size_override("font_size", maxi(20, size_value))
 	label.add_theme_color_override("font_color", color)
 	parent.add_child(label)
 	return label

@@ -3,6 +3,7 @@ extends RefCounted
 const PROVINCES := ["Antananarivo", "Antsiranana", "Fianarantsoa", "Mahajanga", "Toamasina", "Toliara"]
 const Store = preload("res://scripts/solo_store.gd")
 const Rules = preload("res://scripts/rami_engine.gd")
+const Wallet = preload("res://scripts/tseli_wallet.gd")
 const PREFERENCES := "user://preferences.cfg"
 const RESTORE := "user://profile-restore.save"
 const BACKUP_LIMIT := 512000
@@ -11,7 +12,10 @@ static func clean_name(value: String) -> String:
 	return value.replace("\n", " ").replace("\r", " ").replace("\t", " ").strip_edges().left(20)
 
 static func backup_text(name: String, province: String) -> String:
-	return JSON.stringify({"format": "rami-salon", "version": 1, "name": name, "province": province, "solo": Store.load_game(), "stats": Store.statistics()})
+	var data := {"format":"rami-salon", "version":1, "name":name, "province":province, "solo":Store.load_game(), "stats":Store.statistics()}
+	var wallet := Wallet.load_wallet()
+	if not wallet.is_empty(): data["wallet"] = wallet
+	return JSON.stringify(data)
 
 static func parse_backup(text: String) -> Dictionary:
 	if text.length() > BACKUP_LIMIT: return {}
@@ -34,7 +38,12 @@ static func parse_backup(text: String) -> Dictionary:
 	if stats.wins > stats.rounds or not stats.get("seen") is Dictionary: return {}
 	for key in stats.seen:
 		if not key is String or key.length() > 100 or stats.seen[key] != true: return {}
-	return {"name": name, "province": data.province, "solo": solo, "stats": {"rounds": int(stats.rounds), "wins": int(stats.wins), "points": int(stats.points), "seen": stats.seen}}
+	var result := {"name": name, "province": data.province, "solo": solo, "stats": {"rounds": int(stats.rounds), "wins": int(stats.wins), "points": int(stats.points), "seen": stats.seen}}
+	if data.has("wallet"):
+		var wallet := Wallet.checked_data(data.wallet)
+		if wallet.is_empty(): return {}
+		result["wallet"] = wallet
+	return result
 
 static func _count(value: Variant, maximum: int) -> bool:
 	return (value is int or value is float) and value >= 0 and value <= maximum and floorf(float(value)) == float(value)
@@ -43,7 +52,7 @@ static func save_preferences(cfg: ConfigFile) -> bool:
 	return cfg.save(PREFERENCES + ".tmp") == OK and DirAccess.rename_absolute(PREFERENCES + ".tmp", PREFERENCES) == OK
 
 static func finish_restore() -> bool:
-	# The journal survives a process restart between the three local writes.
+	# The journal survives a process restart between the local writes.
 	if not FileAccess.file_exists(RESTORE): return true
 	var data := Store.read_data(RESTORE)
 	if data.is_empty(): return false
@@ -52,4 +61,5 @@ static func finish_restore() -> bool:
 	cfg.set_value("player", "name", data.name)
 	cfg.set_value("player", "province", data.province)
 	var solo: Dictionary = data.solo if not data.solo.is_empty() else {"version": 1, "empty": true}
+	if data.has("wallet") and not Wallet.restore_wallet(data.wallet): return false
 	return Store.write_data(Store.SAVE, solo) and Store.write_data(Store.STATS, data.stats) and save_preferences(cfg) and DirAccess.remove_absolute(RESTORE) == OK

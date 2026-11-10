@@ -4,6 +4,7 @@
  * Add --rotation to exercise the hosted worker's 100-second socket rotation.
  */
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
 const endpoint = process.argv[2];
 if (!endpoint || !/^wss?:\/\//.test(endpoint)) throw new Error('Supply the WebSocket endpoint to test.');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -72,7 +73,64 @@ async function join(code, token = '') {
   return { client, welcome };
 }
 
-try {
+async function wallet(key, wins = []) {
+  const client = await new Client().open();
+  client.send({ type: 'wallet_sync', wallet_key: key, wins });
+  const response = await client.until('wallet');
+  await delay(100);
+  assert.equal(client.socket.readyState, WebSocket.OPEN, 'the client closes after reading its wallet acknowledgement');
+  client.close();
+  return response.balance;
+}
+
+async function testStakes() {
+  const keys = Array.from({ length: 3 }, () => randomBytes(24).toString('hex'));
+  const wins = [{ id: 'a1', level: 0 }, { id: 'a2', level: 1 }, { id: 'a3', level: 2 }];
+  assert.equal(await wallet(keys[0], wins), 705);
+  assert.equal(await wallet(keys[0], wins), 705, 'replayed offline victories do not duplicate credit');
+  const host = await new Client().open();
+  host.send({ type: 'create', name: 'QA Kirobo hôte', player_count: 3, stake: 50, wallet_key: keys[0] });
+  const { code } = await host.until('welcome');
+  assert.equal((await host.until('lobby')).data.stake, 50);
+  const same = await new Client().open();
+  same.send({ type: 'join', code, wallet_key: keys[0] });
+  assert.match((await same.until('error')).message, /déjà une place/);
+  const guests = [];
+  for (const key of keys.slice(1)) {
+    const client = await new Client().open();
+    client.send({ type: 'join', name: 'QA Kirobo invité', code, wallet_key: key });
+    await client.until('welcome');
+    await client.until('lobby');
+    guests.push(client);
+  }
+  await host.until('lobby', frame => frame.data.players.length === 3);
+  host.send({ type: 'start' });
+  assert.match((await host.until('error')).message, /accepter la mise/);
+  assert.equal(await wallet(keys[0]), 705, 'waiting lobby does not reserve funds');
+  for (const client of guests) client.send({ type: 'accept_stake', stake: 50 });
+  const ready = await host.until('lobby', frame => frame.data.players.every(p => p.stake_ready));
+  assert.ok(!ready.data.players.some(p => 'wallet' in p));
+  host.send({ type: 'start' });
+  const first = (await host.until('state')).data;
+  assert.equal(first.stake, 50);
+  assert.equal(await wallet(keys[0]), 655);
+  assert.equal(await wallet(keys[1]), 450);
+  assert.equal(await wallet(keys[2]), 450);
+  for (const client of guests) client.leave();
+  const result = (await host.until('state', frame => frame.data.match_result.finished)).data;
+  assert.equal(result.win_by_forfeit, true);
+  assert.equal(result.stake_net, 100);
+  assert.equal(await wallet(keys[0]), 805);
+  assert.equal(await wallet(keys[1]), 450);
+  assert.equal(await wallet(keys[2]), 450);
+  host.send({ type: 'rematch', session_id: result.session_id });
+  await host.until('lobby', frame => !frame.data.started && frame.data.players.length === 1);
+  assert.equal(await wallet(keys[0], wins), 805, 'replay and resync preserve the settled pot');
+  host.leave();
+  console.log('PASS Kirobo: offline receipts, private wallets, consent, debit, forfeit payout and rematch');
+}
+
+async function testRooms() {
   for (const size of [0, 6, 12]) {
     const { client: a, welcome: aw } = await create(size);
     let { client: b, welcome: bw } = await join(aw.code);
@@ -141,6 +199,11 @@ try {
     b.leave();
     console.log('PASS planned worker rotation preserves the lobby owner and private token');
   }
+}
+
+try {
+  if (process.argv.includes('--kirobo') || process.argv.includes('--tselis')) await testStakes();
+  else await testRooms();
 } finally {
   for (const client of clients) { client.leave(); client.close(); }
 }

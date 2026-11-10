@@ -23,6 +23,7 @@ const LEAVE_FLUSH_MS := 250
 const EngineScript = preload("res://scripts/rami_engine.gd")
 const Profile = preload("res://scripts/player_profile.gd")
 const Discovery = preload("res://scripts/lan_discovery.gd")
+const Wallet = preload("res://scripts/tseli_wallet.gd")
 
 var tri_cards: int = 0
 var player_count: int = 0
@@ -58,6 +59,8 @@ var _client_url: String = ""
 var _client_name: String = ""
 var _province := ""
 var _tournament_name := ""
+var _requested_stake := 0
+var _wallet_key := ""
 var _discovery: RefCounted
 var _quick_reconnect_deadline := 0
 var _session_token: String = ""
@@ -105,7 +108,7 @@ func host_room(player_name: String, port: int = PORT, hand_size: int = 0, option
 	_broadcast_lobby()
 	return true
 
-func join_room(address: String, player_name: String, code: String = "", province: String = "") -> bool:
+func join_room(address: String, player_name: String, code: String = "", province: String = "", wallet_key: String = "") -> bool:
 	leave_room()
 	var url := _normalise_address(address)
 	if url.is_empty():
@@ -118,6 +121,7 @@ func join_room(address: String, player_name: String, code: String = "", province
 	_client_url = url
 	_client_name = _clean_name(player_name)
 	_province = province
+	if url.begins_with("wss://"): _wallet_key = wallet_key
 	_wants_connection = true
 	local_address = address.strip_edges()
 	return _connect_client()
@@ -151,6 +155,11 @@ func create_remote_room(address: String, player_name: String, hand_size: int = 0
 	var url := _normalise_address(address)
 	if url.is_empty():
 		notice.emit("Le service en ligne est indisponible.")
+		return false
+	_requested_stake = int(options.get("stake", 0))
+	if url.begins_with("wss://"): _wallet_key = str(options.get("wallet_key", ""))
+	if _requested_stake > 0 and _wallet_key.is_empty():
+		notice.emit("Le portefeuille exige une connexion sécurisée.")
 		return false
 	_client_mode = "create"
 	_client_url = url
@@ -206,6 +215,10 @@ func configure_players(count: int) -> void:
 			player_count = count
 			_broadcast_lobby()
 	elif _client != null: _send(_client, {"type":"configure", "player_count":count})
+
+func accept_stake(stake: int) -> void:
+	if connected and not match_started and not _hosting_locally and _client != null:
+		_send(_client, {"type":"accept_stake", "stake":stake})
 
 func remove_guest(seat_id: String) -> void:
 	if not connected or not is_host or match_started: return
@@ -402,6 +415,8 @@ func _clear_current(emit_change: bool) -> void:
 	_client_name = ""
 	_province = ""
 	_tournament_name = ""
+	_requested_stake = 0
+	_wallet_key = ""
 	_stop_discovery()
 	_auth_sent = false
 	_known_lobby.clear()
@@ -795,9 +810,9 @@ func _poll_client() -> void:
 	if state == WebSocketPeer.STATE_OPEN:
 		if not _auth_sent:
 			if _client_mode == "create":
-				_send(_client, {"type":"create", "name":_client_name, "province":_province, "tri_cards":tri_cards, "player_count":player_count, "rounds":rounds, "tournament":not _tournament_name.is_empty(), "tournament_name":_tournament_name})
+				_send(_client, {"type":"create", "name":_client_name, "province":_province, "tri_cards":tri_cards, "player_count":player_count, "rounds":rounds, "tournament":not _tournament_name.is_empty(), "tournament_name":_tournament_name, "stake":_requested_stake, "wallet_key":_wallet_key})
 			else:
-				_send(_client, {"type":"join", "name":_client_name, "province":_province, "code":room_code, "token":_session_token, "series":true})
+				_send(_client, {"type":"join", "name":_client_name, "province":_province, "code":room_code, "token":_session_token, "series":true, "wallet_key":_wallet_key})
 			_auth_sent = true
 		while _client != null and _client.get_available_packet_count() > 0:
 			var packet := _client.get_packet()
@@ -832,6 +847,7 @@ func _client_message(message: Dictionary) -> void:
 		"welcome":
 			local_player = int(message.get("player", -1))
 			_session_token = str(message.get("token", ""))
+			_wallet_key = ""
 			room_code = str(message.get("code", room_code))
 			is_host = bool(message.get("is_host", false))
 			var features: Dictionary = message.get("features", {})
@@ -846,6 +862,11 @@ func _client_message(message: Dictionary) -> void:
 		"lobby":
 			var data: Variant = message.get("data")
 			if data is Dictionary:
+				if _requested_stake > 0 and int(data.get("stake",0)) != _requested_stake:
+					leave_room()
+					notice.emit("Ce serveur ne prend pas en charge les mises en " + Wallet.UNIT + ".")
+					return
+				_requested_stake = 0
 				if tri_cards > 0 and int(data.get("tri_cards",0)) != tri_cards:
 					leave_room()
 					notice.emit("Ce serveur ne prend pas en charge le Tri choisi. Mettez le serveur à jour.")

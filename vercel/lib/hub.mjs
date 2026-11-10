@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { createGame, applyAction, forfeitPlayer, matchResult, nextRound, viewFor } from './engine.mjs';
 import { validVoiceFrame } from './voice.mjs';
@@ -6,6 +6,7 @@ import { validVoiceFrame } from './voice.mjs';
 class ClientError extends Error { constructor(message, fatal = false) { super(message); this.fatal = fatal; } }
 const cleanText = (value, length) => typeof value === 'string' ? Array.from(value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim()).slice(0, length).join('') : '';
 const PROVINCES = ['Antananarivo', 'Antsiranana', 'Fianarantsoa', 'Mahajanga', 'Toamasina', 'Toliara'];
+const STAKES = [0, 25, 50, 100, 200, 500];
 const secretEquals = (a, b) => typeof a === 'string' && typeof b === 'string' && /^[0-9a-f]{48}$/.test(a) && /^[0-9a-f]{48}$/.test(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 const currentDuel = room => room.tournament?.duels[room.tournament.stage];
 const gameSeat = (room, index) => currentDuel(room)?.seats.indexOf(index) ?? index;
@@ -95,7 +96,11 @@ export class GameHub {
   }
   error(entry, message, fatal = false) {
     this.send(entry, { type: 'error', message, fatal });
-    if (fatal) { entry.leaving = true; entry.socket.close(1008, 'Salon inaccessible'); }
+    if (fatal) {
+      entry.leaving = true;
+      // Godot polls the socket once per frame. Give it time to read the reason.
+      setTimeout(() => entry.socket.close(1008, 'Salon inaccessible'), 200).unref?.();
+    }
   }
   expire(room) {
     const now = Date.now();
@@ -168,7 +173,11 @@ export class GameHub {
     if (!remaining.length || !remaining.every(p => p.rematch_ready)) return false;
     room.players = remaining;
     room.game = null; room.started = false;
-    if (remaining.length >= 2 && (!room.player_count || remaining.length === capacity(room)) && remaining.every(p => p.connection)) this.beginMatch(room);
+    if (room.stake) {
+      // Voting for a rematch accepts the same stake. The host starts it from
+      // the lobby so a failed debit can be shown without losing the votes.
+      for (const p of remaining) { p.stake_ready = true; p.rematch_ready = false; }
+    } else if (remaining.length >= 2 && (!room.player_count || remaining.length === capacity(room)) && remaining.every(p => p.connection)) this.beginMatch(room);
     else for (const p of remaining) p.rematch_ready = false;
     return true;
   }
@@ -179,13 +188,17 @@ export class GameHub {
     return Math.max(0, Math.min(this.graceMs, ...this.waiting(room).map(p => p.deadline - Date.now())));
   }
   async transact(code, operation, publish = true) {
-    return this.store.update(code, room => {
+    return this.store.update(code, async room => {
       const changed = this.expire(room);
-      try { return { changed, value: operation(room) }; }
+      try { return { changed, value: await operation(room) }; }
       catch (error) {
         if (error instanceof ClientError) return { changed, error };
         throw error;
       } finally {
+        if (room.stake && room.game && !room.game.stake_result && matchFinished(room)) {
+          const winners = matchResult(room.game).winners;
+          room.game.stake_result = { winner: winners.length === 1 ? winners[0] : null };
+        }
         if (room.started && room.players.every((_p, i) => !active(room, i))) room.players = [];
       }
     }, { publish });
@@ -201,6 +214,7 @@ export class GameHub {
       if (!entry.code) {
         if (message.type === 'create') return await this.create(entry, message);
         if (message.type === 'join') return await this.join(entry, message);
+        if (message.type === 'wallet_sync') return await this.syncWallet(entry, message);
         throw new ClientError('Créez ou rejoignez d’abord un salon.');
       }
       if (message.type === 'voice') return this.sendVoice(entry, message);
@@ -222,7 +236,13 @@ export class GameHub {
           if (room.players.length < 2) throw new ClientError('Il faut au moins deux joueurs.');
           if (room.player_count && room.players.length !== capacity(room)) throw new ClientError(`Attendez les ${capacity(room)} joueurs prévus.`);
           if (room.players.some(p => !p.connection)) throw new ClientError('Attendez la reconnexion de tous les joueurs.');
+          if (room.stake && room.players.some(p => !p.stake_ready)) throw new ClientError('Chaque joueur doit accepter la mise.');
           this.beginMatch(room);
+          return;
+        }
+        if (message.type === 'accept_stake') {
+          if (room.started || !room.stake || message.stake !== room.stake) throw new ClientError('Cette mise n’est plus disponible.');
+          player.stake_ready = true;
           return;
         }
         if (message.type === 'configure') {
@@ -271,7 +291,7 @@ export class GameHub {
           if (!room.game || seat < 0) throw new ClientError('Attendez votre prochain duel.');
           if (forfeited(room, index)) throw new ClientError('Vous avez abandonné cette partie.', true);
           if (this.paused(room)) throw new ClientError('La partie attend la reconnexion d’un joueur.');
-          if ((message.session_id || room.tournament || (room.rounds ?? 1) > 1) && message.session_id !== room.game.session_id) throw new ClientError('Cette action appartient au match précédent.');
+          if ((message.session_id || room.stake || room.tournament || (room.rounds ?? 1) > 1) && message.session_id !== room.game.session_id) throw new ClientError('Cette action appartient au match précédent.');
           if ((room.rounds ?? 1) > 1 && message.round !== room.game.match.round) throw new ClientError('Cette action appartient à une autre manche.');
           if (!message.action || typeof message.action !== 'object' || Array.isArray(message.action)) throw new ClientError('Action incorrecte.');
           if (Date.now() - entry.lastAction < 40) throw new ClientError('Attendez un instant avant votre prochaine action.');
@@ -299,8 +319,33 @@ export class GameHub {
       await this.deliver(result.room.code);
     } catch (error) {
       if (error instanceof ClientError) this.error(entry, error.message, error.fatal);
+      else if (error.code === 'RM001') this.error(entry, 'Un joueur n’a plus assez de Kirobo pour la mise.');
       else throw error;
     }
+  }
+  walletDigest(key) {
+    if (!this.store.syncWallet || typeof key !== 'string' || !/^[0-9a-f]{48}$/.test(key)) {
+      throw new ClientError('Ce salon nécessite un portefeuille Kirobo. Mettez le jeu à jour.', true);
+    }
+    return createHash('sha256').update(key).digest('hex');
+  }
+  async syncWallet(entry, message) {
+    const key = this.walletDigest(message.wallet_key);
+    const wins = message.wins;
+    if (!Array.isArray(wins) || wins.length > 24 || wins.some(win =>
+      typeof win?.id !== 'string' || !/^[0-9a-f]{2,16}$/.test(win.id) || ![0, 1, 2].includes(win.level))) {
+      throw new ClientError('Reçus de victoire invalides.', true);
+    }
+    const balance = await this.store.syncWallet(key, wins.map(({ id, level }) => ({ id, level })));
+    this.send(entry, { type: 'wallet', balance });
+    entry.leaving = true;
+    // Let the client consume the response before closing. The auth deadline
+    // still closes this one-shot connection if the client stops polling.
+  }
+  async stakeWallet(secret, stake) {
+    const key = this.walletDigest(secret);
+    if (await this.store.syncWallet(key, []) < stake) throw new ClientError('Votre solde est insuffisant pour cette mise.', true);
+    return key;
   }
   connectedPlayer(entry, message, token) {
     return {
@@ -320,7 +365,11 @@ export class GameHub {
       name: cleanText(message.tournament_name, 36) || 'Tournoi entre amis', stage: -1, champion: null,
       duels: [{ seats: [0, 1], winner: null }, { seats: [2, 3], winner: null }, { seats: [], winner: null }],
     } : null;
-    const room = await this.store.create({ players: [this.connectedPlayer(entry, message, token)], tri_cards: tri, player_count: tournament ? 4 : count, rounds, tournament, voice_topic: randomBytes(24).toString('hex'), started: false, game: null });
+    const stake = message.stake ?? 0;
+    if (!STAKES.includes(stake) || (stake > 0 && (tournament || !count))) throw new ClientError('Mise de salon incorrecte.', true);
+    const player = this.connectedPlayer(entry, message, token);
+    if (stake) Object.assign(player, { wallet: await this.stakeWallet(message.wallet_key, stake), stake_ready: true });
+    const room = await this.store.create({ players: [player], tri_cards: tri, player_count: tournament ? 4 : count, rounds, tournament, stake, voice_topic: randomBytes(24).toString('hex'), started: false, game: null });
     this.authenticate(entry, room, 0, token);
     await this.deliver(room.code);
   }
@@ -328,7 +377,7 @@ export class GameHub {
     const code = String(message.code || '');
     if (!/^\d{6}$/.test(code)) throw new ClientError('Le code du salon est incorrect.', true);
     const token = typeof message.token === 'string' ? message.token : '';
-    const result = await this.transact(code, room => {
+    const result = await this.transact(code, async room => {
       let index;
       let assigned = token;
       if (token) {
@@ -344,7 +393,13 @@ export class GameHub {
         if ((room.tournament || (room.rounds ?? 1) > 1) && message.series !== true) throw new ClientError('Mettez le jeu à jour pour rejoindre ce salon.', true);
         assigned = randomBytes(24).toString('hex');
         index = room.players.length;
-        room.players.push(this.connectedPlayer(entry, message, assigned));
+        const player = this.connectedPlayer(entry, message, assigned);
+        if (room.stake) {
+          player.wallet = await this.stakeWallet(message.wallet_key, room.stake);
+          if (room.players.some(p => p.wallet === player.wallet)) throw new ClientError('Ce portefeuille occupe déjà une place dans ce salon.', true);
+          player.stake_ready = false;
+        }
+        room.players.push(player);
       }
       room.activity = Date.now();
       return { index, token: assigned };
@@ -370,6 +425,11 @@ export class GameHub {
     const seats = currentDuel(room)?.seats ?? room.players.map((_p, i) => i);
     view.players.forEach((player, i) => { player.province = room.players[seats[i]].province ?? ''; });
     const duel = currentDuel(room);
+    if (room.stake) {
+      view.stake = room.stake;
+      const result = room.game.stake_result;
+      if (result) view.stake_net = result.winner === null ? 0 : (result.winner === seat ? room.players.length - 1 : -1) * room.stake;
+    }
     if (Number.isInteger(duel?.winner) && duel.winner >= 0) {
       if (view.match_result.winners.length > 1) view.match_result.tie_break = true;
       view.match_result.winners = [duel.seats.indexOf(duel.winner)];
@@ -397,10 +457,10 @@ export class GameHub {
           entry.index = index;
           this.welcome(entry, room, index);
         }
-        const players = room.players.map((p, i) => ({ name: p.name, province: p.province ?? '', seat_id: p.seat_id ?? '', connected: !!p.connection && !p.departed, forfeited: forfeited(room, i), rematch_ready: !!p.rematch_ready, departed: !!p.departed }));
+        const players = room.players.map((p, i) => ({ name: p.name, province: p.province ?? '', seat_id: p.seat_id ?? '', connected: !!p.connection && !p.departed, forfeited: forfeited(room, i), rematch_ready: !!p.rematch_ready, departed: !!p.departed, stake_ready: !!p.stake_ready }));
         const playing = !!room.game && gameSeat(room, index) >= 0;
         const progress = room.tournament && room.game ? { round: room.game.match.round, round_finished: room.game.winner >= 0, finished: matchFinished(room), session_id: room.game.session_id } : null;
-        const data = { code, players, port: 443, started: room.started, tri_cards: room.tri_cards, player_count: room.player_count || 0, capacity: capacity(room), finished: finished(room), host: index === owner(room), your_index: index, rounds: room.rounds ?? 1, tournament: room.tournament ?? null, progress, playing };
+        const data = { code, players, port: 443, started: room.started, tri_cards: room.tri_cards, player_count: room.player_count || 0, capacity: capacity(room), finished: finished(room), host: index === owner(room), your_index: index, rounds: room.rounds ?? 1, stake: room.stake ?? 0, tournament: room.tournament ?? null, progress, playing };
         const lobbyKey = JSON.stringify(data);
         if (lobbyKey !== entry.lobbyKey) this.send(entry, { type: 'lobby', data });
         entry.lobbyKey = lobbyKey;

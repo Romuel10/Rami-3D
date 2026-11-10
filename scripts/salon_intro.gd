@@ -1,5 +1,7 @@
 extends SubViewportContainer
 
+signal finished
+
 const SCENE := "res://assets/animations/salon-intro.glb"
 
 var animator: AnimationPlayer
@@ -49,3 +51,4 @@ func replay() -> void:
 
 func _hold_final_frame(_name: StringName) -> void:
 	_render.render_target_update_mode = SubViewport.UPDATE_ONCE
+	finished.emit()
