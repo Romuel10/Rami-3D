@@ -72,6 +72,7 @@ var content: Control
 var overlay: Control
 var _modal_panel: PanelContainer
 var _modal_scroll: ScrollContainer
+var _privacy_back: Callable
 var _modal_width := 720.0
 var _keyboard_height := 0
 var wallet: Wallet
@@ -210,6 +211,9 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		if overlay_kind == "intro":
 			_finish_intro()
+			return
+		if _privacy_back.is_valid():
+			_privacy_back.call()
 			return
 		if overlay_kind == "profile_setup": return
 		if overlay_kind == "room_setup":
@@ -622,7 +626,9 @@ func _show_options() -> void:
 
 func _show_profile(first_launch: bool = false) -> void:
 	var box := _modal("Votre profil", "Touchez votre province sur la carte, puis enregistrez votre pseudo.", 1090.0)
-	if first_launch: overlay_kind = "profile_setup"
+	if first_launch:
+		overlay_kind = "profile_setup"
+		_command_button("Politique de confidentialité", _show_setup_privacy, box)
 	var columns := HBoxContainer.new()
 	columns.add_theme_constant_override("separation", 24)
 	box.add_child(columns)
@@ -666,10 +672,12 @@ func _show_profile(first_launch: bool = false) -> void:
 		save.disabled = false
 		if name_input.has_focus(): name_input.release_focus())
 	province_map.choose(player_province, false)
-	if first_launch: _command_button("Restaurer ma sauvegarde", _show_backup.bind(true), form)
-	else: _command_button("Retour", _show_options, form)
-	_profile_wallet_label = _label("", 25, GOLD, form)
-	_update_wallet_labels()
+	if first_launch:
+		_command_button("Restaurer ma sauvegarde", _show_backup.bind(true), form)
+	else:
+		_command_button("Retour", _show_options, form)
+		_profile_wallet_label = _label("", 25, GOLD, form)
+		_update_wallet_labels()
 
 func _save_profile() -> void:
 	var name_text := Profile.clean_name(name_input.text)
@@ -1719,6 +1727,7 @@ func _close_overlay() -> void:
 	overlay_kind = ""
 	_modal_panel = null
 	_modal_scroll = null
+	_privacy_back = Callable()
 	if not is_instance_valid(overlay): return
 	for node in overlay.get_children():
 		node.get_parent().remove_child(node)
@@ -1735,8 +1744,17 @@ func _show_about() -> void:
 	_button("Politique de confidentialité", _show_privacy.bind(_show_about), box)
 	_button("Fermer", _close_overlay, box, true)
 
+func _show_setup_privacy() -> void:
+	var draft_name := name_input.text
+	var draft_province := province_map.selected
+	_show_privacy(func():
+		_show_profile(true)
+		name_input.text = draft_name
+		province_map.choose(draft_province, false))
+
 func _show_privacy(back: Callable) -> void:
 	var box := _modal("Politique de confidentialité", "Rami Salon 3D", 920.0)
+	_privacy_back = back
 	var policy := FileAccess.get_file_as_string("res://PRIVACY.md")
 	for block in policy.strip_edges().split("\n\n", false):
 		if block.begins_with("## "):

@@ -78,6 +78,12 @@ func _run() -> void:
 	await process_frame
 	check(app.overlay_kind == "profile_setup" and app.content.visible, "the first launch opens the province map when the intro ends")
 	app.animations_enabled=false
+	app.name_input.text = "Brouillon"
+	app.province_map.choose("Toamasina", false)
+	button(app.overlay, "Politique de confidentialité").pressed.emit()
+	check(app.overlay.find_children("*","Label",true,false).any(func(label): return "Microphone" == label.text), "the privacy policy can be read before saving a profile")
+	app.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	check(app.overlay_kind == "profile_setup" and app.name_input.text == "Brouillon" and app.province_map.selected == "Toamasina", "back from privacy preserves the profile draft")
 	await process_frame
 	for province in Profile.PROVINCES:
 		var point: Vector2 = app.province_map.marker_position(province)
