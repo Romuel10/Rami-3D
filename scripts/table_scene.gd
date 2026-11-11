@@ -1,7 +1,10 @@
 extends Node3D
 ## Static, shared materials and light meshes keep the salon inexpensive on mobile.
+const Appearance = preload("res://scripts/salon_appearance.gd")
 static var _materials: Dictionary = {}
 static var _finger_meshes: Dictionary = {}
+var _surface_materials: Dictionary = {}
+var _palette: Dictionary = Appearance.colors(Appearance.DEFAULT)
 var _seats: Dictionary = {}
 var _seat_layout := ""
 var seating: Node3D
@@ -17,9 +20,13 @@ func _ready() -> void:
 	seating = Node3D.new()
 	seating.name = "Seating"
 	add_child(seating)
+	apply_palette(_palette)
 
 func _surface(kind: String) -> StandardMaterial3D:
-	if _materials.has(kind): return _materials[kind]
+	if _surface_materials.has(kind): return _surface_materials[kind]
+	if _materials.has(kind):
+		_surface_materials[kind] = _materials[kind].duplicate()
+		return _surface_materials[kind]
 	var mat := StandardMaterial3D.new()
 	mat.roughness = 0.88
 	var image := Image.create(256,256,false,Image.FORMAT_RGB8)
@@ -38,22 +45,22 @@ func _surface(kind: String) -> StandardMaterial3D:
 			if kind == "felt":
 				var fibre := sin(float(x)*2.4 + float(y)*.2)*sin(float(y)*2.0)
 				value = grain*.030 + fibre*.006
-				color = Color(.073+value*.38,.265+value,.151+value*.62)
+				color = Color(0.96+value,0.96+value,0.96+value)
 				height_value = .5 + grain*.10 + fibre*.08
 			elif kind == "wood":
 				var line := sin(float(x)*.18 + noise.get_noise_2d(x*.4,y*.07)*7.0)
 				value = line*.035 + grain*.028
-				color = Color(.235+value,.123+value*.62,.062+value*.38)
+				color = Color(0.90+value,0.90+value,0.90+value)
 				height_value = .5 + line*.06 + grain*.025
 				rough_value = .86 + grain*.10
 			elif kind == "leather":
 				value = grain*0.022 + (0.005 if x%3==0 else 0.0)
-				color = Color(.085+value,.069+value,.052+value)
+				color = Color(0.94+value,0.94+value,0.94+value)
 				height_value = .5 + grain*.34
 				rough_value = .88 + grain*.08
 			else:
 				value = grain*0.013
-				color = Color(0.062+value,0.068+value,0.058+value)
+				color = Color(0.95+value,0.95+value,0.95+value)
 			image.set_pixel(x,y,color)
 			relief.set_pixel(x,y,Color(height_value,height_value,height_value))
 			roughness_map.set_pixel(x,y,Color(rough_value,rough_value,rough_value))
@@ -73,7 +80,27 @@ func _surface(kind: String) -> StandardMaterial3D:
 	if kind=="wood": mat.roughness = 0.42
 	if kind=="leather": mat.roughness = 0.65
 	_materials[kind] = mat
-	return mat
+	_surface_materials[kind] = mat.duplicate()
+	return _surface_materials[kind]
+
+func apply_palette(colors: Dictionary) -> void:
+	_palette = colors.duplicate()
+	for kind in ["felt", "wood", "leather", "carpet"]:
+		if _surface_materials.has(kind): _surface_materials[kind].albedo_color = colors["floor" if kind == "carpet" else kind]
+	for label in ["BrassInlay", "InnerSeam", "RailStitching"]:
+		var mesh := get_node_or_null(label) as MeshInstance3D
+		if mesh == null: continue
+		var material := mesh.material_override.duplicate() as StandardMaterial3D
+		material.albedo_color = colors.metal if label == "BrassInlay" else colors.seam
+		mesh.material_override = material
+	var brand := get_node_or_null("FeltEmbossing") as Label3D
+	if brand != null: brand.modulate = Color(colors.seam, 0.28)
+	_update_nameplates()
+
+func _update_nameplates() -> void:
+	for index in _seats:
+		var tag := _seats[index].get_node("Nameplate") as Label3D
+		tag.modulate = _palette.accent if index == _active_player else _palette.ink
 
 func _plain(color: Color, roughness: float = 0.8, metal: float = 0.0) -> StandardMaterial3D:
 	var key := str(color) + str(roughness) + str(metal)
@@ -196,7 +223,7 @@ func set_players(players: Array, own: int, active: int) -> void:
 		var tag: Label3D = seat.get_node("Nameplate")
 		var player: Dictionary = players[index]
 		tag.text = str(player.get("name","Joueur")) + "   ·   " + ("abandon" if player.get("forfeited",false) else str(int(player.get("count",13))) + " cartes")
-		tag.modulate = Color("edce8f") if index==active else Color("bdc9bb")
+		tag.modulate = _palette.accent if index==active else _palette.ink
 		var present: bool = not player.get("forfeited",false)
 		seat.get_node("Sleeves").visible = present
 		if not present: _stop_gesture(index)

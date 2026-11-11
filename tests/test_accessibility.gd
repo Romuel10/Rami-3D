@@ -62,12 +62,14 @@ func _run() -> void:
 	_check(not _find_text(app.action_row,"Trier").disabled, "sorting remains available in draw phase for a left-handed player")
 	app._act({"type":"draw","source":"deck"})
 	_check(app.snapshot.hand.size() == 14 and not app.card_nodes.any(func(card): return card.is_moving()), "newly drawn card also respects reduced motion")
-	_check(app.play_buttons.all(func(button): return not button.disabled), "play phase enables the correct controls with reversed actions")
+	_check(app.play_buttons.all(func(button): return button.disabled if button == app._discard_button else not button.disabled), "reversed actions enable play controls while discard awaits a selection")
 	var chosen: Node3D = app.hand_cards[0]
 	chosen.tapped.emit(chosen)
 	_check(app.selected == [chosen.card_id] and not chosen.is_moving() and chosen.transform.is_equal_approx(chosen.motion_target), "card selection remains immediate and exact with reduced motion")
+	_check(not app._discard_button.disabled, "left-handed discard enables after selecting one card")
 	chosen.tapped.emit(chosen)
 	_check(app.selected.is_empty() and not chosen.is_moving(), "deselection also completes without movement")
+	_check(app._discard_button.disabled, "left-handed discard disables again after deselection")
 
 	if DisplayServer.get_name() != "headless":
 		app._set_fullscreen(false,false)

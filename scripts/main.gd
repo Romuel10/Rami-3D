@@ -21,14 +21,19 @@ const ProvinceMap = preload("res://scripts/province_map.gd")
 const CardFlourish = preload("res://scripts/card_flourish.gd")
 const SalonIntro = preload("res://scripts/salon_intro.gd")
 const Wallet = preload("res://scripts/tseli_wallet.gd")
+const Appearance = preload("res://scripts/salon_appearance.gd")
 const PROJECT_URL := "https://github.com/Romuel10/Rami-3D"
 const HAND_SCALE := 2.15
 const DECK_POSITION := Vector3(-0.8, 0.28, -0.8)
-const INK = Color("f2eee4")
-const MUTED = Color("b2bbb1")
-const GOLD = Color("d1b581")
-const TEAL = Color("303b33")
-const DEEP = Color("1d2520")
+var palette_id := Appearance.DEFAULT
+var _palette_colors: Dictionary = Appearance.colors(Appearance.DEFAULT)
+var INK: Color
+var MUTED: Color
+var GOLD: Color
+var DEEP: Color
+var _palette_picker: OptionButton
+var _world_environment: Environment
+var _discard_button: Button
 
 var engine: RefCounted
 var network: Node
@@ -230,12 +235,13 @@ func _make_world() -> void:
 	var world := WorldEnvironment.new()
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("1c201b")
+	env.background_color = _tone("background")
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color("c8cfdb")
 	env.ambient_light_energy = 0.30
 	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	world.environment = env
+	_world_environment = env
 	add_child(world)
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
@@ -267,6 +273,7 @@ func _make_world() -> void:
 	add_child(light)
 	table_scene = TableSalon.new()
 	add_child(table_scene)
+	table_scene.apply_palette(_palette_colors)
 
 func _cylinder(radius: float, height: float, y: float, color: Color, scl: Vector3) -> void:
 	var node := MeshInstance3D.new()
@@ -299,40 +306,44 @@ func _make_interface() -> void:
 	var symbol_fallbacks: Array[Font] = [load("res://assets/symbols.ttf")]
 	text_font.fallbacks = symbol_fallbacks
 	theme.default_font = text_font
-	theme.default_font_size = 23
+	theme.default_font_size = 24
 	_heading_font = FontVariation.new()
 	_heading_font.base_font = text_font
 	_heading_font.variation_embolden = 0.5
 	theme.set_color("font_color", "Label", INK)
 	theme.set_color("font_color", "Button", INK)
 	theme.set_color("font_hover_color", "Button", GOLD)
-	theme.set_color("font_disabled_color", "Button", Color("627c78"))
-	theme.set_stylebox("normal", "Button", _style(Color("29372f"), Color("526052"), 12, 18))
-	theme.set_stylebox("hover", "Button", _style(Color("3c4e40"), GOLD, 12, 18))
-	theme.set_stylebox("pressed", "Button", _style(Color("4e6050"), GOLD, 12, 18))
-	theme.set_stylebox("disabled", "Button", _style(Color("232c25"), Color("3c483f"), 12, 18))
-	var field_style := _style(Color("f2ecdc"), Color("ab9973"), 8, 14)
+	theme.set_color("font_pressed_color", "Button", INK)
+	theme.set_color("font_disabled_color", "Button", _tone("disabled_ink"))
+	theme.set_stylebox("normal", "Button", _style(_tone("panel"), _tone("line"), 12, 18))
+	theme.set_stylebox("hover", "Button", _style(_tone("hover"), GOLD, 12, 18))
+	theme.set_stylebox("pressed", "Button", _style(_tone("pressed"), GOLD, 12, 18))
+	theme.set_stylebox("disabled", "Button", _style(_tone("disabled"), _tone("line"), 12, 18))
+	var field_style := _style(_tone("field"), _tone("line"), 8, 14)
 	field_style.set_border_width_all(2)
 	field_style.content_margin_top = 10
 	field_style.content_margin_bottom = 10
-	var field_focus := _style(Color.TRANSPARENT, Color("f3c56d"), 8, 0)
+	var field_focus := _style(Color.TRANSPARENT, _tone("accent"), 8, 0)
 	field_focus.draw_center = false
 	field_focus.set_border_width_all(3)
 	for control_type in ["LineEdit", "TextEdit"]:
 		theme.set_stylebox("normal", control_type, field_style)
 		theme.set_stylebox("focus", control_type, field_focus)
-		theme.set_color("font_color", control_type, DEEP)
-		theme.set_color("font_placeholder_color", control_type, Color("525a4f"))
-		theme.set_color("caret_color", control_type, DEEP)
-		theme.set_color("selection_color", control_type, Color("45634d"))
+		theme.set_color("font_color", control_type, _tone("field_ink"))
+		theme.set_color("font_placeholder_color", control_type, _tone("field_hint"))
+		theme.set_color("caret_color", control_type, _tone("field_ink"))
+		theme.set_color("selection_color", control_type, _tone("field_selection"))
 		theme.set_color("font_selected_color", control_type, Color.WHITE)
 	theme.set_font_size("font_size", "LineEdit", 26)
 	theme.set_constant("caret_width", "LineEdit", 3)
 	theme.set_font_size("font_size", "TextEdit", 24)
-	theme.set_stylebox("panel", "PopupMenu", _style(DEEP, Color("526253"), 8, 10))
+	theme.set_stylebox("panel", "PopupMenu", _style(DEEP, _tone("line"), 8, 10))
+	theme.set_color("font_color", "PopupMenu", INK)
+	theme.set_color("font_hover_color", "PopupMenu", _tone("primary_ink"))
+	theme.set_stylebox("hover", "PopupMenu", _style(GOLD, GOLD, 6, 8))
 	ui.theme = theme
 	_header = PanelContainer.new()
-	var header_style := _style(Color(0.07,0.10,0.08,0.94), Color("3d473d"), 0, 0)
+	var header_style := _style(Color(_tone("background"),0.98), _tone("line"), 0, 0)
 	header_style.content_margin_left = 30
 	header_style.content_margin_right = 30
 	header_style.content_margin_top = 10
@@ -369,7 +380,7 @@ func _make_interface() -> void:
 	_place(toast_label, ui, Vector2(-570,-58), Vector2(570,-8), Vector2(0.5,1), Vector2(0.5,1))
 	toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	toast_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	toast_label.add_theme_stylebox_override("normal", _style(Color("202a23"), Color("766646"), 5, 5))
+	toast_label.add_theme_stylebox_override("normal", _style(_tone("panel"), _tone("line"), 5, 5))
 	toast_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	toast_label.hide()
 
@@ -415,26 +426,26 @@ func _button(text: String, callback: Callable, parent: Node, primary: bool = fal
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	if primary:
 		button.add_theme_stylebox_override("normal", _style(GOLD, GOLD, 10, 16))
-		button.add_theme_stylebox_override("hover", _style(Color("f0d395"), Color("f0d395"), 10, 16))
-		button.add_theme_stylebox_override("pressed", _style(Color("bd9958"), GOLD, 10, 16))
-		button.add_theme_color_override("font_color", DEEP)
-		button.add_theme_color_override("font_hover_color", DEEP)
-		button.add_theme_color_override("font_pressed_color", DEEP)
+		button.add_theme_stylebox_override("hover", _style(_tone("primary_hover"), _tone("primary_hover"), 10, 16))
+		button.add_theme_stylebox_override("pressed", _style(_tone("primary_pressed"), GOLD, 10, 16))
+		button.add_theme_color_override("font_color", _tone("primary_ink"))
+		button.add_theme_color_override("font_hover_color", _tone("primary_ink"))
+		button.add_theme_color_override("font_pressed_color", _tone("primary_ink"))
 	button.pressed.connect(callback)
 	parent.add_child(button)
 	return button
 
 func _command_button(text: String, callback: Callable, parent: Node, primary: bool = false) -> Button:
 	var button := _button(text, callback, parent, primary)
-	button.add_theme_font_size_override("font_size", 22)
+	button.add_theme_font_size_override("font_size", 24)
 	var colors := {
-		"normal": [Color("d2b980"), Color("edd6a3")] if primary else [Color("24312a"), Color("626a53")],
-		"hover": [Color("ecd099"), Color("ffe5b2")] if primary else [Color("374638"), GOLD],
-		"pressed": [Color("b89a5d"), Color("9b804c")] if primary else [Color("18251e"), GOLD],
-		"disabled": [Color("1b241f"), Color("343e34")],
+		"normal": [_tone("accent"), _tone("accent")] if primary else [_tone("panel"), _tone("line")],
+		"hover": [_tone("primary_hover"), _tone("primary_hover")] if primary else [_tone("hover"), GOLD],
+		"pressed": [_tone("primary_pressed"), _tone("accent")] if primary else [_tone("pressed"), GOLD],
+		"disabled": [_tone("disabled"), _tone("line")],
 	}
 	for state in colors:
-		var style := _style(colors[state][0], colors[state][1], 6, 15)
+		var style := _style(colors[state][0], colors[state][1], 12, 15)
 		style.content_margin_top = 6
 		style.content_margin_bottom = 6
 		if state in ["normal", "hover"]:
@@ -443,7 +454,7 @@ func _command_button(text: String, callback: Callable, parent: Node, primary: bo
 			style.shadow_offset = Vector2(0,3)
 		button.add_theme_stylebox_override(state, style)
 	button.add_theme_stylebox_override("focus", _style(Color.TRANSPARENT, GOLD, 6, 0))
-	button.add_theme_color_override("font_disabled_color", Color("829084"))
+	button.add_theme_color_override("font_disabled_color", _tone("disabled_ink"))
 	return button
 
 func _field(placeholder: String, value: String, parent: Node) -> LineEdit:
@@ -489,7 +500,7 @@ func _show_menu() -> void:
 	header_status.text = "%s · %s" % [saved_name, player_province] if not player_province.is_empty() else ""
 	var gradient := Gradient.new()
 	gradient.offsets = PackedFloat32Array([0.0, 0.30, 0.53, 0.79, 1.0])
-	gradient.colors = PackedColorArray([Color("101813"), Color(0.06,0.095,0.075,0.98), Color(0.06,0.095,0.075,0.65), Color(0.05,0.07,0.05,0.08), Color(0.05,0.07,0.05,0.13)])
+	gradient.colors = PackedColorArray([DEEP, Color(DEEP,0.98), Color(DEEP,0.76), Color(DEEP,0.08), Color(DEEP,0.18)])
 	var wash := GradientTexture2D.new()
 	wash.gradient = gradient
 	wash.width = 512
@@ -508,50 +519,57 @@ func _show_menu() -> void:
 		_wallet_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		_update_wallet_labels()
 		wallet.sync()
+		if not SoloStore.load_game().is_empty(): _command_button("Reprendre ma partie solo", _resume_solo, profile_box)
+		if network.has_saved_session(): _command_button("Retrouver mon salon", _resume_network, profile_box)
 
 	var brand := VBoxContainer.new()
-	brand.add_theme_constant_override("separation", -8)
-	_place(brand, content, Vector2(70,74), Vector2(500,254))
-	var title := _label("Rami", 110, Color("f1e5c6"), brand)
+	brand.add_theme_constant_override("separation", 2)
+	_place(brand, content, Vector2(70,62), Vector2(550,266))
+	var title := _label("Rami", 88, INK, brand)
 	title.add_theme_font_override("font", load("res://assets/serif.ttf"))
-	_label("Salon 3D", 24, GOLD, brand)
+	_label("Salon malagasy", 27, GOLD, brand)
 	var rule := ColorRect.new()
-	rule.color = Color("967a48")
+	rule.color = _tone("accent")
 	rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_place(rule, content, Vector2(72,268), Vector2(156,270))
 
 	var choices := VBoxContainer.new()
 	choices.add_theme_constant_override("separation", 11)
-	_place(choices, content, Vector2(72,304), Vector2(442,680))
+	_place(choices, content, Vector2(72,304), Vector2(542,620))
 	var solo := _command_button("Jouer au rami", _start_solo, choices, true)
 	solo.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	solo.custom_minimum_size.y = 64
 	solo.add_theme_font_size_override("font_size", 27)
-	var friends := _command_button("Jouer avec des amis", _open_friends, choices)
-	friends.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	friends.custom_minimum_size.y = 60
-	friends.add_theme_font_size_override("font_size", 25)
 	var tri := _command_button("Jouer au Tri", _show_tri_setup, choices)
 	tri.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	tri.custom_minimum_size.y = 60
 	tri.add_theme_font_size_override("font_size", 25)
+	var friends := _command_button("Jouer avec des amis", _open_friends, choices)
+	friends.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	friends.custom_minimum_size.y = 60
+	friends.add_theme_font_size_override("font_size", 25)
 	_command_button("Tournois", _show_tournaments, choices).alignment = HORIZONTAL_ALIGNMENT_LEFT
-	if not SoloStore.load_game().is_empty():
-		_command_button("Reprendre ma partie solo", _resume_solo, choices).alignment = HORIZONTAL_ALIGNMENT_LEFT
-	if network.has_saved_session():
-		_command_button("Retrouver mon salon", _resume_network, choices).alignment = HORIZONTAL_ALIGNMENT_LEFT
+	if player_province.is_empty():
+		if not SoloStore.load_game().is_empty(): _command_button("Reprendre ma partie solo", _resume_solo, choices)
+		if network.has_saved_session(): _command_button("Retrouver mon salon", _resume_network, choices)
 
 	var practice := HBoxContainer.new()
 	practice.add_theme_constant_override("separation", 10)
-	_place(practice, content, Vector2(72,-158), Vector2(442,-106), Vector2(0,1), Vector2(0,1))
+	_place(practice, content, Vector2(72,-212), Vector2(542,-160), Vector2(0,1), Vector2(0,1))
 	_command_button("Apprendre à jouer", _start_tutorial, practice).size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_command_button("Rangement", _start_sorting, practice).size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var footer := HBoxContainer.new()
-	footer.add_theme_constant_override("separation", 8)
-	_place(footer, content, Vector2(72,-89), Vector2(442,-41), Vector2(0,1), Vector2(0,1))
-	_command_button("Options", _show_options, footer).custom_minimum_size.y = 46
-	_command_button("Règles du jeu", _show_rules, footer).custom_minimum_size.y = 46
-	_command_button("À propos", _show_about, footer).custom_minimum_size.y = 46
+	var footer := GridContainer.new()
+	footer.columns = 2
+	footer.add_theme_constant_override("h_separation", 8)
+	footer.add_theme_constant_override("v_separation", 8)
+	_place(footer, content, Vector2(72,-142), Vector2(542,-34), Vector2(0,1), Vector2(0,1))
+	_command_button("Options", _show_options, footer)
+	_command_button("Apparence", _show_appearance, footer)
+	_command_button("Règles du jeu", _show_rules, footer)
+	_command_button("À propos", _show_about, footer)
+	for button in footer.get_children():
+		button.custom_minimum_size.y = 46
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var motion := animations_enabled and not economy_mode
 	if motion:
 		brand.modulate.a = 0.0
@@ -583,7 +601,7 @@ func _show_intro() -> void:
 	content.hide()
 	overlay_kind = "intro"
 	var background := ColorRect.new()
-	background.color = Color("17211d")
+	background.color = _tone("background")
 	_place(background, overlay, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ONE)
 	var frame := AspectRatioContainer.new()
 	frame.ratio = 16.0 / 9.0
@@ -618,11 +636,62 @@ func _show_options() -> void:
 		_button("Options du solo", _show_solo_settings, box)
 	if game_mode == "online" and current_lobby.get("tournament") is Dictionary:
 		_button("Tableau du tournoi", _show_bracket, box)
+	_button("Apparence du salon", _show_appearance, box)
+	_button("Règles du jeu", _show_rules, box)
 	_button("Affichage et confort", _show_comfort_settings, box)
 	music_button = _button("Musique" if music.enabled else "Musique coupée", _show_music_settings, box)
 	fullscreen_button = _button("Fenêtre" if fullscreen_enabled else "Plein écran", _toggle_fullscreen, box)
 	_button("Politique de confidentialité", _show_privacy.bind(_show_options), box)
 	_button("Fermer", _close_overlay, box, true)
+
+func _tone(role: String) -> Color:
+	return _palette_colors[role]
+
+func _set_palette_values(id: String) -> void:
+	palette_id = Appearance.checked_id(id)
+	_palette_colors = Appearance.colors(palette_id)
+	INK = _tone("ink")
+	MUTED = _tone("muted")
+	GOLD = _tone("accent")
+	DEEP = _tone("background")
+
+func _set_palette(id: String, persist: bool = true) -> bool:
+	var previous_id := palette_id
+	var previous := _palette_colors
+	_set_palette_values(id)
+	if persist and not _save_preferences():
+		_set_palette_values(previous_id)
+		if is_instance_valid(_palette_picker): _palette_picker.selected = Appearance.IDS.find(palette_id)
+		_toast("La couleur n’a pas pu être enregistrée. Vérifiez l’espace disponible.")
+		return false
+	if is_instance_valid(ui): Appearance.recolor_controls(ui, previous, _palette_colors, {})
+	if _world_environment != null: _world_environment.background_color = DEEP
+	if is_instance_valid(table_scene): table_scene.apply_palette(_palette_colors)
+	return true
+
+func _show_appearance() -> void:
+	var box := _modal("Apparence", "Salon malagasy")
+	overlay_kind = "appearance"
+	_label("Couleurs du salon", 21, INK, box)
+	_palette_picker = OptionButton.new()
+	_palette_picker.name = "PaletteDuSalon"
+	_palette_picker.custom_minimum_size.y = 64
+	for name_text in Appearance.NAMES: _palette_picker.add_item(name_text)
+	_palette_picker.selected = Appearance.IDS.find(palette_id)
+	_palette_picker.item_selected.connect(func(index: int):
+		if index >= 0 and index < Appearance.IDS.size(): _set_palette(Appearance.IDS[index]))
+	box.add_child(_palette_picker)
+	var preview := PanelContainer.new()
+	preview.add_theme_stylebox_override("panel", _style(_tone("felt"), _tone("wood"), 18, 24))
+	box.add_child(preview)
+	var sample := VBoxContainer.new()
+	sample.add_theme_constant_override("separation", 16)
+	preview.add_child(sample)
+	_label("Votre table", 26, Color("fffaf0"), sample)
+	var card_preview := _label("♠   ♥   ♦   ♣", 34, Color("fffaf0"), sample)
+	card_preview.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_long_text("Choisissez les couleurs qui vous plaisent. Elles s’appliquent à l’accueil, aux menus et à la table, même pendant une partie.", box)
+	_button("Revenir au jeu" if game_mode != "menu" else "Revenir à l’accueil", _close_overlay, box, true)
 
 func _show_profile(first_launch: bool = false) -> void:
 	var box := _modal("Votre profil", "Touchez votre province sur la carte, puis enregistrez votre pseudo.", 1090.0)
@@ -634,7 +703,7 @@ func _show_profile(first_launch: bool = false) -> void:
 	box.add_child(columns)
 	var atlas_frame := PanelContainer.new()
 	atlas_frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	atlas_frame.add_theme_stylebox_override("panel", _style(DEEP, Color("657461"), 8, 2))
+	atlas_frame.add_theme_stylebox_override("panel", _style(DEEP, _tone("line"), 8, 2))
 	columns.add_child(atlas_frame)
 	province_map = ProvinceMap.new()
 	province_map.custom_minimum_size = Vector2(470, 490)
@@ -658,12 +727,12 @@ func _show_profile(first_launch: bool = false) -> void:
 		button.toggle_mode = true
 		button.button_group = group
 		var accent: Color = ProvinceMap.COLORS[index]
-		var normal := _style(Color("293930"), accent, 5, 12)
+		var normal := _style(_tone("panel"), accent, 5, 12)
 		normal.content_margin_top = 6
 		normal.content_margin_bottom = 6
 		normal.border_width_left = 4
 		button.add_theme_stylebox_override("normal", normal)
-		button.add_theme_stylebox_override("pressed", _style(Color("494936"), GOLD, 5, 10))
+		button.add_theme_stylebox_override("pressed", _style(_tone("pressed"), GOLD, 5, 10))
 		shortcuts[province] = button
 	var save := _command_button("Enregistrer le profil", _save_profile, form, true)
 	save.disabled = true
@@ -761,7 +830,7 @@ func _show_game() -> void:
 
 	var table_status := PanelContainer.new()
 	table_status.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	table_status.add_theme_stylebox_override("panel", _style(Color(0.08,0.13,0.10,0.92), Color("5b644d"), 6, 10))
+	table_status.add_theme_stylebox_override("panel", _style(Color(_tone("panel"),0.98), _tone("line"), 6, 10))
 	_place(table_status, content, Vector2(30,365), Vector2(380,461))
 	var status_box := VBoxContainer.new()
 	status_box.add_theme_constant_override("separation", 4)
@@ -786,12 +855,12 @@ func _show_game() -> void:
 
 	var tray := PanelContainer.new()
 	tray.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var tray_style := _style(Color(0.07,0.105,0.08,0.97), Color("635740"), 9, 8)
+	var tray_style := _style(Color(_tone("background"),0.98), _tone("line"), 9, 8)
 	tray_style.shadow_color = Color(0,0,0,0.42)
 	tray_style.shadow_size = 6
 	tray_style.shadow_offset = Vector2(0,4)
 	tray.add_theme_stylebox_override("panel", tray_style)
-	var tray_half_width := 375 if _is_tri() else 430
+	var tray_half_width := 440 if _is_tri() else 480
 	_place(tray, content, Vector2(-tray_half_width,-106), Vector2(tray_half_width,-37), Vector2(0.5,1), Vector2(0.5,1))
 	action_row = HBoxContainer.new()
 	action_row.add_theme_constant_override("separation", 8)
@@ -807,7 +876,9 @@ func _show_game() -> void:
 		play_buttons.append(_command_button("Suggestion", _suggest, action_row))
 		play_buttons.append(_command_button("Compléter", _extend_selected, action_row))
 		play_buttons.append(_command_button("Poser", _meld_selected, action_row))
-	play_buttons.append(_command_button("Défausser", _discard_selected, action_row, true))
+	_discard_button = _command_button("Défausser", _discard_selected, action_row, true)
+	_discard_button.custom_minimum_size.x = 190
+	play_buttons.append(_discard_button)
 	action_buttons_base = action_row.get_children()
 	for button in action_buttons_base:
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -844,7 +915,7 @@ func _render_snapshot() -> void:
 	for i in range(players.size()):
 		var panel := PanelContainer.new()
 		panel.custom_minimum_size = Vector2(184, 50)
-		panel.add_theme_stylebox_override("panel", _style(Color("26382d") if i == turn else Color("1b261f"), GOLD if i == turn else Color("465346"), 6, 5))
+		panel.add_theme_stylebox_override("panel", _style(_tone("hover") if i == turn else _tone("panel"), GOLD if i == turn else _tone("line"), 6, 5))
 		players_row.add_child(panel)
 		var column := VBoxContainer.new()
 		column.add_theme_constant_override("separation", 0)
@@ -970,6 +1041,11 @@ func _update_turn_controls() -> void:
 		if beginner_enabled and not _is_tri():
 			game_status.text = "1. Piochez une carte" if phase == "draw" else "2. Posez ou défaussez"
 	else: game_status.text = str(players[turn].get("name", "L’adversaire")) + " joue…" if turn >= 0 and turn < players.size() else "En attente…"
+	_sync_discard_button()
+
+func _sync_discard_button() -> void:
+	if is_instance_valid(_discard_button):
+		_discard_button.disabled = not _my_turn(false) or snapshot.get("phase", "draw") != "play" or selected.size() != 1
 
 func _view_card(id: String, face: bool, parent: Node3D, key: String, zone: String) -> Node3D:
 	var card: Node3D
@@ -1040,12 +1116,17 @@ func _select_card(card) -> void:
 		selected.erase(id)
 		_set_hand_selection(card, false)
 	else:
+		if _is_tri():
+			for previous in hand_cards:
+				if previous.card_id in selected: _set_hand_selection(previous, false)
+			selected.clear()
 		selected.append(id)
 		_set_hand_selection(card, true)
 	suggested.clear()
 	_update_hand_status()
 
 func _update_hand_status() -> void:
+	_sync_discard_button()
 	if is_instance_valid(hand_status):
 		var opening := ""
 		var own := int(snapshot.get("your_index", 0))
@@ -1480,7 +1561,7 @@ func _lobby_updated(data: Dictionary) -> void:
 	_clear_content()
 	header_status.text = ("Salon Wi-Fi" if data.get("local",false) else "Salon") + " · " + str(data.get("code", network.room_code))
 	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", _style(Color("222e26"), Color("657461"), 16, 26))
+	panel.add_theme_stylebox_override("panel", _style(_tone("panel"), _tone("line"), 16, 26))
 	_place(panel, content, Vector2(-330,125), Vector2(330,-35), Vector2(0.5,0), Vector2(0.5,1))
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -1571,7 +1652,7 @@ func _add_bracket(box: VBoxContainer) -> void:
 		var duel: Dictionary = tournament.duels[i]
 		var active_duel := i == stage and duel.winner == null
 		var panel := PanelContainer.new()
-		panel.add_theme_stylebox_override("panel", _style(DEEP, GOLD if active_duel else Color("465346"), 8, 10))
+		panel.add_theme_stylebox_override("panel", _style(DEEP, GOLD if active_duel else _tone("line"), 8, 10))
 		box.add_child(panel)
 		var card := VBoxContainer.new()
 		card.add_theme_constant_override("separation", 4)
@@ -1685,10 +1766,10 @@ func _modal(title: String, subtitle: String, width: float = 720.0) -> VBoxContai
 	toast_time = 0.0
 	overlay_kind = "general"
 	var dim := ColorRect.new()
-	dim.color = Color(0.015, 0.02, 0.015, 0.84)
+	dim.color = Color(_tone("background"), 0.84)
 	_place(dim, overlay, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ONE)
 	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", _style(Color("222e26"), Color("657461"), 10, 28))
+	panel.add_theme_stylebox_override("panel", _style(_tone("panel"), _tone("line"), 10, 28))
 	_place(panel, overlay, Vector2(-width*0.5,105), Vector2(width*0.5,-38), Vector2(0.5,0), Vector2(0.5,1))
 	if animations_enabled:
 		dim.modulate.a = 0.0
@@ -2050,6 +2131,7 @@ func _load_preferences() -> void:
 		var saved_music: Variant = cfg.get_value("music", "settings", music_settings)
 		if saved_music is Dictionary:
 			music_settings = saved_music
+	_set_palette_values(str(cfg.get_value("appearance", "palette", Appearance.DEFAULT)))
 	player_name = saved_name
 
 func _save_preferences() -> bool:
@@ -2069,6 +2151,7 @@ func _save_preferences() -> bool:
 	cfg.set_value("comfort","left_handed",left_handed)
 	cfg.set_value("comfort","economy",economy_mode)
 	cfg.set_value("comfort","tri_groups",tri_grouping_enabled)
+	cfg.set_value("appearance", "palette", palette_id)
 	return Profile.save_preferences(cfg)
 
 func _autosave() -> void:
@@ -2497,7 +2580,7 @@ func _start_tri_tutorial() -> void:
 
 func _make_voice_controls() -> void:
 	voice_panel = PanelContainer.new()
-	voice_panel.add_theme_stylebox_override("panel",_style(Color("1b281f"),Color("5b644d"),6,12))
+	voice_panel.add_theme_stylebox_override("panel",_style(_tone("panel"),_tone("line"),6,12))
 	_place(voice_panel,ui,Vector2(24,105),Vector2(310,265))
 	var box := VBoxContainer.new()
 	voice_panel.add_child(box)

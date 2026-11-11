@@ -233,6 +233,7 @@ jobs:
           XDG_DATA_HOME="$RUNNER_TEMP/opponent-gestures" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_opponent_gestures.gd
           XDG_DATA_HOME="$RUNNER_TEMP/card-foley" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_sound_effects.gd
           XDG_DATA_HOME="$RUNNER_TEMP/upgrade-ui" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_upgrade_v7.gd
+          XDG_DATA_HOME="$RUNNER_TEMP/salon-appearance" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_salon_appearance.gd
           XDG_DATA_HOME="$RUNNER_TEMP/classic-deck" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_classic_deck.gd
           XDG_DATA_HOME="$RUNNER_TEMP/social" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_social.gd 2>&1 | tee "$RUNNER_TEMP/social.log"
           if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/social.log"; then exit 1; fi
@@ -328,6 +329,15 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/social-render" timeout 240 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_social.gd 2>&1 | tee "$RUNNER_TEMP/social-render.log"
           if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/social-render.log"; then exit 1; fi
 
+      - name: Verify Salon malagasy palettes and capture screens
+        shell: bash
+        run: |
+          set -euo pipefail
+          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/salon-render" timeout 240 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_salon_appearance.gd 2>&1 | tee "$RUNNER_TEMP/salon-render.log"
+          if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/salon-render.log"; then
+            exit 1
+          fi
+
       - name: Export and verify Android APK
         shell: bash
         run: |
@@ -383,6 +393,7 @@ jobs:
             builds/android-signature.txt
             builds/android-package.txt
             builds/android-device-report.json
+            builds/salon-*.png
 
       - name: Explain test-only APK availability
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && steps.signing.outputs.publishable != 'true'

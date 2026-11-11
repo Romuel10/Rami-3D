@@ -2,13 +2,21 @@
 
 Jeu Android de rami en français avec une table en 3D, un mode solo contre 1 à 3 ordinateurs et des salons privés de 2 à 4 joueurs. Projet réalisé avec Godot 4.6.3.
 
+## Salon malagasy — version 0.16.0
+
+L’accueil adopte le **Salon malagasy** : quatre entrées de jeu, des boutons arrondis plus lisibles et les reprises de partie près du profil. Les cartes gardent leurs illustrations classiques et la table conserve son feutre, son bois et ses matières en relief.
+
+**Apparence**, depuis l’accueil ou **Options → Apparence du salon** pendant une partie, propose **Lagon et sable**, **Terre rouge** et **Indigo et cuivre**. Le choix change immédiatement les menus et la table 3D, reste mémorisé sur cet appareil et conserve la partie, la sélection et l’ordre de la main.
+
+Au Tri, toucher une autre carte remplace la sélection précédente. **Défausser** devient disponible après la pioche lorsqu’une seule carte est sélectionnée. Les règles, les mises et les salons restent compatibles avec la version précédente.
+
+Pour installer l’APK de test, ouvrez la dernière compilation réussie sur `main` dans [Actions → Android APK](https://github.com/Romuel10/Rami-3D/actions/workflows/android.yml). Dans **Artifacts**, téléchargez l’archive `rami-android-0.16.0-…`, extrayez-la et ouvrez `rami-3d.apk`. L’archive contient aussi les captures de l’accueil, d’une partie et du choix des couleurs pour les trois palettes.
+
 ## Kirobo et informations du jeu — version 0.15.1
 
 Le Kirobo est la monnaie virtuelle du jeu. Le portefeuille commence avec 500 Kirobo. Remporter un match solo rapporte 25 Kirobo en facile, 60 en normal ou 120 en difficile. Dans un salon en ligne, les joueurs acceptent la mise choisie par l’hôte et le vainqueur reçoit la cagnotte.
 
 L’intro se lance à l’ouverture. Les textes et les champs de saisie sont agrandis et la fenêtre s’adapte au clavier. **À propos** regroupe la version, le lien vers ce dépôt, les crédits et la [politique de confidentialité](PRIVACY.md).
-
-Pour installer l’APK de test, ouvrez la dernière compilation réussie sur `main` dans [Actions → Android APK](https://github.com/Romuel10/Rami-3D/actions/workflows/android.yml). Dans **Artifacts**, téléchargez l’archive `rami-android-0.15.1-…` et ouvrez `rami-3d.apk` après l’avoir extraite.
 
 ## Carte de Madagascar et animations — version 0.13.0
 
