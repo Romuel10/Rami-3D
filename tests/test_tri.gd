@@ -30,14 +30,29 @@ func _run() -> void:
 	var game := Rules.new()
 	check(not game.start_tri_game(["A","B","C","D","E"],6).ok,"fifth player rejected")
 	check(not game.start_tri_game(["A","B"],9).ok,"only6or12")
-	check(game.tri_groups(["0:H:7","1:H:7","0:C:7"]).size()==1,"double suit legal")
+	check(game.tri_groups(["0:H:9","1:H:9","0:C:9"]).is_empty(),"two hearts and a club do not form a tri")
+	check(game.tri_groups(["0:H:9","0:S:9","0:C:9"]).size()==1,"three suits of one rank form a tri")
 	check(game.tri_groups(["0:H:7","0:H:7","0:C:7"]).is_empty(),"same physical card not reused")
 	check(game.tri_groups(["0:H:7","0:H:8","0:H:9"]).is_empty(),"runs do not count")
 	check(game.tri_groups(["J:0","0:H:7","0:C:7"]).is_empty(),"jokers do not complete tris")
-	check(game.tri_groups(["0:H:7","1:H:7","0:C:7","1:C:7","0:D:7","0:S:7"]).size()==2,"six of same rank form two disjoint tris")
+	check(game.tri_groups(["0:H:7","0:D:7","0:S:7","1:H:7","0:C:7","1:C:7"]).size()==2,"find two disjoint tris even when the first valid group blocks the second")
 	for size in [6,12]:
-		var hand: Array = ["0:H:7","1:H:7","0:C:7","0:S:8","0:C:8","0:D:2"]
-		if size==12: hand.append_array(["0:S:9","0:C:9","0:D:9","0:H:1","0:S:3","0:D:4"])
+		var hand: Array = ["0:H:9","0:S:9","0:C:9","0:S:8","0:C:8","0:D:2"]
+		if size==12: hand.append_array(["0:S:7","0:C:7","0:D:7","0:H:1","0:S:3","0:D:4"])
+		var repeated_suit := hand.duplicate()
+		repeated_suit[1] = "1:H:9"
+		var old_round := rig(repeated_suit,size,"0:D:8")
+		old_round.state.erase("tri_distinct_suits")
+		check(old_round.apply_action(0,{"type":"draw"}).ok,"an old in-progress game can still draw")
+		check(old_round.apply_action(0,{"type":"discard","card":"0:D:2"}).ok,"a legal discard still passes the turn")
+		check(old_round.state.winner == -1 and old_round.state.turn == 1 and old_round.state.match.results.is_empty(),"a repeated suit cannot win or score a round, including in a resumed game")
+		old_round.state.winner = 0
+		old_round._record_round()
+		var legacy := Rules.new()
+		check(legacy.restore_game(old_round.export_game()),"a finished game saved under the previous rule still opens")
+		check(legacy.match_result().winners == [0] and legacy.view_for(1).winning_tris.size() == int(legacy.state.tri_goal)-1,"keep the recorded result and reveal only groups that pass the current rule")
+		old_round.state["tri_distinct_suits"] = true
+		check(not legacy.restore_game(old_round.export_game()),"a result recorded under the current rule requires valid tris")
 		game = rig(hand,size,"0:D:8")
 		inventory(game)
 		check(game.view_for(1).hand==game.state.players[1].hand,"own hand only")

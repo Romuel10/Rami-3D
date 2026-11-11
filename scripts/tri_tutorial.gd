@@ -15,7 +15,7 @@ const GOLD := Color("d1b581")
 const DEEP := Color("1d2520")
 const DRAW_CARD := "0:D:8"
 const DISCARD_CARD := "0:S:13"
-const INITIAL_SIX := ["0:H:7", "1:H:7", "0:C:7", "0:S:8", "0:C:8", DISCARD_CARD]
+const INITIAL_SIX := ["0:H:7", "0:S:7", "0:C:7", "0:S:8", "0:C:8", DISCARD_CARD]
 const EXTRA_SIX := ["0:S:9", "0:C:9", "0:D:9", "0:H:1", "0:S:3", "0:D:4"]
 const SUITS := {"S":"♠", "H":"♥", "D":"♦", "C":"♣"}
 
@@ -228,16 +228,16 @@ func _refresh() -> void:
 	var headings := ["1 · Piochez avant de défausser", "2 · Repérez vos tris cachés", "3 · Choisissez une défausse", "Victoire au Tri !"]
 	var descriptions := [
 		"Au Tri, on gagne avec %d tris parmi %d cartes. Piocher ajoute une carte ; défausser en enlève une. Commencez ici par la pioche." % [goal,hand_size],
-		"Un tri contient exactement trois cartes de même valeur, au maximum deux de la même couleur (♣ ♦ ♥ ♠). Une carte physique ne compte que dans un tri. Les suites ne comptent pas.",
+		"Un tri réunit trois cartes de même valeur et de trois enseignes différentes (♣ ♦ ♥ ♠). Une carte physique ne compte que dans un tri.",
 		"Les tris restent cachés en main jusqu’à la victoire. Ne posez rien sur la table. Choisissez une carte qui n’est pas surlignée : le roi de pique est libre.",
 		"Le jeu vérifie votre victoire après la défausse. Vous gagnez avec %d tris distincts, tout en gardant vos %d cartes en main." % [goal,hand_size]
 	]
 	_heading.text = headings[stage]
 	_progress.text = "%d cartes · %d tris à former" % [hand_size,goal]
 	_explanation.text = descriptions[stage]
-	_example.text = "7♥ + 7♥ + 7♣ : un tri valable. Les deux 7♥ peuvent appartenir au même tri."
+	_example.text = "7♥ + 7♠ + 7♣ forme un tri. Avec deux 7♥ et un 7♣, il manque une troisième enseigne."
 	if stage >= 1:
-		_example.text = "Vos tris : 7♥–7♥–7♣ et 8♠–8♣–8♦" + (", ainsi que 9♠–9♣–9♦." if hand_size == 12 else ".")
+		_example.text = "Vos tris sont 7♥–7♠–7♣ et 8♠–8♣–8♦" + (", ainsi que 9♠–9♣–9♦." if hand_size == 12 else ".")
 	if hand_size == 12:
 		_example.text += " Avec 12 cartes, 3 tris utilisent 9 cartes ; les 3 autres cartes restent libres."
 	_action.text = ["Piocher une carte", "Mes tris", "Défausser la carte choisie", "Exercice terminé"][stage]

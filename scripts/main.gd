@@ -1232,9 +1232,13 @@ func _winner_result() -> Dictionary:
 			body = "Vous gagnez le match au total des points." if own in winners else ", ".join(names) + " gagne le match au total des points."
 	if authoritative.get("tie_break",false):
 		body = "Vous gagnez le duel au nombre de manches remportées." if own in winners else ", ".join(names) + " gagne le duel au nombre de manches remportées."
-	if _is_tri() and finished and not forfeit and int(scores.get("length",1)) == 1:
-		title = "Tri : victoire !" if own in winners else "Tri : partie terminée"
-		body = ("Vous remportez la partie" if own in winners else ", ".join(names) + " remporte la partie") + " avec %d tris, après la défausse." % int(snapshot.get("tri_goal",2))
+	if _is_tri() and not forfeit:
+		var goal := int(snapshot.get("tri_goal", 2))
+		if round_winner >= 0 and snapshot.has("winning_tris") and snapshot.winning_tris.size() < goal:
+			body += " Ce résultat a été enregistré avec le règlement précédent du Tri."
+		elif finished and int(scores.get("length",1)) == 1:
+			title = "Tri : victoire !" if own in winners else "Tri : partie terminée"
+			body = ("Vous remportez la partie" if own in winners else ", ".join(names) + " remporte la partie") + " avec %d tris, après la défausse." % goal
 	return {"title":title,"body":body,"winners":winners,"finished":finished,"forfeit":forfeit,"round_winner":round_winner}
 
 func _show_winner() -> void:
@@ -2454,7 +2458,7 @@ func _show_tri_setup() -> void:
 func _show_tri_rules() -> void:
 	var box := _modal("Les règles du Tri","Vos combinaisons restent cachées jusqu’à votre victoire.")
 	overlay_kind = "tri_rules"
-	_long_text("Objectif : 2 tris avec 6 cartes, ou 3 tris avec 12 cartes. Un tri réunit exactement trois cartes de même valeur : 7♥ + 7♥ + 7♣ est valable. Les suites ne comptent pas. Au maximum deux cartes de la même couleur (♣ ♦ ♥ ♠) dans un tri.",box)
+	_long_text("Formez 2 tris avec 6 cartes, ou 3 tris avec 12 cartes. Un tri réunit trois cartes de même valeur et de trois enseignes différentes. 9♥ + 9♣ + 9♠ est valable. Avec 9♥ + 9♥ + 9♣, il manque une troisième enseigne.",box)
 	_long_text("1. Piochez une carte dans la pioche ou sur la défausse.\n2. Gardez vos tris dans votre main.\n3. Touchez une seule carte puis Défausser. Le jeu vérifie alors si vous avez assez de tris distincts. Chaque carte ne compte que dans un tri. Avec 12 cartes, les trois cartes hors des tris restent libres.",box)
 	_long_text("Trier alterne le rangement par couleur et par valeur, même pendant le tour adverse. Mes tris met vos groupes en évidence uniquement sur votre téléphone ; ce bouton ne pose aucune carte. Cette version utilise deux jeux sans jokers.",box)
 	_button("Revenir à ma main",_close_overlay,box,true)

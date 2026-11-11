@@ -66,7 +66,7 @@ export function createGame(names, { triCards = 0, seed = 0, rounds = 1 } = {}) {
   state.discard.push(state.deck.pop());
   state.log = `${state.players[0].name} commence : piochez une carte.`;
   if (triCards) {
-    Object.assign(state, { variant: 'tri', tri_hand_size: triCards, tri_goal: triCards === 6 ? 2 : 3 });
+    Object.assign(state, { variant: 'tri', tri_hand_size: triCards, tri_goal: triCards === 6 ? 2 : 3, tri_distinct_suits: true });
     state.log = 'Tri : gardez vos combinaisons en main. Piochez, puis défaussez.';
   }
   return state;
@@ -120,18 +120,19 @@ export function validateMeld(cards) {
   return best || fail("La suite doit être consécutive ; l'as peut être avant le 2 ou après le roi.");
 }
 
-function rankTris(cards) {
+function rankTris(cards, distinctSuits) {
   let best = [];
   for (let a = 0; a < cards.length - 2; a++) for (let b = a + 1; b < cards.length - 1; b++) for (let c = b + 1; c < cards.length; c++) {
-    if (cardInfo(cards[a]).suit === cardInfo(cards[b]).suit && cardInfo(cards[b]).suit === cardInfo(cards[c]).suit) continue;
     const group = [cards[a], cards[b], cards[c]];
-    const found = [group, ...rankTris(cards.filter(id => !group.includes(id)))];
+    const suits = new Set(group.map(id => cardInfo(id).suit));
+    if (suits.size < (distinctSuits ? 3 : 2)) continue;
+    const found = [group, ...rankTris(cards.filter(id => !group.includes(id)), distinctSuits)];
     if (found.length > best.length) best = found;
     if (best.length === Math.floor(cards.length / 3)) return best;
   }
   return best;
 }
-export function triGroups(cards) {
+export function triGroups(cards, distinctSuits = true) {
   if (!Array.isArray(cards)) return [];
   const ranks = new Map();
   for (const id of cards) {
@@ -143,7 +144,7 @@ export function triGroups(cards) {
     if (bucket.includes(id)) return [];
     bucket.push(id);
   }
-  return [...ranks.values()].flatMap(rankTris);
+  return [...ranks.values()].flatMap(bucket => rankTris(bucket, distinctSuits));
 }
 
 function nextActive(state, after) {
@@ -234,6 +235,7 @@ function discard(state, index, action) {
   state.players[index].hand.splice(state.players[index].hand.indexOf(id), 1);
   state.discard.push(id);
   if (!state.players[index].hand.length || (state.variant === 'tri' && triGroups(state.players[index].hand).length >= state.tri_goal)) {
+    if (state.variant === 'tri') state.tri_distinct_suits = true;
     state.winner = index;
     state.log = `${state.players[index].name} remporte la manche !`;
   } else {
@@ -358,14 +360,18 @@ export function validateState(state) {
       cards.push(...group.cards);
     }
     if (cards.length !== (tri ? 104 : 108) || !unique(cards) || cards.some(id => !cardInfo(id) || (tri && cardInfo(id).joker))) return false;
-    if (tri && (![6, 12].includes(state.tri_hand_size) || state.tri_goal !== (state.tri_hand_size === 6 ? 2 : 3) || state.melds.length)) return false;
+    if (tri && (![6, 12].includes(state.tri_hand_size) || state.tri_goal !== (state.tri_hand_size === 6 ? 2 : 3) || state.melds.length ||
+      typeof get(state, 'tri_distinct_suits', false) !== 'boolean')) return false;
     if (state.forfeit_winners.some(i => !integer(i, 0, state.players.length - 1) || state.players[i].forfeited)) return false;
     if (state.win_by_forfeit) {
       if (state.winner < 0 || !state.forfeit_winners.includes(state.winner) || !state.end_reason || !state.players.some(p => p.forfeited)) return false;
       if (state.players.some((p, i) => !p.forfeited && !state.forfeit_winners.includes(i))) return false;
     } else {
       if (state.forfeit_winners.length) return false;
-      if (tri) { if (state.winner >= 0 && triGroups(state.players[state.winner].hand).length < state.tri_goal) return false; }
+      if (tri) {
+        // A persisted win can predate the distinct-suit rule.
+        if (state.winner >= 0 && triGroups(state.players[state.winner].hand, state.tri_distinct_suits === true).length < state.tri_goal) return false;
+      }
       else if (state.players.some((p, i) => (p.hand.length === 0) !== (i === state.winner))) return false;
     }
     if ((state.winner >= 0 && state.players[state.winner].forfeited) || (state.winner < 0 && state.players[state.turn].forfeited)) return false;

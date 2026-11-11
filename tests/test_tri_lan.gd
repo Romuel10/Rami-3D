@@ -32,11 +32,21 @@ func _run() -> void:
 		await until(func(): return not view.is_empty())
 		check(view.variant=="tri" and view.hand.size()==size,"guest receives own Tri hand")
 		check(not view.players[0].has("hand") and view.winning_tris.is_empty(),"LAN opponent remains private")
+		var game: RefCounted = host._engine
+		var hand := ["0:H:9","1:H:9","0:C:9","0:S:8","0:C:8","0:D:2"]
+		if size == 12: hand.append_array(["0:S:7","0:C:7","0:D:7","0:H:1","0:S:3","0:D:4"])
+		var pool: Array = game.state.deck + game.state.discard + game.state.players[0].hand + game.state.players[1].hand
+		for card in hand + ["0:D:8"]: pool.erase(card)
+		game.state.players[0].hand = hand
+		game.state.players[1].hand = pool.slice(0, size)
+		game.state.discard = [pool[size]]
+		game.state.deck = pool.slice(size + 1) + ["0:D:8"]
 		host.send_action({"type":"draw","source":"deck"})
 		await until(func(): return view.phase=="play")
 		check(host._engine.state.players[0].hand.size()==size+1,"LAN authoritative draw")
-		host.send_action({"type":"discard","card":host._engine.state.players[0].hand.back()})
+		host.send_action({"type":"discard","card":"0:D:2"})
 		await until(func(): return int(view.turn)==1 or int(view.winner)>=0)
+		check(view.winner == -1 and view.winning_tris.is_empty(),"the Wi-Fi host cannot award a win for two hearts and a club")
 		guest.leave_room()
 		await until(func(): return host._engine.state.winner>=0)
 		check(host._engine.match_result().winners==[0],"Tri guest abandonment gives host victory")

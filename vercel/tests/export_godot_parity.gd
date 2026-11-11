@@ -88,12 +88,17 @@ func _run() -> void:
 		action(0,"discard",{"card":"0:C:2"}),action(1,"draw"),
 	])
 	for size in [6,12]:
-		var tri_hand: Array = ["0:H:7","1:H:7","0:C:7","0:S:8","0:C:8","0:D:2"]
+		var tri_hand: Array = ["0:H:7","0:S:7","0:C:7","0:S:8","0:C:8","0:D:2"]
 		if size==12: tri_hand.append_array(["0:S:9","0:C:9","0:D:9","0:H:1","0:S:3","0:D:4"])
 		scenario("Tri %d win after discard"%size,rig(tri_hand,size,[],false,"0:D:8","draw"),[
 			action(0,"discard",{"card":"0:D:2"}),action(0,"draw"),action(0,"draw"),
 			action(0,"meld",{"cards":tri_hand.slice(0,3)}),action(0,"extend",{"meld":0,"cards":tri_hand.slice(0,3)}),
 			action(0,"discard",{"card":"0:D:2"}),action(1,"draw"),
+		])
+		var repeated_suit := tri_hand.duplicate()
+		repeated_suit[1] = "1:H:7"
+		scenario("Tri %d repeated suit passes the turn"%size,rig(repeated_suit,size,[],false,"0:D:8","draw"),[
+			action(0,"draw"),action(0,"discard",{"card":"0:D:2"}),action(1,"draw"),
 		])
 		var tri_game := Rules.new()
 		tri_game.start_tri_game(["A","B"],size,17)
