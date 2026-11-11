@@ -2,6 +2,16 @@
 
 Jeu Android de rami en français avec une table en 3D, un mode solo contre 1 à 3 ordinateurs et des salons privés de 2 à 4 joueurs. Projet réalisé avec Godot 4.6.3.
 
+## Joueurs animés autour de la table — version 0.17.0
+
+Les adversaires ont maintenant des visages et un buste visibles. Ils respirent légèrement, clignent des yeux et regardent autour d’eux pendant l’attente. Les gestes de réflexion, de pioche, de pose et de défausse font bouger la tête, le torse et les mains. Le résultat d’une manche déclenche une courte réaction distincte pour le gagnant et les autres joueurs.
+
+Le cadrage laisse les visages au-dessus des cartes adverses et place le récapitulatif des joueurs à gauche. Votre main conserve sa grande taille. Les animations suivent uniquement les actions publiques : elles ne dévoilent aucune carte adverse et un même état reçu plusieurs fois ne rejoue pas le geste.
+
+**Options → Affichage et confort → Joueurs animés autour de la table** permet d’immobiliser les personnages. Ce choix reste mémorisé ; les mouvements s’arrêtent aussi en arrière-plan, en mode économie de batterie et quand les animations du jeu sont coupées.
+
+La compilation [Android APK](https://github.com/Romuel10/Rami-3D/actions/workflows/android.yml) propose l’archive `rami-android-0.17.0-…`, avec l’APK, les captures des tables à 2–4 joueurs et une courte vidéo des animations. Les trois palettes du Salon malagasy restent disponibles.
+
 ## Salon malagasy — version 0.16.0
 
 L’accueil adopte le **Salon malagasy** : quatre entrées de jeu, des boutons arrondis plus lisibles et les reprises de partie près du profil. Les cartes gardent leurs illustrations classiques et la table conserve son feutre, son bois et ses matières en relief.

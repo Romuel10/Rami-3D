@@ -70,14 +70,14 @@ func _run() -> void:
 	var sequence: int = table._gesture_serials[1]
 	await create_timer(.14).timeout
 	check(not arms_rest(1),"thinking passes through a visible intermediate pose")
-	check(arms_rest(2) and arms_rest(3),"unrelated opponents remain still")
+	check(arms_rest(2) and arms_rest(3),"unrelated opponents keep their arms at rest")
 	await _capture("think")
 	table.set_players(players,0,1)
 	check(table._gestures[1]==thinking and table._gesture_serials[1]==sequence,"repeated snapshots do not restart the thinking gesture")
 	await create_timer(.7).timeout
 	check(not table.is_gesturing(1) and arms_rest(1),"thinking ends and returns exactly to rest")
 	await create_timer(.2).timeout
-	check(table._gestures.is_empty(),"no perpetual idle animation remains")
+	check(table._gestures.is_empty(),"a completed action leaves no repeating tween")
 	for kind in ["draw","discard","meld","extend"]:
 		table.animate_action(1,kind)
 		check(table.is_gesturing(1),kind+" starts a public-action gesture")

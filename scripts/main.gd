@@ -89,7 +89,7 @@ var header_status: Label
 var _header: PanelContainer
 var game_status: Label
 var hand_status: Label
-var players_row: HBoxContainer
+var players_row: BoxContainer
 var draw_buttons: Array = []
 var action_row: HBoxContainer
 var lobby_box: VBoxContainer
@@ -138,6 +138,7 @@ var _drag_offset := Vector3.ZERO
 var _last_touch_ms := -1000
 var invitation_input: LineEdit
 var animations_enabled := true
+var player_animations_enabled := true
 var hand_scale_factor := 1.0
 var left_handed := false
 var play_buttons: Array = []
@@ -207,6 +208,9 @@ func _notification(what: int) -> void:
 		_autosave()
 		_cancel_drag()
 		if voice != null: voice.stop_talk()
+		if is_instance_valid(table_scene): table_scene.set_animation_paused(true)
+	if what in [NOTIFICATION_APPLICATION_RESUMED, NOTIFICATION_APPLICATION_FOCUS_IN]:
+		if is_instance_valid(table_scene): table_scene.set_animation_paused(false)
 	if what == NOTIFICATION_APPLICATION_PAUSED: Engine.max_fps = 5
 	if what == NOTIFICATION_APPLICATION_RESUMED: _apply_performance()
 	if what == NOTIFICATION_APPLICATION_RESUMED and is_instance_valid(wallet) and game_mode == "menu" and not player_province.is_empty():
@@ -823,10 +827,10 @@ func _start_solo(tri_size: int = 0) -> void:
 func _show_game() -> void:
 	_clear_content()
 	header_status.text = "Solo · " + ["facile","normal","difficile"][_solo_difficulty] if game_mode == "solo" else "Salon · " + network.room_code
-	players_row = HBoxContainer.new()
-	players_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	players_row = VBoxContainer.new()
+	players_row.alignment = BoxContainer.ALIGNMENT_BEGIN
 	players_row.add_theme_constant_override("separation", 10)
-	_place(players_row, content, Vector2(0,87), Vector2(0,138), Vector2(0,0), Vector2(1,0))
+	_place(players_row, content, Vector2(30,91), Vector2(220,324))
 
 	var table_status := PanelContainer.new()
 	table_status.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -913,6 +917,7 @@ func _render_snapshot() -> void:
 	if game_mode == "solo":
 		header_status.text = "Solo · %s · manche %d/%d" % [["facile","normal","difficile"][_solo_difficulty],int(snapshot.get("match",{}).get("round",1)),int(snapshot.get("match",{}).get("length",1))]
 	for i in range(players.size()):
+		if i == own: continue
 		var panel := PanelContainer.new()
 		panel.custom_minimum_size = Vector2(184, 50)
 		panel.add_theme_stylebox_override("panel", _style(_tone("hover") if i == turn else _tone("panel"), GOLD if i == turn else _tone("line"), 6, 5))
@@ -2124,6 +2129,7 @@ func _load_preferences() -> void:
 		effects_enabled = bool(cfg.get_value("effects","enabled",true))
 		beginner_enabled = bool(cfg.get_value("help", "beginner", true))
 		animations_enabled = bool(cfg.get_value("comfort","animations",true))
+		player_animations_enabled = bool(cfg.get_value("comfort","players",true))
 		hand_scale_factor = clampf(float(cfg.get_value("comfort","hand_scale",1.0)),0.85,1.05)
 		left_handed = bool(cfg.get_value("comfort","left_handed",false))
 		economy_mode = bool(cfg.get_value("comfort","economy",false))
@@ -2147,6 +2153,7 @@ func _save_preferences() -> bool:
 	cfg.set_value("effects","volume",effects_volume)
 	cfg.set_value("effects","enabled",effects_enabled)
 	cfg.set_value("comfort","animations",animations_enabled)
+	cfg.set_value("comfort","players",player_animations_enabled)
 	cfg.set_value("comfort","hand_scale",hand_scale_factor)
 	cfg.set_value("comfort","left_handed",left_handed)
 	cfg.set_value("comfort","economy",economy_mode)
@@ -2239,7 +2246,12 @@ func _play_snapshot_effects(initial: bool) -> void:
 	var action: Dictionary = snapshot.get("last_action",{})
 	var actor := int(action.get("player",-1))
 	var kind := str(action.get("type", ""))
-	if not initial and actor != int(snapshot.get("your_index",0)):
+	if int(snapshot.get("winner", -1)) >= 0:
+		var result := _winner_result()
+		var winners: Array = result.winners if result.finished else [int(snapshot.winner)]
+		var result_key := "%s:%s:%s" % [snapshot.get("session_id", ""), snapshot.get("match", {}).get("round", 1), str(winners)]
+		table_scene.react_to_result(winners, result_key, not initial)
+	elif not initial and actor != int(snapshot.get("your_index",0)):
 		table_scene.animate_action(actor,kind,str(action.get("source","deck")))
 	if not initial and animations_enabled and not economy_mode and kind in ["draw", "discard", "meld", "extend"]:
 		var target := Vector3(0.85, 0.19, -0.8)
@@ -2267,13 +2279,15 @@ func _opponent_indices() -> Array:
 
 func _opponent_position(player: int) -> Vector3:
 	var opponents := _opponent_indices()
-	return TableSalon.seat_position(maxi(0,opponents.find(player)),opponents.size())
+	return TableSalon.hand_position(maxi(0,opponents.find(player)),opponents.size())
 
 func _render_opponents(initial: bool) -> void:
 	var players: Array = snapshot.get("players",[])
 	var own := int(snapshot.get("your_index",0))
-	table_scene.set_motion_enabled(animations_enabled)
-	table_scene.set_players(players,own,int(snapshot.get("turn",-1)))
+	_sync_player_motion()
+	var ongoing := int(snapshot.get("winner", -1)) < 0
+	table_scene.set_round_active(ongoing)
+	table_scene.set_players(players,own,int(snapshot.get("turn",-1)) if ongoing else -1)
 	var opponents := _opponent_indices()
 	for i in opponents:
 		var count := 0 if players[i].get("forfeited",false) else clampi(int(players[i].get("count",13)),0,108)
@@ -2284,10 +2298,10 @@ func _render_opponents(initial: bool) -> void:
 			card._area.input_ray_pickable = false
 			card._area.collision_layer = 0
 			var norm: float = (j-(count-1)/2.0)/maxf(1,(count-1)/2.0)
-			var spread := minf(.19,2.15/maxf(1,count-1))
+			var spread := minf(.16,1.70/maxf(1,count-1))
 			var local := Vector3((j-(count-1)/2.0)*spread,.11*(1.0-norm*norm),.12*norm*norm+j*.004)
 			var pos := _opponent_position(i) + Basis(Vector3.UP,yaw)*local
-			var basis := (Basis(Vector3.UP,yaw)*Basis(Vector3.RIGHT,1.05)*Basis(Vector3.UP,-norm*.22)).scaled(Vector3.ONE*.94)
+			var basis := (Basis(Vector3.UP,yaw)*Basis(Vector3.RIGHT,1.05)*Basis(Vector3.UP,-norm*.22)).scaled(Vector3.ONE*.70)
 			if card.get_meta("new_in_view",false):
 				var last: Dictionary = snapshot.get("last_action",{})
 				card.position = Vector3(.85,.19,-.8) if not initial and int(last.get("player",-1)) == i and last.get("source","") == "discard" else DECK_POSITION
@@ -2450,11 +2464,17 @@ func _cancel_drag(restore: bool = true) -> void:
 func _show_comfort_settings() -> void:
 	var box := _modal("Affichage et confort","Ces réglages sont mémorisés sur ce téléphone.")
 	var motion := CheckButton.new()
-	motion.text = "Animations des cartes et transitions"
+	motion.text = "Animations du jeu"
 	motion.custom_minimum_size.y = 52
 	motion.button_pressed = animations_enabled
 	motion.toggled.connect(func(value: bool): animations_enabled = value; _apply_comfort(); _save_preferences())
 	box.add_child(motion)
+	var people := CheckButton.new()
+	people.text = "Joueurs animés autour de la table"
+	people.custom_minimum_size.y = 52
+	people.button_pressed = player_animations_enabled
+	people.toggled.connect(func(value: bool): player_animations_enabled = value; _sync_player_motion(); _save_preferences())
+	box.add_child(people)
 	var handed := CheckButton.new()
 	handed.text = "Mode gaucher · actions principales à gauche"
 	handed.custom_minimum_size.y = 52
@@ -2470,7 +2490,7 @@ func _show_comfort_settings() -> void:
 	slider.custom_minimum_size.y = 54
 	slider.value_changed.connect(func(value: float): hand_scale_factor = value/100.0; size_label.text = "Taille de votre main · " + str(roundi(value)) + " %"; _apply_comfort(); _save_preferences())
 	box.add_child(slider)
-	_long_text("Le mode gaucher inverse l’ordre des boutons sous la main. Désactivez les animations pour des déplacements instantanés et moins de mouvement.",box)
+	_long_text("Le mode gaucher inverse les commandes. Coupez les animations du jeu pour immobiliser les cartes et les joueurs. L’économie de batterie arrête aussi les mouvements des personnages.",box)
 	var economy := CheckButton.new()
 	economy.text = "Économie de batterie · 30 images/s, sans ombres"
 	economy.custom_minimum_size.y = 52
@@ -2480,7 +2500,7 @@ func _show_comfort_settings() -> void:
 	_button("Terminé",_close_overlay,box,true)
 
 func _apply_comfort() -> void:
-	if is_instance_valid(table_scene): table_scene.set_motion_enabled(animations_enabled)
+	_sync_player_motion()
 	hand_scale_factor = clampf(hand_scale_factor,0.85,1.05)
 	for card in card_nodes:
 		if not is_instance_valid(card): continue
@@ -2559,6 +2579,10 @@ func _apply_performance() -> void:
 	Engine.max_fps = 30 if economy_mode else 60
 	get_viewport().msaa_3d = Viewport.MSAA_DISABLED if economy_mode else Viewport.MSAA_2X
 	if is_instance_valid(_key_light): _key_light.shadow_enabled = not economy_mode
+	_sync_player_motion()
+
+func _sync_player_motion() -> void:
+	if is_instance_valid(table_scene): table_scene.set_motion_enabled(animations_enabled and player_animations_enabled and not economy_mode)
 
 func _start_tri_tutorial() -> void:
 	if game_mode == "online" and int(snapshot.get("winner",-1)) < 0:

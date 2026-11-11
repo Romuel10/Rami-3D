@@ -231,6 +231,7 @@ jobs:
           timeout 120 python3 tests/test_android_device_setup.py
           XDG_DATA_HOME="$RUNNER_TEMP/tri-tutorial" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_tri_tutorial.gd
           XDG_DATA_HOME="$RUNNER_TEMP/opponent-gestures" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_opponent_gestures.gd
+          XDG_DATA_HOME="$RUNNER_TEMP/player-presence" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_player_presence.gd
           XDG_DATA_HOME="$RUNNER_TEMP/card-foley" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_sound_effects.gd
           XDG_DATA_HOME="$RUNNER_TEMP/upgrade-ui" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_upgrade_v7.gd
           XDG_DATA_HOME="$RUNNER_TEMP/salon-appearance" timeout 120 "$GODOT_BIN" --headless --path . --script tests/test_salon_appearance.gd
@@ -345,6 +346,19 @@ jobs:
             exit 1
           fi
 
+      - name: Verify seated players and record their animations
+        shell: bash
+        run: |
+          set -euo pipefail
+          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/players-render" timeout 240 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_player_presence.gd 2>&1 | tee "$RUNNER_TEMP/players-render.log"
+          if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/players-render.log"; then exit 1; fi
+          LIBGL_ALWAYS_SOFTWARE=1 XDG_DATA_HOME="$RUNNER_TEMP/players-movie" timeout 240 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --fixed-fps 30 --write-movie builds/players-animation.avi --script tests/capture_player_animation.gd 2>&1 | tee "$RUNNER_TEMP/players-movie.log"
+          if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/players-movie.log"; then exit 1; fi
+          if command -v ffmpeg > /dev/null; then
+            ffmpeg -hide_banner -loglevel error -y -i builds/players-animation.avi -an -c:v libx264 -pix_fmt yuv420p -preset fast -crf 24 -movflags +faststart builds/players-animation.mp4
+            rm builds/players-animation.avi
+          fi
+
       - name: Export and verify Android APK
         shell: bash
         run: |
@@ -401,6 +415,9 @@ jobs:
             builds/android-package.txt
             builds/android-device-report.json
             builds/salon-*.png
+            builds/players-*.png
+            builds/players-animation.mp4
+            builds/players-animation.avi
 
       - name: Explain test-only APK availability
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && steps.signing.outputs.publishable != 'true'

@@ -3,6 +3,7 @@ extends Node3D
 const Appearance = preload("res://scripts/salon_appearance.gd")
 static var _materials: Dictionary = {}
 static var _finger_meshes: Dictionary = {}
+static var _portrait_meshes: Dictionary = {}
 var _surface_materials: Dictionary = {}
 var _palette: Dictionary = Appearance.colors(Appearance.DEFAULT)
 var _seats: Dictionary = {}
@@ -13,6 +14,10 @@ var _gestures: Dictionary = {}
 var _gesture_serials: Dictionary = {}
 var _gesture_kinds: Dictionary = {}
 var _active_player := -2
+var _idle_time := 0.0
+var _animation_paused := false
+var _round_finished := false
+var _result_key := ""
 
 func _ready() -> void:
 	name = "TableScene"
@@ -21,6 +26,33 @@ func _ready() -> void:
 	seating.name = "Seating"
 	add_child(seating)
 	apply_palette(_palette)
+	set_process(false)
+
+func _process(delta: float) -> void:
+	_idle_time += minf(delta, 0.10)
+	for player in _seats:
+		var seat: Node3D = _seats[player]
+		var body: Node3D = seat.get_node("Sleeves")
+		if not body.visible: continue
+		var phase := _idle_time + float(player) * 1.73
+		body.position.y = sin(phase * 1.35) * 0.022
+		body.rotation.z = sin(phase * 0.48) * 0.012
+		if not is_gesturing(player):
+			var head: Node3D = body.get_node("HeadRig")
+			head.rotation = Vector3(sin(phase * 0.62) * 0.024, sin(phase * 0.43) * 0.065, 0)
+		var blink := fposmod(phase, 4.8 + float(player) * 0.17)
+		body.get_node("HeadRig/Eyes").scale.y = 1.0 - 0.92 * sin(PI * blink / 0.15) if blink < 0.15 else 1.0
+
+func _sync_processing() -> void:
+	var present := false
+	for seat in _seats.values():
+		if seat.get_node("Sleeves").visible: present = true; break
+	set_process(motion_enabled and not _animation_paused and present)
+
+func set_animation_paused(value: bool) -> void:
+	_animation_paused = value
+	if value: _stop_all_gestures(); _restore_all_poses()
+	_sync_processing()
 
 func _surface(kind: String) -> StandardMaterial3D:
 	if _surface_materials.has(kind): return _surface_materials[kind]
@@ -115,6 +147,7 @@ func _plain(color: Color, roughness: float = 0.8, metal: float = 0.0) -> Standar
 func _mesh(parent: Node3D, mesh: Mesh, material: Material, label: String, position_value: Vector3, scale_value: Vector3 = Vector3.ONE) -> MeshInstance3D:
 	var node := MeshInstance3D.new()
 	node.name = label
+	node.set_meta("mesh_label", label)
 	node.mesh = mesh
 	node.material_override = material
 	node.position = position_value
@@ -190,6 +223,10 @@ static func seat_yaw(index: int, count: int) -> float:
 	if count==3 and index==1: return 0.0
 	return .58 if index==0 else -.58
 
+static func hand_position(index: int, count: int) -> Vector3:
+	# Keep the private backs below the faces, rather than in front of their eyes.
+	return seat_position(index, count) + Basis(Vector3.UP, seat_yaw(index, count)) * Vector3(0,0,0.50)
+
 func clear_seats() -> void:
 	_stop_all_gestures()
 	for seat in _seats.values():
@@ -199,6 +236,9 @@ func clear_seats() -> void:
 	_seats.clear()
 	_seat_layout = ""
 	_active_player = -2
+	_round_finished = false
+	_result_key = ""
+	set_process(false)
 
 func set_players(players: Array, own: int, active: int) -> void:
 	var opponents: Array = []
@@ -216,7 +256,7 @@ func set_players(players: Array, own: int, active: int) -> void:
 			seat.position = seat_position(relative,opponents.size())
 			seat.rotation.y = seat_yaw(relative,opponents.size())
 			seating.add_child(seat)
-			_build_player(seat,relative)
+			_build_player(seat,index)
 			_seats[index] = seat
 	for index in _seats:
 		var seat: Node3D = _seats[index]
@@ -229,8 +269,9 @@ func set_players(players: Array, own: int, active: int) -> void:
 		if not present: _stop_gesture(index)
 	if active != _active_player:
 		_active_player = active
-		if _seats.has(active) and not players[active].get("forfeited",false):
+		if not _round_finished and _seats.has(active) and not players[active].get("forfeited",false):
 			animate_action(active,"think")
+	_sync_processing()
 
 func _ellipsoid(parent: Node3D, label: String, position_value: Vector3, scale_value: Vector3, material: Material) -> MeshInstance3D:
 	var mesh := SphereMesh.new()
@@ -250,28 +291,29 @@ func _limb(parent: Node3D, label: String, start: Vector3, end: Vector3, width: f
 	node.quaternion = Quaternion(Vector3.UP,(end-start).normalized())
 
 func _build_player(seat: Node3D, style: int) -> void:
-	var clothing: Array = [Color("344651"),Color("775445"),Color("424b38")]
-	var skins: Array = [Color("b17e5d"),Color("d5a780"),Color("82543e")]
-	var cloth := _plain(clothing[style%3],.94)
-	var skin := _plain(skins[style%3],.8)
-	var chair := _ellipsoid(seat,"ChairBack",Vector3(0,-.15,-4.1),Vector3(1.25,.58,.30),_surface("leather"))
+	var clothing: Array = [Color("356579"),Color("a35e43"),Color("61754f"),Color("7a658f")]
+	var skins: Array = [Color("b17e5d"),Color("d5a780"),Color("82543e"),Color("a67250")]
+	var cloth := _plain(clothing[style%4],.94)
+	var skin := _plain(skins[style%4],.8)
+	var chair := _ellipsoid(seat,"ChairBack",Vector3(0,-.63,-.75),Vector3(.86,.65,.22),_surface("leather"))
 	chair.rotation_degrees.x = -12
 	var sleeves := Node3D.new()
 	sleeves.name = "Sleeves"
 	seat.add_child(sleeves)
-	_ellipsoid(sleeves,"Torso",Vector3(0,-.30,-3.6),Vector3(1.05,.55,.52),cloth)
+	_ellipsoid(sleeves,"Torso",Vector3(0,-.55,-.30),Vector3(.70,.46,.43),cloth)
+	_build_portrait(sleeves, style, skin)
 	for side in [-1,1]:
-		var elbow := Vector3(side*1.12,-.18,-1.25)
-		var wrist := Vector3(side*1.28,-.24,-.02)
-		_limb(sleeves,"UpperSleeve",Vector3(side*.82,-.19,-3.4),elbow,.27,cloth)
+		var elbow := Vector3(side*.73,-.16,-.03)
+		var wrist := Vector3(side*.82,-.24,.50)
+		_limb(sleeves,"UpperSleeve",Vector3(side*.48,-.16,-.32),elbow,.18,cloth)
 		var arm := Node3D.new()
 		arm.name = "LeftArm" if side < 0 else "RightArm"
 		arm.position = elbow
 		arm.set_meta("rest_transform",arm.transform)
 		sleeves.add_child(arm)
 		var hand: Vector3 = wrist-elbow
-		_limb(arm,"Forearm",Vector3.ZERO,hand,.20,cloth)
-		_limb(arm,"Cuff",hand-Vector3(0,0,.11),hand+Vector3(0,0,.06),.205,_plain(clothing[style%3].lightened(.10)))
+		_limb(arm,"Forearm",Vector3.ZERO,hand,.15,cloth)
+		_limb(arm,"Cuff",hand-Vector3(0,0,.10),hand+Vector3(0,0,.05),.155,_plain(clothing[style%4].lightened(.10)))
 		var wrist_joint := Node3D.new()
 		wrist_joint.name = "Wrist"
 		wrist_joint.position = hand
@@ -315,10 +357,70 @@ func _build_player(seat: Node3D, style: int) -> void:
 	label.rotation_degrees.x = -70
 	seat.add_child(label)
 
+func _build_portrait(body: Node3D, style: int, skin: Material) -> void:
+	var head := Node3D.new()
+	head.name = "HeadRig"
+	head.position = Vector3(0,.60,-.55)
+	body.add_child(head)
+	var eyes := Node3D.new()
+	eyes.name = "Eyes"
+	head.add_child(eyes)
+	var hair := _plain(Color("30251f") if style % 2 == 0 else Color("211e24"), .96)
+	var eye_white := _plain(Color("efe7dc"), .72)
+	var features := _plain(Color("342725"), .9)
+	var groups := {"Skin":skin, "Hair":hair, "EyeWhite":eye_white, "Face":features, "Pupils":features}
+	var key := str(style % 4)
+	if not _portrait_meshes.has(key):
+		var parts := Node3D.new()
+		_ellipsoid(parts,"Skin",Vector3.ZERO,Vector3(.36,.44,.32),skin)
+		_ellipsoid(parts,"Skin",Vector3(0,-.35,.10),Vector3(.16,.34,.16),skin)
+		_ellipsoid(parts,"Skin",Vector3(0,-.055,.33),Vector3(.062,.082,.060),skin)
+		for side in [-1,1]:
+			_ellipsoid(parts,"Skin",Vector3(side*.35,-.035,0),Vector3(.075,.12,.065),skin)
+			_ellipsoid(parts,"EyeWhite",Vector3(side*.12,.005,.298),Vector3(.047,.057,.026),eye_white)
+			_ellipsoid(parts,"Pupils",Vector3(side*.12,.005,.321),Vector3(.024,.034,.014),features)
+			_limb(parts,"Face",Vector3(side*.07,.11,.302),Vector3(side*.18,.12,.284),.018,features)
+		_limb(parts,"Face",Vector3(-.065,-.19,.287),Vector3(.065,-.19,.287),.018,features)
+		var cap := SphereMesh.new()
+		cap.is_hemisphere = true
+		cap.radius = 1.0
+		cap.height = 1.0
+		cap.radial_segments = 16
+		cap.rings = 8
+		_mesh(parts,cap,hair,"Hair",Vector3(0,.08,-.02),Vector3(.39,.41 if style % 2 else .34,.35))
+		var merged: Dictionary = {}
+		for group in groups:
+			var combined := SurfaceTool.new()
+			combined.begin(Mesh.PRIMITIVE_TRIANGLES)
+			for piece in parts.get_children():
+				if str(piece.get_meta("mesh_label", "")) == group:
+					combined.append_from(piece.mesh,0,piece.transform)
+			merged[group] = combined.commit()
+		_portrait_meshes[key] = merged
+		parts.free()
+	for group in groups:
+		_mesh(eyes if group in ["EyeWhite","Pupils"] else head,_portrait_meshes[key][group],groups[group],group,Vector3.ZERO)
+
 
 func set_motion_enabled(value: bool) -> void:
 	motion_enabled = value
-	if not value: _stop_all_gestures()
+	if not value:
+		_stop_all_gestures()
+		_restore_all_poses()
+	_sync_processing()
+
+func set_round_active(value: bool) -> void:
+	_round_finished = not value
+	if value: _result_key = ""
+
+func react_to_result(winners: Array, key: String, animate: bool = true) -> void:
+	_round_finished = true
+	if key == _result_key: return
+	_result_key = key
+	_stop_all_gestures()
+	if not animate: return
+	for player in _seats:
+		animate_action(player, "celebrate" if player in winners else "react")
 
 func is_gesturing(player: int) -> bool:
 	var tween: Tween = _gestures.get(player)
@@ -326,8 +428,8 @@ func is_gesturing(player: int) -> bool:
 
 func animate_action(player: int, kind: String, source: String = "deck") -> void:
 	# These gestures use only a public action, never card values or bot plans.
-	if not motion_enabled or not is_inside_tree() or not _seats.has(player): return
-	if not kind in ["think","draw","discard","meld","extend"]: return
+	if not motion_enabled or _animation_paused or not is_inside_tree() or not _seats.has(player): return
+	if not kind in ["think","draw","discard","meld","extend","celebrate","react"]: return
 	var seat: Node3D = _seats[player]
 	if not is_instance_valid(seat) or not seat.get_node("Sleeves").visible: return
 	var key := kind+":"+source
@@ -347,7 +449,7 @@ func animate_action(player: int, kind: String, source: String = "deck") -> void:
 	var other_fingers: Node3D = other_wrist.get_node("FingerGrip")
 	var direction: Vector3 = local-primary.position
 	var yaw := clampf(atan2(direction.x,direction.z),-.32,.32)
-	var pitch := .16 if kind=="draw" else .11
+	var pitch := .36 if kind=="draw" else .27
 	var roll := -.035 if local.x<0 else .035
 	var outward := .23
 	var pause := .08
@@ -361,15 +463,34 @@ func animate_action(player: int, kind: String, source: String = "deck") -> void:
 		returning = .30
 	elif kind in ["meld","extend"]:
 		yaw *= .55
-		pitch = .085
+		pitch = .25
+	elif kind == "celebrate":
+		yaw = .18
+		pitch = -.43
+		outward = .30
+		pause = .30
+		returning = .42
+	elif kind == "react":
+		yaw = -.09
+		pitch = .18
+		outward = .28
+		pause = .18
+		returning = .40
+	var head: Node3D = seat.get_node("Sleeves/HeadRig")
+	var torso: Node3D = seat.get_node("Sleeves/Torso")
+	var head_pose := Vector3(.10, yaw*.65, -.04 if kind == "think" else 0.0)
+	if kind == "celebrate": head_pose = Vector3(-.12, -.14, -.06)
+	elif kind == "react": head_pose = Vector3(.16, .08, .025)
 	var serial: int = int(_gesture_serials.get(player,0))+1
 	_gesture_serials[player] = serial
 	_gesture_kinds[player] = key
 	var tween := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	_gestures[player] = tween
 	tween.set_parallel(true)
+	tween.tween_property(head,"rotation",head_pose,outward)
+	tween.tween_property(torso,"rotation:x",-.10 if kind == "celebrate" else .07,outward)
 	tween.tween_property(primary,"rotation",Vector3(pitch,yaw,roll),outward)
-	tween.tween_property(support,"rotation",Vector3(-.018,-yaw*.16,-roll*.35),outward)
+	tween.tween_property(support,"rotation",Vector3(pitch,-yaw,-roll) if kind == "celebrate" else Vector3(-.018,-yaw*.16,-roll*.35),outward)
 	tween.tween_property(wrist,"rotation",Vector3(.16 if kind == "draw" else -.10,yaw*.3,roll),outward)
 	tween.tween_property(other_wrist,"rotation",Vector3(-.07 if kind in ["meld","extend"] else 0,0,-roll),outward)
 	tween.tween_property(other_fingers,"rotation:x",0.0,outward)
@@ -379,6 +500,8 @@ func animate_action(player: int, kind: String, source: String = "deck") -> void:
 	tween.parallel().tween_property(wrist,"rotation",Vector3.ZERO,returning)
 	tween.parallel().tween_property(other_wrist,"rotation",Vector3.ZERO,returning)
 	tween.parallel().tween_property(fingers,"rotation",Vector3.ZERO,returning)
+	tween.parallel().tween_property(head,"rotation",Vector3.ZERO,returning)
+	tween.parallel().tween_property(torso,"rotation",Vector3.ZERO,returning)
 	tween.chain().tween_callback(_finish_gesture.bind(player,serial))
 
 func _finish_gesture(player: int, serial: int) -> void:
@@ -390,12 +513,19 @@ func _finish_gesture(player: int, serial: int) -> void:
 func _restore_pose(player: int) -> void:
 	var seat: Node3D = _seats.get(player)
 	if not is_instance_valid(seat): return
+	seat.get_node("Sleeves").transform = Transform3D.IDENTITY
+	seat.get_node("Sleeves/HeadRig").rotation = Vector3.ZERO
+	seat.get_node("Sleeves/Torso").rotation = Vector3.ZERO
+	seat.get_node("Sleeves/HeadRig/Eyes").scale = Vector3.ONE
 	for name_value in ["LeftArm","RightArm"]:
 		var arm: Node3D = seat.get_node_or_null("Sleeves/"+name_value)
 		if is_instance_valid(arm):
 			arm.transform = arm.get_meta("rest_transform",Transform3D.IDENTITY)
 			arm.get_node("Wrist").rotation = Vector3.ZERO
 			arm.get_node("Wrist/FingerGrip").rotation = Vector3.ZERO
+
+func _restore_all_poses() -> void:
+	for player in _seats: _restore_pose(int(player))
 
 func _stop_gesture(player: int, restore: bool = true) -> void:
 	var tween: Tween = _gestures.get(player)

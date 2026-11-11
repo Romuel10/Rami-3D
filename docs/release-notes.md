@@ -1,4 +1,12 @@
-# Rami Salon 3D 0.16.0 — Salon malagasy
+# Rami Salon 3D 0.17.0 — joueurs animés
+
+- Visages et bustes visibles pour les adversaires, avec respiration, clignements des yeux et mouvements de regard pendant l’attente.
+- Gestes plus lisibles pour la réflexion, la pioche, la pose et la défausse ; réactions distinctes au résultat d’une manche.
+- Cartes adverses et récapitulatif repositionnés pour laisser les visages dégagés, avec contrôle du cadrage pour toutes les places des salons à deux, trois et quatre joueurs.
+- Réglage des animations des joueurs mémorisé dans Affichage et confort. Arrêt immédiat en arrière-plan, en mode économie et quand les animations du jeu sont coupées.
+- Captures et vidéo des personnages dans les artefacts Android. Les trois palettes et les illustrations des cartes sont conservées.
+
+## Version 0.16.0 — Salon malagasy
 
 - Accueil Salon malagasy, avec quatre entrées de jeu, des boutons arrondis et des reprises accessibles près du profil.
 - Trois palettes incluses : Lagon et sable, Terre rouge et Indigo et cuivre. Le menu Apparence reste accessible pendant une partie ; le choix est mémorisé sur le téléphone.

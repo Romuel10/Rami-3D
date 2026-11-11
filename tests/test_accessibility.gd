@@ -31,7 +31,7 @@ func _run() -> void:
 	var initial_cards: Dictionary = app._view_cards.duplicate()
 	var state_before: Dictionary = app.engine.export_game()
 	app._show_comfort_settings()
-	var motion = _find_text(app.overlay,"Animations des cartes et transitions")
+	var motion = _find_text(app.overlay,"Animations du jeu")
 	var handed = _find_text(app.overlay,"Mode gaucher · actions principales à gauche")
 	var slider = _find_type(app.overlay,"HSlider")
 	_check(motion is CheckButton and handed is CheckButton and slider is HSlider, "comfort modal exposes working motion, handedness and hand-size controls")
