@@ -23,7 +23,7 @@ func fields(node: Node) -> int:
 func finish_tri(app: Node, winner: int) -> void:
 	var game: RefCounted = app.engine
 	var state: Dictionary = game.state
-	var hand := ["0:H:7","1:H:7","0:C:7","0:S:8","0:C:8","0:D:2","0:S:9","0:C:9","0:D:9","0:H:1","0:S:3","0:D:4"]
+	var hand := ["0:H:7","0:S:7","0:C:7","0:S:8","0:C:8","0:D:2","0:S:9","0:C:9","0:D:9","0:H:1","0:S:3","0:D:4"]
 	var draw := "0:D:8"
 	var pool: Array = state.deck + state.discard + state.players[0].hand + state.players[1].hand
 	for id in hand: pool.erase(id)

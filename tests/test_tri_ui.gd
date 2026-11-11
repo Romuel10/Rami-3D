@@ -84,7 +84,7 @@ func _run() -> void:
 		app._leave_to_menu()
 		app._show_tri_setup()
 	app._start_solo(6)
-	var winning: Array = ["0:H:7","1:H:7","0:C:7","0:S:8","0:C:8","0:D:8"]
+	var winning: Array = ["0:H:7","0:S:7","0:C:7","0:S:8","0:C:8","0:D:8"]
 	var pool: Array = app.engine.state.deck + app.engine.state.discard
 	for player in app.engine.state.players: pool.append_array(player.hand)
 	for id in winning: pool.erase(id)

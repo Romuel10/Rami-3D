@@ -152,16 +152,17 @@ test('recycling is deterministic after JSON restore and preserves the top discar
   rejected(limited, 0, { type: 'draw', source: 'discard' }, /vide/);
 });
 
-test('Tri uses two physical copies, hidden tris, and wins after discard with 6/12 cards', () => {
-  assert.equal(triGroups(['0:H:7','1:H:7','0:C:7']).length, 1);
+test('Tri requires three suits per group and wins after discard with 6/12 cards', () => {
+  assert.equal(triGroups(['0:H:9','1:H:9','0:C:9']).length, 0);
+  assert.equal(triGroups(['0:H:9','0:S:9','0:C:9']).length, 1);
   assert.equal(triGroups(['0:H:7','0:H:7','0:C:7']).length, 0);
   assert.equal(triGroups(['0:H:7','0:H:8','0:H:9']).length, 0);
   assert.equal(triGroups(['0:H:7','J:0','0:C:7']).length, 0);
-  const sixSameRank = ['0:H:7','1:H:7','0:C:7','1:C:7','0:D:7','0:S:7'];
+  const sixSameRank = ['0:H:7','0:D:7','0:S:7','1:H:7','0:C:7','1:C:7'];
   assert.equal(triGroups(sixSameRank).length, 2);
   for (const size of [6, 12]) {
-    const hand = ['0:H:7','1:H:7','0:C:7','0:S:8','0:C:8','0:D:2'];
-    if (size === 12) hand.push('0:S:9','0:C:9','0:D:9','0:H:1','0:S:3','0:D:4');
+    const hand = ['0:H:9','0:S:9','0:C:9','0:S:8','0:C:8','0:D:2'];
+    if (size === 12) hand.push('0:S:7','0:C:7','0:D:7','0:H:1','0:S:3','0:D:4');
     const state = rig(hand, { triCards: size, phase: 'draw', draw: '0:D:8' });
     assert.equal(state.players[0].hand.length, size);
     assert.equal(state.tri_goal, size === 6 ? 2 : 3);
@@ -182,6 +183,22 @@ test('Tri uses two physical copies, hidden tris, and wins after discard with 6/1
     const restored = JSON.parse(JSON.stringify(state));
     assert.equal(validateState(restored), true);
     assert.deepEqual(viewFor(restored, 1), viewFor(state, 1));
+
+    const repeatedSuit = hand.slice();
+    repeatedSuit[1] = '1:H:9';
+    const resumed = rig(repeatedSuit, { triCards: size, phase: 'draw', draw: '0:D:8' });
+    delete resumed.tri_distinct_suits;
+    assert.equal(applyAction(resumed, 0, { type: 'draw' }).ok, true);
+    assert.equal(applyAction(resumed, 0, { type: 'discard', card: '0:D:2' }).ok, true);
+    assert.equal(resumed.winner, -1);
+    assert.equal(resumed.turn, 1);
+    assert.deepEqual(resumed.match.results, []);
+    inventory(resumed);
+    const legacy = { ...resumed, winner: 0, match: clone(state.match) };
+    assert.equal(validateState(legacy), true, 'a recorded result remains resumable');
+    assert.deepEqual(matchResult(legacy).winners, [0]);
+    assert.equal(viewFor(legacy, 1).winning_tris.length, legacy.tri_goal - 1);
+    assert.equal(validateState({ ...legacy, tri_distinct_suits: true }), false);
   }
 });
 

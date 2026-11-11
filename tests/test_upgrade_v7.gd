@@ -23,7 +23,7 @@ func _run() -> void:
 	check(Profile.normalise("https://mppunkypxdqyazoojksv.supabase.co/functions/v1/rami-online")==Profile.configured_url(),"hosted Supabase path preserved")
 	for invalid in ["", "https://nom:pass@jeu.fr", "ftp://jeu.fr", "https://jeu.fr#token", "https://jeu.fr:99999", "https://jeu.fr/ espace"]:
 		check(Profile.normalise(invalid).is_empty(),"invalid public endpoint rejected")
-	var hand: Array = ["0:H:7","0:S:8","0:C:9","1:H:7","0:C:8","0:D:9","0:C:7","0:D:8","0:S:9","0:S:1","0:D:2","0:H:3"]
+	var hand: Array = ["0:H:7","0:S:8","0:C:9","0:S:7","0:C:8","0:D:9","0:C:7","0:D:8","0:S:9","0:S:1","0:D:2","0:H:3"]
 	var result: Dictionary = Groups.arrange(hand,true)
 	check(result.cards.size()==hand.size() and result.groups.size()==3 and result.boundaries==[3,6,9],"three groups and free cards separated")
 	check(Groups.arrange(hand,false).cards==hand and Groups.arrange(hand,false).boundaries.is_empty(),"manual layout unchanged when grouping disabled")

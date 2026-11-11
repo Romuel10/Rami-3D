@@ -1,4 +1,9 @@
-# Rami Salon 3D 0.15.0
+# Rami Salon 3D 0.15.1
+
+- Au Tri, chaque groupe réunit trois cartes de même valeur et de trois enseignes différentes. Cette règle s’applique aux parties solo, aux salons Wi-Fi et aux salons Internet.
+- Le tutoriel et l’aide donnent des exemples conformes à cette règle. Les résultats déjà enregistrés restent consultables.
+
+## Version 0.15.0
 
 - Textes plus grands, champs de saisie clairs et défilement jusqu’au champ actif quand le clavier s’ouvre.
 - L’animation d’entrée se lance avant l’accueil, avec un bouton pour la passer.

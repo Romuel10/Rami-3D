@@ -73,10 +73,11 @@ func start_tri_game(names: Array, hand_size: int = 6, seed_value: int = 0, round
 	state["variant"] = "tri"
 	state["tri_hand_size"] = hand_size
 	state["tri_goal"] = 2 if hand_size == 6 else 3
+	state["tri_distinct_suits"] = true
 	state.log = "Tri : gardez vos combinaisons en main. Piochez, puis défaussez."
 	return _ok()
 
-func tri_groups(cards: Array) -> Array:
+func tri_groups(cards: Array, distinct_suits: bool = true) -> Array:
 	# Per-rank search prevents a physical card from belonging to two tris.
 	var ranks: Dictionary = {}
 	for id in cards:
@@ -87,19 +88,23 @@ func tri_groups(cards: Array) -> Array:
 		if id in ranks[info.rank]: return []
 		ranks[info.rank].append(id)
 	var result: Array = []
-	for rank in ranks: result.append_array(_tri_rank_groups(ranks[rank]))
+	for rank in ranks: result.append_array(_tri_rank_groups(ranks[rank], distinct_suits))
 	return result
 
-func _tri_rank_groups(cards: Array) -> Array:
+func _tri_rank_groups(cards: Array, distinct_suits: bool) -> Array:
 	var best: Array = []
 	for a in range(cards.size()-2):
+		var suit_a: String = card_info(cards[a]).suit
 		for b in range(a+1,cards.size()-1):
+			var suit_b: String = card_info(cards[b]).suit
+			if distinct_suits and suit_a == suit_b: continue
 			for c in range(b+1,cards.size()):
-				if card_info(cards[a]).suit == card_info(cards[b]).suit and card_info(cards[b]).suit == card_info(cards[c]).suit: continue
+				var suit_c: String = card_info(cards[c]).suit
+				if (distinct_suits and suit_c in [suit_a, suit_b]) or (suit_a == suit_b and suit_b == suit_c): continue
 				var group: Array = [cards[a],cards[b],cards[c]]
 				var rest: Array = cards.duplicate()
 				for id in group: rest.erase(id)
-				var found: Array = [group] + _tri_rank_groups(rest)
+				var found: Array = [group] + _tri_rank_groups(rest, distinct_suits)
 				if found.size() > best.size(): best = found
 				if best.size() == cards.size()/3: return best
 	return best
@@ -120,8 +125,9 @@ func _tri_score(cards: Array, difficulty: int) -> int:
 		if not suits.has(rank): suits[rank] = {}
 		suits[rank][info.suit] = true
 	for rank in counts:
+		if suits[rank].size() < 2: continue
 		score += 30 * (int(counts[rank])/2)
-		if difficulty == 2 and suits[rank].size() > 1: score += 12
+		if difficulty == 2: score += 12
 	return score
 
 func _tri_discard(cards: Array, difficulty: int) -> String:
@@ -267,7 +273,9 @@ func _discard(index: int, action: Dictionary) -> Dictionary:
 		return _fail("Sélectionnez une carte de votre main à défausser.")
 	state.players[index].hand.erase(id)
 	state.discard.append(id)
-	if state.players[index].hand.is_empty() or (state.get("variant","rami") == "tri" and tri_groups(state.players[index].hand).size() >= int(state.tri_goal)):
+	var tri: bool = state.get("variant","rami") == "tri"
+	if state.players[index].hand.is_empty() or (tri and tri_groups(state.players[index].hand).size() >= int(state.tri_goal)):
+		if tri: state["tri_distinct_suits"] = true
 		state.winner = index
 		state.log = "%s remporte la manche !" % state.players[index].name
 	else:
@@ -837,6 +845,7 @@ func restore_game(saved: Variant) -> bool:
 	var tri: bool = candidate.get("variant","rami") == "tri"
 	if not candidate.get("variant","rami") in ["rami","tri"]: return false
 	if tri:
+		if not candidate.get("tri_distinct_suits",false) is bool: return false
 		if not _saved_integer(candidate.get("tri_hand_size"),6,12) or not int(candidate.tri_hand_size) in [6,12]: return false
 		candidate.tri_hand_size = int(candidate.tri_hand_size)
 		if candidate.get("tri_goal") != (2 if candidate.tri_hand_size == 6 else 3) or not candidate.melds.is_empty(): return false
@@ -888,7 +897,8 @@ func restore_game(saved: Variant) -> bool:
 	else:
 		if not forfeit_winners.is_empty(): return false
 		if tri:
-			if candidate.winner >= 0 and tri_groups(candidate.players[candidate.winner].hand).size() < candidate.tri_goal: return false
+			# An already recorded win may predate the distinct-suit rule.
+			if candidate.winner >= 0 and tri_groups(candidate.players[candidate.winner].hand, candidate.get("tri_distinct_suits", false)).size() < candidate.tri_goal: return false
 		else:
 			for i in range(candidate.players.size()):
 				if candidate.players[i].hand.is_empty() != (i == candidate.winner): return false

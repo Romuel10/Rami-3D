@@ -2,13 +2,13 @@
 
 Jeu Android de rami en français avec une table en 3D, un mode solo contre 1 à 3 ordinateurs et des salons privés de 2 à 4 joueurs. Projet réalisé avec Godot 4.6.3.
 
-## Kirobo et informations du jeu — version 0.15.0
+## Kirobo et informations du jeu — version 0.15.1
 
 Le Kirobo est la monnaie virtuelle du jeu. Le portefeuille commence avec 500 Kirobo. Remporter un match solo rapporte 25 Kirobo en facile, 60 en normal ou 120 en difficile. Dans un salon en ligne, les joueurs acceptent la mise choisie par l’hôte et le vainqueur reçoit la cagnotte.
 
 L’intro se lance à l’ouverture. Les textes et les champs de saisie sont agrandis et la fenêtre s’adapte au clavier. **À propos** regroupe la version, le lien vers ce dépôt, les crédits et la [politique de confidentialité](PRIVACY.md).
 
-Pour installer l’APK de test, ouvrez la dernière compilation réussie sur `main` dans [Actions → Android APK](https://github.com/Romuel10/Rami-3D/actions/workflows/android.yml). Dans **Artifacts**, téléchargez l’archive `rami-android-0.15.0-…` et ouvrez `rami-3d.apk` après l’avoir extraite.
+Pour installer l’APK de test, ouvrez la dernière compilation réussie sur `main` dans [Actions → Android APK](https://github.com/Romuel10/Rami-3D/actions/workflows/android.yml). Dans **Artifacts**, téléchargez l’archive `rami-android-0.15.1-…` et ouvrez `rami-3d.apk` après l’avoir extraite.
 
 ## Carte de Madagascar et animations — version 0.13.0
 
@@ -73,11 +73,11 @@ Dans **Actions → Android APK → dernière compilation réussie**, ouvrir **Ar
 
 Les rendus et le picking sont vérifiés en 1440×900 et 2400×1080. Les performances sur les téléphones physiques restent à tester. [Détails du rendu et des vérifications](docs/REALISM-0.6.0.md).
 
-## Tri en duel — version 0.5.0
+## Règles du Tri
 
-Le **Tri** est maintenant un vrai duel de cartes, contre l’ordinateur ou un ami sur un autre téléphone. Depuis l’accueil, choisir **Jouer au Tri**, puis **6 cartes** (objectif **2 tris**) ou **12 cartes** (objectif **3 tris**).
+Le **Tri** se joue contre l’ordinateur ou entre amis. Depuis l’accueil, choisissez **Jouer au Tri**, puis **6 cartes** pour former **2 tris** ou **12 cartes** pour former **3 tris**.
 
-- Un tri contient exactement trois cartes de même valeur, avec au maximum deux de la même couleur (♣ ♦ ♥ ♠). Exemple : 7♥ + 7♥ + 7♣. Les suites ne comptent pas.
+- Un tri réunit trois cartes de même valeur et de trois enseignes différentes. 9♥ + 9♣ + 9♠ forme un tri. Avec 9♥ + 9♥ + 9♣, il manque une troisième enseigne.
 - Piocher une carte dans la pioche ou sur la défausse, puis défausser une carte. La victoire est vérifiée après cette défausse.
 - Tous les tris restent dans la main jusqu’à la victoire. Une carte physique ne compte que dans un seul tri.
 - À 12 cartes, trois tris suffisent ; les trois cartes restantes ne doivent former aucune combinaison particulière.
