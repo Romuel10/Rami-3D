@@ -249,8 +249,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y redis-server
+          if ! command -v redis-server > /dev/null; then
+            RAMI_REDIS_SOURCE="$RUNNER_TEMP/rami-redis-source"
+            git clone --quiet --depth 1 --branch 7.0.15 https://github.com/redis/redis.git "$RAMI_REDIS_SOURCE"
+            test "$(git -C "$RAMI_REDIS_SOURCE" rev-parse HEAD)" = f35f36a265403c07b119830aa4bb3b7d71653ec9
+            make -C "$RAMI_REDIS_SOURCE" -j2 MALLOC=libc BUILD_TLS=no redis-server
+            sudo install -m 755 "$RAMI_REDIS_SOURCE/src/redis-server" /usr/local/bin/redis-server
+          fi
           npm ci --prefix vercel
           "$GODOT_BIN" --headless --path . --script vercel/tests/export_godot_parity.gd -- --out="$RUNNER_TEMP/godot-parity.json"
           GODOT_PARITY_FILE="$RUNNER_TEMP/godot-parity.json" timeout 240 npm test --prefix vercel
@@ -259,8 +264,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y xvfb libgl1-mesa-dri
+          if ! command -v xvfb-run > /dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y xvfb libgl1-mesa-dri
+          fi
           LIBGL_ALWAYS_SOFTWARE=1 timeout 240 xvfb-run -a "$GODOT_BIN" --audio-driver Dummy --path . --script tests/test_hand_view.gd 2>&1 | tee "$RUNNER_TEMP/rami-render.log"
           if grep -nE 'SCRIPT ERROR:|Parse Error:|ERROR:' "$RUNNER_TEMP/rami-render.log"; then
             exit 1
